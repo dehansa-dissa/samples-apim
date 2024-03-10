@@ -21,6 +21,6 @@ api = FastAPI(
 class Query(BaseModel):
     query: str
 
-@api.post("/chat")
+@api.post("/marketplace-assistant")
 async def chat(query: Query):
     return {'query': query}
