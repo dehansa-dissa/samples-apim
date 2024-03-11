@@ -24,3 +24,7 @@ class Query(BaseModel):
 @api.post("/marketplace-assistant")
 async def chat(query: Query):
     return {'query': query}
+
+@api.get("/health")
+async def health():
+    return {"status": "Running"}
