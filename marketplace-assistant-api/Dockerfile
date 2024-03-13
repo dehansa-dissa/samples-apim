@@ -14,6 +14,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends python3.9=3.9.5-3ubuntu0~20.04.1 \
       python3-pip=20.0.2-5ubuntu1.10 \
       python3.9-venv=3.9.5-3ubuntu0~20.04.1 && \
+    apt-get install -y g++ && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     python3.9 -m venv /opt/venv
@@ -21,12 +22,14 @@ RUN apt-get update && \
 ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /tmp
-COPY requirements.txt .
-RUN pip3 --no-cache-dir install wheel==0.38.1 && \
-    pip3 --no-cache-dir install setuptools==65.5.1 && \
-    pip3 --no-cache-dir install -r requirements.txt  # building wheel for modules fail if wheel is not
-                                                     # already installed. Hence the reason to execute a separate pip3
-                                                     # install for wheel before installing requirements
+COPY app/requirements.txt .
+RUN pip3 install --upgrade pip && \
+    pip3 --no-cache-dir install --upgrade wheel && \
+    pip3 --no-cache-dir install --upgrade setuptools && \
+    pip3 --no-cache-dir install -r requirements.txt  
+    # building wheel for modules fail if wheel is not
+    # already installed. Hence the reason to execute a separate pip3
+    # install for wheel before installing requirements
 
 
 FROM choreocontrolplane.azurecr.io/ubuntu:20.04
