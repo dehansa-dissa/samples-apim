@@ -22,7 +22,7 @@ RUN apt-get update && \
 ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /tmp
-COPY requirements.txt .
+COPY app/requirements.txt .
 RUN pip3 install --upgrade pip && \
     pip3 --no-cache-dir install --upgrade wheel && \
     pip3 --no-cache-dir install --upgrade setuptools && \
