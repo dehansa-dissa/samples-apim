@@ -1,5 +1,7 @@
-fastapi==0.109.2
-pydantic==2.6.0
-pydantic_core==2.16.1
-python-dotenv==1.0.1
-uvicorn==0.27.0.post1
+fastapi==0.110.0
+langchain==0.1.12
+langchain_community==0.0.28
+langchain_openai==0.0.8
+pydantic==1.10.8
+qdrant_client==1.8.0
+uvicorn==0.28.0
