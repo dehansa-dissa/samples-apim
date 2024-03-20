@@ -1,0 +1,4 @@
+fastapi==0.110.0
+langchain_openai==0.0.8
+pymilvus==2.3.7
+PyYAML==6.0.1

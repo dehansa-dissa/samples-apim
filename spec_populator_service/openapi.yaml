@@ -1,0 +1,90 @@
+openapi: 3.0.0
+info:
+  title: FastAPI
+  version: 0.1.0
+paths:
+  /add_vector/{uuid}:
+    post:
+      summary: Add Vector
+      operationId: add_vector_add_vector__uuid__post
+      parameters:
+        - required: true
+          schema:
+            type: string
+            title: Uuid
+          name: uuid
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Req
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /remove_vector/{uuid}:
+    delete:
+      summary: Remove Vector
+      operationId: remove_vector_remove_vector__uuid__delete
+      parameters:
+        - required: true
+          schema:
+            type: string
+            title: Uuid
+          name: uuid
+          in: path
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
