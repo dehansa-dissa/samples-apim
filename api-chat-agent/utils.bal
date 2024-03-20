@@ -7,15 +7,10 @@
 // For specific language governing the permissions and limitations under
 // this license, please see the license as well as any agreement you’ve
 // entered into with WSO2 governing the purchase of this software and any
-
+import ballerina/lang.regexp;
 import ballerina/lang.runtime;
 import ballerina/log;
-import ballerinax/ai.agent;
-import ballerinax/azure.openai.chat;
-import ballerina/regex;
-
-# llm used for enrichment of the spec and sample query generation
-final chat:Client chatClient = check new ({auth: {apiKey: openAIToken}}, azureOpenAIServiceUrl);
+import wso2/ai.agent;
 
 isolated function enrichSpecification(string trackingId, map<json> openApi) returns record {|map<json> openApiSpec; SampleQuery[] queries;|}|error {
     agent:OpenApiSpec openApiSpec;
@@ -82,13 +77,14 @@ isolated function enrichSpecification(string trackingId, map<json> openApi) retu
             return error("Failed to find the operation for the resource", path = item.path);
         }
         agent:Operation operation = check paths.get(item.path)[item.method.toLowerAscii()].ensureType();
-        if operation.operationId == () {
-            operation.operationId = string `${item.method} ${regex:replaceAll(item.path, "(/|\\\\)", "-")}`;
-        }
+        // create a valid name for the tool
+        string operationId = string `${item.method}-${regexp:replaceAll(re `^[/{]+|[/}]+$`, item.path, "")}`;
+        operation.operationId = regexp:replaceAll(re `[^a-zA-Z0-9_-]+`, operationId, "_");
+
         operation.description = item.description + string `. This tool invokes a HTTP ${item.method} resource`;
     }
     SampleQuery[] sampleQueries = [
-        {scenario: "Invoke all resources of the API", query: TEST_ALL_RESOURCES_COMMAND},
+        {scenario: "Invoke all resources of the API", query: INVOKE_ALL_RESOURCES_COMMAND},
         {scenario: "Invoke a single resource of the API", query: generatedQuery.singleResourceCall}
     ];
     if resources.length() > 1 {
@@ -100,8 +96,8 @@ isolated function enrichSpecification(string trackingId, map<json> openApi) retu
     };
 }
 
-isolated function generateTextWithLlm(string prompt) returns string|LlmTokenLimitExceededError|LlmConnectionError {
-    chat:Deploymentsdeploymentidchatcompletions_messages[] messages = [
+isolated function generateTextWithLlm(string prompt) returns string|LlmTokenLimitExceededError|agent:LlmError {
+    agent:ChatMessage[] messages = [
         {
             role: "user",
             content: prompt
@@ -110,46 +106,30 @@ isolated function generateTextWithLlm(string prompt) returns string|LlmTokenLimi
     return generateTextWithChatLlm(messages);
 }
 
-isolated function generateTextWithChatLlm(chat:Deploymentsdeploymentidchatcompletions_messages[] messages) returns string|LlmTokenLimitExceededError|LlmConnectionError {
-
-    if isTokenLimitExceeded(messages) {
-        return error LlmTokenLimitExceededError("The generated prompt is too long.");
-    }
-    chat:Inline_response_200|error generatedText = chatClient->/deployments/[azureOpenAIChatDeploymentId]/chat/completions.post(
-        azureOpenAIApiVersion,
-        {
-            messages,
-            max_tokens: COMPLETION_MAX_TOKEN_COUNT,
-            stop: ()
-        }
-    );
+isolated function generateTextWithChatLlm(agent:ChatMessage[] messages) returns string|LlmTokenLimitExceededError|agent:LlmError {
+    string|agent:LlmError generatedText = model.chatComplete(messages, stop = ());
     if generatedText is error {
-        return error LlmConnectionError("Failed to connect to the OpenAI API.", generatedText);
+        return error agent:LlmConnectionError("Failed to connect to the OpenAI API.", handleLlmGenerationErrors(generatedText));
     }
-    string? text = generatedText.choices[0].message?.content;
-
-    if text == () || text == "" {
-        return error LlmConnectionError("Generated text is empty.");
-    }
-    return text;
+    return generatedText;
 }
 
-isolated function generateDescriptions(string trackingId, ApiResource[] resources, map<agent:Schema|agent:Reference>? schemas) returns ApiResourceDescriptor[]|LlmTokenLimitExceededError|LlmConnectionError|LlmGenerationError {
+isolated function generateDescriptions(string trackingId, ApiResource[] resources, map<agent:Schema|agent:Reference>? schemas) returns ApiResourceDescriptor[]|LlmTokenLimitExceededError|agent:LlmError {
     string strEnrichedResourceSpecs = check generateTextWithLlm(generateEnrichmentPrompt(resources, schemas));
     log:printDebug("Description generation was successful.", id = trackingId, enrichedApiSpec = strEnrichedResourceSpecs);
     ApiResourceDescriptor[]|error enrichedResourceSpecs = strEnrichedResourceSpecs.fromJsonStringWithType();
     if enrichedResourceSpecs is error {
-        return error LlmGenerationError("Generated descriptions does not follow expected format", handleLlmGenerationErrors(enrichedResourceSpecs));
+        return error agent:LlmInvalidGenerationError("Generated descriptions does not follow expected format", handleLlmGenerationErrors(enrichedResourceSpecs));
     }
     return enrichedResourceSpecs;
 }
 
-isolated function generateSampleQuery(string trackingId, ApiResource[]|ApiResourceDescriptor[] resources, map<agent:Schema|agent:Reference>? schemas = ()) returns GeneratedQuerySet|LlmTokenLimitExceededError|LlmConnectionError|LlmGenerationError {
+isolated function generateSampleQuery(string trackingId, ApiResource[]|ApiResourceDescriptor[] resources, map<agent:Schema|agent:Reference>? schemas = ()) returns GeneratedQuerySet|LlmTokenLimitExceededError|agent:LlmError {
     string strGeneratedQueries = check generateTextWithLlm(generateQueryGenerationPrompt(resources, schemas));
     log:printDebug("Query generation was successful", id = trackingId, query = strGeneratedQueries);
     GeneratedQuerySet|error queries = strGeneratedQueries.fromJsonStringWithType();
     if queries is error {
-        return error LlmGenerationError("Generated queries does not follow expected format", handleLlmGenerationErrors(queries));
+        return error agent:LlmInvalidGenerationError("Generated queries does not follow expected format", handleLlmGenerationErrors(queries));
     }
     return queries;
 }
@@ -251,14 +231,6 @@ The answer should ALWAYS be provided as an JSONs in the following format:
     "singleResourceCall": {{Sample natural language query that require executing only a single API resource selected from the above.}}
     "multiResourceCall": {{Sample natural language query that must execute at least two API resources selected from the above.}}
 }`;
-}
-
-isolated function isTokenLimitExceeded(chat:Deploymentsdeploymentidchatcompletions_messages[] messages) returns boolean {
-    int charCount = 0;
-    foreach chat:Deploymentsdeploymentidchatcompletions_messages msg in messages {
-        charCount += msg.content.length();
-    }
-    return charCount / 4 >= MAX_TOKEN_COUNT;
 }
 
 public class RetryManager {

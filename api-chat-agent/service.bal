@@ -7,18 +7,21 @@
 // For specific language governing the permissions and limitations under
 // this license, please see the license as well as any agreement you’ve
 // entered into with WSO2 governing the purchase of this software and any
-
 import ballerina/http;
 import ballerina/io;
-import ballerina/log;
-import ballerinax/ai.agent;
 import ballerina/lang.regexp;
+import ballerina/log;
+import wso2/ai.agent;
 
 configurable string azureOpenAIToken = ?;
 configurable string azureOpenAIServiceUrl = ?;
-configurable string azureOpenAITextDeploymentId = ?;
-configurable string azureOpenAIChatDeploymentId = ?;
-configurable string azureOpenAIApiVersion = ?;
+configurable string azureOpenAIDeploymentId = "test-agent-chat";
+const AZURE_OPENAI_API_VERSION = "2023-07-01-preview";
+
+// remove after modifying the configs. 
+configurable string azureOpenAIApiVersion = "";
+configurable string azureOpenAIChatDeploymentId = "";
+configurable string azureOpenAITextDeploymentId = "";
 
 configurable string redisHost = ?;
 configurable string redisPassword = ?;
@@ -27,7 +30,7 @@ final string openAIToken = readKey(azureOpenAIToken);
 final string:RegExp testAllPattern = check regexp:fromString("^(test|invoke) all\\s*(?:resources?|endpoints?|paths?)?\\.?$");
 
 enum TaskStatus {
-    IN_PROGRESS, COMPLETED, TERMINATED
+    IN_PROGRESS, COMPLETED, TERMINATED, EXPIRED_TOKEN
 };
 
 # Initial request for api testing
@@ -40,8 +43,14 @@ type TestInitializationRequest record {
 
 # Progress request for api testing
 type TestExecutionRequest record {
+    # whether the access token is refreshed
+    boolean tokenRefreshed;
+};
+
+# Progress request for on-prem api testing
+type TestExecutionResultRequest record {
     # output from the previous action
-    HttpResponse response;
+    agent:HttpOutput response;
 };
 
 # Request for api enrichment
@@ -58,12 +67,31 @@ type TestCompletionResponse record {|
     string result;
 |};
 
-# Response returned for in-progress/terminated tests
+# Response returned when the token is expired
+type TokenRefreshResponse record {|
+    # status indicating the token is expired
+    EXPIRED_TOKEN taskStatus = EXPIRED_TOKEN;
+|};
+
+type ExecutionResult record {|
+    ApiResourceDefinition 'resource;
+    agent:HttpOutput output;
+|};
+
+# Response returned for in-progress or terminated (due to max iterations) tests
 type TestExecutionResponse record {|
-    # in-progress status
+    # task status
     IN_PROGRESS|TERMINATED taskStatus;
     # result of the test
-    ApiResourceSpecification 'resource;
+    ExecutionResult result;
+|};
+
+# Response returned for in-progress/terminated tests
+type TestExecutionOnPremResponse record {|
+    # task status
+    IN_PROGRESS|TERMINATED taskStatus;
+    # result of the test
+    ApiResourceDefinition 'resource;
 |};
 
 # Response for api enrichment
@@ -74,14 +102,13 @@ type TestPreparationResponse record {|
     SampleQuery[] queries;
 |};
 
-isolated service / on new http:Listener(9090) {
+isolated service / on new http:Listener(SERVICE_PORT, {requestLimits: {maxHeaderSize: SERVICE_MAX_HEADER_SIZE}}) {
 
     # Processing the OpenAPI specification to extract the API resource definitions and generate sample queries
     #
-    # + x\-request\-id - Reuqest id
     # + payload - Test preparation request payload
     # + return - Test preparation response with API specification and sample queries
-    isolated resource function post prepare(@http:Header string x\-request\-id, TestPreparationRequest payload) returns TestPreparationResponse|InternalServerError {
+    isolated resource function post prepare(@http:Header string x\-request\-id, TestPreparationRequest payload) returns TestPreparationResponse|InternalServerError|ErrorInfo {
         string trackingId = x\-request\-id;
         // check for the cached api specification
         string hashedSpec = getHashedString(payload.openapi.toString());
@@ -111,37 +138,24 @@ isolated service / on new http:Listener(9090) {
         return response;
     };
 
-    # Execute a single API test case while caching the progress
+    # Execute a single API test case while caching the progress.
     #
-    # + x\-request\-id - Reuqest id
+    # + token - Authorization token
     # + payload - Test initialization request or test execution request
     # + return - Test result
-    isolated resource function post execute(@http:Header string x\-request\-id, TestInitializationRequest|TestExecutionRequest payload) returns TestExecutionResponse|TestCompletionResponse|InternalServerError|http:BadRequest {
+    isolated resource function post execute(@http:Header string token, @http:Header string x\-request\-id, TestInitializationRequest|TestExecutionRequest payload) returns TestExecutionResponse|TestCompletionResponse|TokenRefreshResponse|InternalServerError|ErrorInfo|http:BadRequest {
         string testCaseId = x\-request\-id;
         string command;
         int iteration = 1;
         agent:HttpApiSpecification apiSpec;
         TestExecutionStep[] executionHistory = [];
-        agent:Tool[] tools = [];
+        json restoredLlmResponse = ();
 
         // check for initial request extract required details to initialize the agent
         if payload is TestInitializationRequest {
             log:printDebug("Agent Initialization Started.", id = testCaseId);
             command = payload.command.trim();
             apiSpec = payload.apiSpec;
-            tools = [
-                {
-                    name: CHAT_BOT_TOOL_NAME,
-                    description: "This tool can be used to handle invalid questions that cannot be answered using the rest of the tools. Also, useful to find information about the available tools and their input schemas. Always tool_input = {}",
-                    parameters: {
-                        properties: {
-                            "question": {'const: command},
-                            "tools": {'const: apiSpec.tools}
-                        }
-                    },
-                    caller: chatTool
-                }
-            ];
         }
         else if payload is TestExecutionRequest { // extract details required to restore the agent if it is a progress request
             log:printDebug("Agent Restoration Started.", id = testCaseId);
@@ -153,11 +167,118 @@ isolated service / on new http:Listener(9090) {
             command = cachedRecord.command;
             iteration = cachedRecord.iteration + 1;
             executionHistory = cachedRecord.executionHistory;
+            if payload.tokenRefreshed {
+                TestExecutionStep lastStep = executionHistory.pop();
+                restoredLlmResponse = lastStep.observation.code == INVALID_AUTH_HTTP_CODE ? lastStep.llmResponse : ();
+                iteration -= 1;
+            }
+        }
+        else {
+            log:printError("Invalid request payload", payload = payload);
+            return http:BAD_REQUEST;
+        }
+
+        string|ExecutionResult|error result;
+        // validate the command
+        if command == "" {
+            return handleServerError(error InvalidCommandError("Command cannot be empty."), EXECUTION, {"id": testCaseId});
+        }
+        boolean isTestAll = command.toLowerAscii().matches(testAllPattern);
+
+        // TODO stop sending tools to the testGptAgent
+        // create the TestGPT agent
+        ApiChatAgent|error apiChatAgent = new (command, apiSpec, executionHistory, token, iteration, testCaseId);
+        if apiChatAgent is error {
+            return handleServerError(apiChatAgent, EXECUTION, {"id": testCaseId});
+        }
+        // execute the next step using the agent
+        if isTestAll {
+            result = apiChatAgent.execute(restoredLlmResponse, true);
+        } else {
+            result = apiChatAgent.execute(restoredLlmResponse);
+        }
+
+        if result is error {
+            return handleServerError(result, EXECUTION, {"id": testCaseId});
+        }
+        // check for the completion of the test
+        if result is string {
+            if iteration > 1 { // cleaning the cache
+                _ = start clearTestCaseCache(testCaseId);
+            }
+            return {
+                result
+            };
+        }
+
+        int statusCode = result.output.code;
+        // check for exceeded max iterations
+        if iteration >= MAX_ITERATIONS && statusCode != INVALID_AUTH_HTTP_CODE {
+            log:printDebug("Max iterations reached. Terminating the task.", id = testCaseId);
+            _ = start clearTestCaseCache(testCaseId);
+            return {
+                taskStatus: TERMINATED,
+                result
+            };
+        }
+
+        // cache the progress
+        agent:ExecutionStep lastStep = apiChatAgent.agentExecutor.progress.history.pop();
+        executionHistory = [...executionHistory, {llmResponse: lastStep.llmResponse, observation: result.output}];
+        _ = start updateTestCaseCache(testCaseId, {
+            iteration,
+            command,
+            apiSpec: apiSpec.cloneReadOnly(),
+            executionHistory: executionHistory.cloneReadOnly()
+        });
+
+        // check for token expiration, needs to request a new token from frontend
+        if statusCode == INVALID_AUTH_HTTP_CODE {
+            log:printDebug("Token expired, requesting a new token", id = testCaseId, observation = result.output);
+            return {
+                taskStatus: EXPIRED_TOKEN
+            };
+        }
+        return {
+            taskStatus: IN_PROGRESS,
+            result
+        };
+    }
+
+    # Execute a single API test case while caching the progress. This resource is used by on-prem APIM.
+    #
+    # + payload - Test initialization request or test execution request
+    # + return - Test result
+    isolated resource function post chat(@http:Header string x\-request\-id, TestInitializationRequest|TestExecutionResultRequest payload) returns TestExecutionOnPremResponse|TestCompletionResponse|InternalServerError|ErrorInfo|http:BadRequest {
+        string testCaseId = x\-request\-id;
+        string command;
+        int iteration = 1;
+        agent:HttpApiSpecification apiSpec;
+        TestExecutionStep[] executionHistory = [];
+
+        // check for initial request extract required details to initialize the agent
+        if payload is TestInitializationRequest {
+            log:printDebug("Agent Initialization Started.", id = testCaseId);
+            command = payload.command.trim();
+            apiSpec = payload.apiSpec;
+        }
+        else if payload is TestExecutionResultRequest { // extract details required to restore the agent if it is a progress request
+            log:printDebug("Agent Restoration Started.", id = testCaseId);
+            CacheRecord|error cachedRecord = retrieveCachedTestCase(testCaseId);
+            if cachedRecord is error {
+                return handleServerError(error CachingError("Error while retrieving the cached record."), EXECUTION, {"id": testCaseId});
+            }
+            apiSpec = cachedRecord.apiSpec;
+            command = cachedRecord.command;
+            iteration = cachedRecord.iteration + 1;
+            executionHistory = cachedRecord.executionHistory;
+            json cachedLlmResponse = cachedRecord?.previousLlmResponse;
             // update last thought
             executionHistory.push({
-                thought: cachedRecord.previousThought,
+                llmResponse: cachedLlmResponse,
                 observation: payload.response
             });
+
         }
         else {
             log:printError("Invalid request payload", payload = payload);
@@ -165,21 +286,23 @@ isolated service / on new http:Listener(9090) {
         }
 
         NextAction|string|error nextAction;
+        // validate the command
         if command == "" {
             return handleServerError(error InvalidCommandError("Command cannot be empty."), EXECUTION, {"id": testCaseId});
         }
         boolean isTestAll = command.toLowerAscii().matches(testAllPattern);
 
+        // TODO stop sending tools to the testGptAgent
         // create the TestGPT agent
-        TestGptAgent|error testGptAgent = new (command, apiSpec, isTestAll ? [] : tools, executionHistory, iteration, testCaseId);
-        if testGptAgent is error {
-            return handleServerError(testGptAgent, EXECUTION, {"id": testCaseId});
+        ApiChatAgent|error apiChatAgent = new (command, apiSpec, executionHistory, "", iteration, testCaseId);
+        if apiChatAgent is error {
+            return handleServerError(apiChatAgent, EXECUTION, {"id": testCaseId});
         }
         // execute the next step using the agent
         if isTestAll {
-            nextAction = testGptAgent.execute(true);
+            nextAction = apiChatAgent.chat(true);
         } else {
-            nextAction = testGptAgent.execute();
+            nextAction = apiChatAgent.chat();
         }
 
         if nextAction is error {
@@ -195,6 +318,7 @@ isolated service / on new http:Listener(9090) {
             };
         }
 
+        // int statusCode = result.output.code;
         // check for exceeded max iterations
         if iteration >= MAX_ITERATIONS {
             log:printDebug("Max iterations reached. Terminating the task.", id = testCaseId);
@@ -211,7 +335,7 @@ isolated service / on new http:Listener(9090) {
             command,
             apiSpec: apiSpec.cloneReadOnly(),
             executionHistory: executionHistory.cloneReadOnly(),
-            previousThought: nextAction.thought
+            previousLlmResponse: nextAction.llmResponse.cloneReadOnly()
         });
 
         return {
