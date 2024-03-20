@@ -1,8 +1,8 @@
 [package]
-org = "wso2"
-name = "apichat"
-version = "1.0.0"
-distribution = "2201.7.2"
+org = "choreo"
+name = "testgpt"
+version = "2.0.0"
+distribution = "2201.8.4"
 
 [build-options]
-
+observabilityIncluded = true

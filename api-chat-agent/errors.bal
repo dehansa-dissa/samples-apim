@@ -1,6 +1,7 @@
-import ballerina/log;
 import ballerina/http;
-import ballerinax/ai.agent;
+import ballerina/lang.value;
+import ballerina/log;
+import wso2/ai.agent;
 
 enum ErrorLevel {
     ERROR, WARN
@@ -16,6 +17,7 @@ enum ErrorCode {
     UNSUPPORTED_MEDIA_TYPE,
     UNSUPPORTED_SPECIFICATION,
     LLM,
+    LLM_CONNECTION,
     CACHING,
     RESPONSE_PARSING,
     API_COMMUNICATION,
@@ -26,11 +28,11 @@ enum ErrorCode {
     GENERIC
 }
 
-type ErrorInfo record {
+type ErrorInfo record {|
     ErrorLevel level;
     string message;
     ErrorCode code;
-};
+|};
 
 type InternalServerError record {|
     *http:InternalServerError;
@@ -43,10 +45,6 @@ public type InvalidSpecificationError distinct error;
 
 public type UnsupportedSpecificationError distinct error;
 
-public type LlmGenerationError distinct error;
-
-public type LlmConnectionError distinct error;
-
 public type CachingError distinct error;
 
 public type ApiCommunicationError distinct error;
@@ -57,7 +55,7 @@ public type LlmContentPolicyViolationError distinct error;
 
 public type InvalidCommandError distinct error;
 
-isolated function handleServerError(error 'error, Task task, *log:KeyValues keyValues) returns InternalServerError {
+isolated function handleServerError(error 'error, Task task, *log:KeyValues keyValues) returns InternalServerError|ErrorInfo {
     string message;
     ErrorLevel level;
     ErrorCode code;
@@ -82,13 +80,13 @@ isolated function handleServerError(error 'error, Task task, *log:KeyValues keyV
         code = UNSUPPORTED_SPECIFICATION;
         level = WARN;
     }
-    else if 'error is LlmGenerationError || 'error is LlmConnectionError {
+    else if 'error is agent:LlmInvalidGenerationError || 'error is agent:LlmConnectionError || 'error is LlmTokenLimitExceededError {
         error? cause = 'error.cause();
-        if cause is LlmTokenLimitExceededError {
+        if 'error is LlmTokenLimitExceededError || cause is LlmTokenLimitExceededError {
             if task == ENRICHMENT {
                 message = "The OpenAPI specification for the API exceeds the maximum limit.";
             } else {
-                message = "Execution has been terminated due to exceeding the token limit.";
+                message = "Execution has been terminated due to exceeding input token limit to LLM.";
             }
             code = TOKEN_LIMIT_EXCEEDED;
             level = WARN;
@@ -101,9 +99,14 @@ isolated function handleServerError(error 'error, Task task, *log:KeyValues keyV
             }
             code = CONTENT_POLICY_VIOLATION;
             level = WARN;
+        }
+        else if 'error is agent:LlmConnectionError || cause is agent:LlmConnectionError {
+            message = "There was an error connecting to Azure OpenAI.";
+            code = LLM_CONNECTION;
+            level = WARN;
         } else {
             if task == ENRICHMENT {
-                message = "Failed to load TestGPT.";
+                message = "Failed to load API Chat.";
             } else {
                 message = "An error occurred during query execution. Try again.";
             }
@@ -140,7 +143,7 @@ isolated function handleServerError(error 'error, Task task, *log:KeyValues keyV
     }
     else {
         if task == ENRICHMENT {
-            message = "An error occurred during loading TestGPT.";
+            message = "An error occurred during loading API Chat.";
         } else {
             message = "An error occurred during query execution.";
         }
@@ -150,16 +153,29 @@ isolated function handleServerError(error 'error, Task task, *log:KeyValues keyV
     return createErrorMessage(message, level, code, 'error, keyValues);
 }
 
-isolated function createErrorMessage(string message, ErrorLevel level, ErrorCode code, error 'error, *log:KeyValues keyValues) returns InternalServerError {
+isolated function createErrorMessage(string message, ErrorLevel level, ErrorCode code, error 'error, *log:KeyValues keyValues) returns InternalServerError|ErrorInfo {
     error? cause = 'error.cause();
     log:KeyValues keyValuesWithCause = keyValues;
     if cause is error {
         keyValuesWithCause["cause"] = cause.toString();
+    } else {
+        foreach [string, value:Cloneable & readonly] [key, detail] in 'error.detail().entries() {
+            if detail is string {
+                keyValuesWithCause[key] = detail.toString();
+            }
+        }
     }
     if level == ERROR {
         log:printError(message, 'error, keyValues = keyValuesWithCause);
     } else {
         log:printWarn(message, 'error, keyValues = keyValuesWithCause);
+    }
+    if code == LLM_CONNECTION {
+        return {
+            level,
+            message,
+            code
+        };
     }
     return {
         body: {

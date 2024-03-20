@@ -1,4 +1,4 @@
-# WSO2 API Chat
+# Choreo TestGPT
 
 AI-based API testing using natural language commands.
 
@@ -32,6 +32,28 @@ azureOpenAIApiVersion = "2023-05-15" # Azure OpenAI API version
 # Azure Redis configs
 redisHost = "" # Azure Redis hostname
 redisPassword = "" # Azure Redis password
+```
+
+# Testing
+
+## 1. logic testing
+
+To run the logic test cases, use the following command.
+
+```
+bal test --groups logic --code-coverage 
+```
+
+## 2. Accuracy testing
+
+The accuracy of the API Chat is evaluated using two types of metrics:
+    Correct path rate: This evaluates the model-generated path to execute a specific command.
+    Success rate: This evaluates the responses received for a specific command.
+
+To run the accuracy test cases, use the following command.
+
+```
+bal test --groups accuracy -CisAccuracyTest=true
 ```
 
 # Build and Run
