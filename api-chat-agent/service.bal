@@ -102,7 +102,7 @@ type TestPreparationResponse record {|
     SampleQuery[] queries;
 |};
 
-isolated service / on new http:Listener(SERVICE_PORT, {requestLimits: {maxHeaderSize: SERVICE_MAX_HEADER_SIZE}}) {
+isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SERVICE_MAX_HEADER_SIZE}}) {
 
     # Processing the OpenAPI specification to extract the API resource definitions and generate sample queries
     #
