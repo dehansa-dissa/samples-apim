@@ -14,6 +14,12 @@ paths:
             title: Uuid
           name: uuid
           in: path
+        - required: true
+          schema:
+            type: string
+            title: Orgid
+          name: orgID
+          in: query
       requestBody:
         content:
           application/json:
@@ -44,6 +50,12 @@ paths:
             title: Uuid
           name: uuid
           in: path
+        - required: true
+          schema:
+            type: string
+            title: Orgid
+          name: orgID
+          in: query
       responses:
         '200':
           description: Successful Response
