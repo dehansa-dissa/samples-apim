@@ -5,7 +5,7 @@ from utils import *
 api_key = os.getenv('MILVERSE_API_KEY')
 url = os.getenv('MILVERSE_URL')
 
-def upsert_vector_for_onprem(embed, record, collection, api_id, api_type, api_name, tenant):
+def upsert_vector_for_onprem(embed, collection, api: API, tenant):
 
     mc = MilvusClient(uri=url, token=api_key)
     collection_name = collection + "__apim__"
@@ -17,7 +17,7 @@ def upsert_vector_for_onprem(embed, record, collection, api_id, api_type, api_na
             enable_dynamic_field=True,
         )
         schema.add_field(field_name="id", datatype=DataType.VARCHAR, is_primary=True, max_length=100)
-        schema.add_field(field_name="api_name", datatype=DataType.VARCHAR, max_length=512)
+        schema.add_field(field_name="metadata", datatype=DataType.JSON, max_length=2000)
         schema.add_field(field_name="api_type", datatype=DataType.VARCHAR, max_length=100)
         schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=1536)
         schema.add_field(field_name="page_content", datatype=DataType.VARCHAR, max_length=10000)
@@ -36,17 +36,20 @@ def upsert_vector_for_onprem(embed, record, collection, api_id, api_type, api_na
             schema=schema,
             index_params=index_params
         )
-
-    res = embed.embed_query(str(record))
+    res = embed.embed_query(str(api.__dict__))
     payload={
-            "page_content": str(record),
-            "api_name": api_name,
-            "id": api_id,
+            "page_content": str(api.spec),
+            "metadata": {
+                "id": api.id,
+                "api_name": api.name,
+                "api_version": api.version,
+                "api_type": api.type
+            },
+            "id": api.id,
             "vector": res,
-            "api_type": api_type,
+            "api_type": api.type,
             "tenant_domain": tenant
         }
-
     response = mc.upsert(collection_name=collection_name, data=payload)
     return response
 

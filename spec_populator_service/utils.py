@@ -25,6 +25,14 @@ def get_emb_model():
 
     return embed
 
+@dataclass
+class API:
+    id: str
+    version: str
+    type: str
+    name: str
+    spec: dict
+
 # Having the api type for Choreo even, 
 # because it might be needed in the future
 @dataclass
