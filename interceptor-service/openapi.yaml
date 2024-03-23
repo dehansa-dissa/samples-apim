@@ -1,0 +1,209 @@
+openapi: 3.0.0
+info:
+  title: FastAPI
+  version: 0.1.0
+paths:
+  /ai/api-chat/prepare:
+    post:
+      summary: Prepare
+      operationId: prepare_ai_api_chat_prepare_post
+      parameters:
+        - required: false
+          schema:
+            type: string
+            title: X-Request-Id
+          name: x-request-id
+          in: header
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Req
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /ai/api-chat/execute:
+    post:
+      summary: Execute
+      operationId: execute_ai_api_chat_execute_post
+      parameters:
+        - required: false
+          schema:
+            type: string
+            title: X-Request-Id
+          name: x-request-id
+          in: header
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Req
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /ai/marketplace-assistant/chat:
+    post:
+      summary: Chat
+      operationId: chat_ai_marketplace_assistant_chat_post
+      parameters:
+        - required: false
+          schema:
+            type: string
+            title: Api-Key
+          name: Api-Key
+          in: header
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Req
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /ai/spec-populator/publish-api:
+    post:
+      summary: Publish Api
+      operationId: publish_api_ai_spec_populator_publish_api_post
+      parameters:
+        - required: false
+          schema:
+            type: string
+            title: Api-Key
+          name: Api-Key
+          in: header
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Req
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /ai/spec-populator/remove-api/{uuid}:
+    delete:
+      summary: Remove Api
+      operationId: remove_api_ai_spec_populator_remove_api__uuid__delete
+      parameters:
+        - required: true
+          schema:
+            type: string
+            title: Uuid
+          name: uuid
+          in: path
+        - required: false
+          schema:
+            type: string
+            title: Api-Key
+          name: Api-Key
+          in: header
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /ai/spec-populator/api-count:
+    get:
+      summary: Api Count
+      operationId: api_count_ai_spec_populator_api_count_get
+      parameters:
+        - required: false
+          schema:
+            type: string
+            title: Api-Key
+          name: Api-Key
+          in: header
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
