@@ -25,10 +25,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /marketplace-assistant/sse:
+  /marketplace-assistant/streaming:
     post:
-      summary: Marketplace Assistant SSE
-      operationId: marketplace_assistant_sse_marketplace_assistant_sse_post
+      summary: Marketplace Assistant Sse
+      operationId: marketplace_assistant_sse_marketplace_assistant_streaming_post
       requestBody:
         content:
           application/json:
@@ -71,12 +71,21 @@ components:
       title: HTTPValidationError
     Query:
       properties:
-        message:
+        query:
           type: string
-          title: Message
+          title: Query
+        history:
+          items: {}
+          type: array
+          title: History
+        tenant_domain:
+          type: string
+          title: Tenant Domain
       type: object
       required:
-        - message
+        - query
+        - history
+        - tenant_domain
       title: Query
     ValidationError:
       properties:
