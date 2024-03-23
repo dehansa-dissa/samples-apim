@@ -11,10 +11,7 @@ source = os.getenv("SOURCE_PLATFORM")
 app = FastAPI()
 
 @app.post("/add_vector/{uuid}")
-async def add_vector(uuid : str, req: Dict[str, Any]):
-
-    # Introspect token and get vector or user
-    collection = "common_space"
+async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
 
     if source == "apim":
         api_type = req["api_type"]
@@ -39,21 +36,19 @@ async def add_vector(uuid : str, req: Dict[str, Any]):
         )
 
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, collection, api, req["tenant_domain"]))
+        response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, api, req["tenant_domain"]))
     elif source == "choreo":
         record = await pre_process_openapi(req["api_spec"])
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None,partial(upsert_vector_for_choreo, embed, record, collection, uuid))
+        response = await loop.run_in_executor(None,partial(upsert_vector_for_choreo, embed, record, orgID, uuid))
 
     return {"message": response}
 
 @app.delete("/remove_vector/{uuid}")
-async def remove_vector(uuid : str):
-    
-    collection = "common_space"
+async def remove_vector(uuid : str, orgID: str):
 
     if source == "apim":
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(delete_vector_for_onprem, [uuid], collection))
+        response = await loop.run_in_executor(None, partial(delete_vector_for_onprem, [uuid], orgID))
 
     return {"message": response}

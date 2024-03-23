@@ -58,8 +58,8 @@ class QuerySSEResponse(BaseModel):
     value: str
 
 @lru_cache()
-def get_vectorstore() -> Milvus:
-    collection_name = 'common_space__apim__'
+def get_vectorstore(orgID: str) -> Milvus:
+    collection_name = orgID + '__apim__'
     model_name = 'text-embedding-ada-002'
     embeddings = AzureOpenAIEmbeddings(
         model=model_name,
@@ -81,8 +81,8 @@ def get_vectorstore() -> Milvus:
 
     return vectorstore
 
-def get_retriever(tenant_domain) -> MultiQueryRetriever:
-    vectorstore = get_vectorstore()
+def get_retriever(tenant_domain, orgID) -> MultiQueryRetriever:
+    vectorstore = get_vectorstore(orgID)
     # TODO: Try adding a Self Query retriever
     # Incorporate score based filtering mechanism once Milverse introduces it
     retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5, "expr": 'tenant_domain == "' + tenant_domain + '"'})
@@ -90,9 +90,9 @@ def get_retriever(tenant_domain) -> MultiQueryRetriever:
     #     temperature=0.3,
         model_name="gpt-35-turbo",
     #     max_tokens=2048,
-        deployment_name="APIM-Deployment",
-        api_version="2023-12-01-preview",
-        azure_endpoint='https://apim-ai-aus.openai.azure.com/',
+        deployment_name=AZURE_CHAT_DEPLOYMENT,
+        api_version=AZURE_CHAT_VERSION,
+        azure_endpoint=AZURE_ENDPOINT,
     )
 
     mq_retriever = MultiQueryRetriever.from_llm(
@@ -104,8 +104,8 @@ def get_retriever(tenant_domain) -> MultiQueryRetriever:
 def format_docs(docs):
     return "\n\n".join(str({"api_details": doc.metadata, "api_spec":doc.page_content}) for doc in docs)
 
-def prepare_rag_chain(tenant_domain: str):
-    retriever = get_retriever(tenant_domain)
+def prepare_rag_chain(tenant_domain: str, orgID: str):
+    retriever = get_retriever(tenant_domain, orgID)
 
     QA_PROMPT = PromptTemplate(
         input_variables=["query", "contexts"],
@@ -179,10 +179,10 @@ async def prepare_history(history: list):
     return [(chat["role"],chat["content"]) for chat in history]
 
 async def generate_response(
-    tenant_domain: str, message: str, history: list
+    tenant_domain: str, message: str, history: list, orgID: str
 ):
     results = await asyncio.gather(
-        in_thread(prepare_rag_chain, tenant_domain), 
+        in_thread(prepare_rag_chain, tenant_domain, orgID), 
         prepare_history(history),
     )
     rag_chain = results[0]
@@ -204,11 +204,11 @@ async def generate_response(
 
 
 async def generate_sse_response(
-    tenant_domain: str, message: str, history: list
+    tenant_domain: str, message: str, history: list, orgID: str
 ) -> AsyncGenerator[str, QuerySSEResponse]:
     
     results = await asyncio.gather(
-        in_thread(prepare_rag_chain, tenant_domain), 
+        in_thread(prepare_rag_chain, tenant_domain, orgID), 
         prepare_history(history),
     )
     rag_chain = results[0]
@@ -228,18 +228,18 @@ async def generate_sse_response(
         yield QuerySSEResponse(type="error", value=str(e)).json()
 
 @api.post("/marketplace-assistant")
-async def marketplace_assistant(request: Query):
-    response = await generate_response(tenant_domain=request.tenant_domain, message=request.query, history=request.history)
+async def marketplace_assistant(request: Query, orgID: str):
+    response = await generate_response(tenant_domain=request.tenant_domain, message=request.query, history=request.history, orgID=orgID)
     
     return {"response": response.content, "apis": []}
 
 @api.post("/marketplace-assistant/streaming")
 async def marketplace_assistant_sse(
-    request: Query
+    request: Query, orgID: str
 ) -> StreamingResponse:
 
     return StreamingResponse(
-        generate_sse_response(tenant_domain=request.tenant_domain, message=request.query, history=request.history),
+        generate_sse_response(tenant_domain=request.tenant_domain, message=request.query, history=request.history, orgID=orgID),
         media_type="text/event-stream",
     )
 
