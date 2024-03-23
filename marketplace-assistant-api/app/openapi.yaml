@@ -7,6 +7,13 @@ paths:
     post:
       summary: Marketplace Assistant
       operationId: marketplace_assistant_marketplace_assistant_post
+      parameters:
+        - required: true
+          schema:
+            type: string
+            title: Orgid
+          name: orgID
+          in: query
       requestBody:
         content:
           application/json:
@@ -29,6 +36,13 @@ paths:
     post:
       summary: Marketplace Assistant Sse
       operationId: marketplace_assistant_sse_marketplace_assistant_streaming_post
+      parameters:
+        - required: true
+          schema:
+            type: string
+            title: Orgid
+          name: orgID
+          in: query
       requestBody:
         content:
           application/json:
