@@ -5,10 +5,10 @@ from utils import *
 api_key = os.getenv('MILVERSE_API_KEY')
 url = os.getenv('MILVERSE_URL')
 
-def upsert_vector_for_onprem(embed, collection, api: API, tenant):
+def upsert_vector_for_onprem(embed, orgID, api: API, tenant):
 
     mc = MilvusClient(uri=url, token=api_key)
-    collection_name = collection + "__apim__"
+    collection_name = orgID + "__apim__"
 
     has = mc.has_collection(collection_name)
     if not has:
@@ -54,10 +54,10 @@ def upsert_vector_for_onprem(embed, collection, api: API, tenant):
     return response
 
 
-def upsert_vector_for_choreo(embed, record, collection, api_id, api_name):
+def upsert_vector_for_choreo(embed, record, orgID, api_id, api_name):
 
     mc = MilvusClient(uri=url, token=url)
-    collection_name = collection + "__choreo__"
+    collection_name = orgID + "__choreo__"
 
     has = mc.has_collection(collection_name)
     if not has:
@@ -97,9 +97,9 @@ def upsert_vector_for_choreo(embed, record, collection, api_id, api_name):
     response = mc.upsert(collection_name=collection_name, data=payload)
     return response
 
-def delete_vector_for_onprem(uuid, collection):
+def delete_vector_for_onprem(uuid, orgID):
 
-    collection = collection + "__apim__"
+    collection = orgID + "__apim__"
     mc = MilvusClient(uri=url, token=api_key)
 
     res = mc.delete(
