@@ -68,31 +68,39 @@ def introspect(on_prem_key):
 
 
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
-async def prepare(req: dict, x_request_id: str = Header(None)):
+async def prepare(req: dict, x_request_id: str = Header(None), API_KEY: str = Header(None)):
     
-    response =  requests.post(api_chat_endpoint + "/prepare", headers={"x-request-id": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
-    
-    if response.status_code == 201:
-        return response.json()
+    [orgID, status] = introspect(API_KEY)
+    if status == "ACTIVE":
+        response =  requests.post(api_chat_endpoint + "/prepare", headers={"x-request-id": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
+        
+        if response.status_code == 201:
+            return response.json()
+        else:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
     else:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+        raise HTTPException(status_code=401, detail="Your key has expired")
 
 
 @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
-async def execute(req: dict , x_request_id: str = Header(None)):
+async def execute(req: dict , x_request_id: str = Header(None), API_KEY: str = Header(None)):
 
-    response =  requests.post(api_chat_endpoint + "/execute", headers={"x-request-id": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
-    
-    if response.status_code == 201:
-        return response.json()
+    [orgID, status] = introspect(API_KEY)
+    if status == "ACTIVE":
+        response =  requests.post(api_chat_endpoint + "/chat", headers={"x-request-id": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
+        
+        if response.status_code == 201:
+            return response.json()
+        else:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
     else:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+        raise HTTPException(status_code=401, detail="Your key has expired")
 
 
 @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
-async def chat(req: dict, Api_Key: str = Header(None)):
+async def chat(req: dict, API_KEY: str = Header(None)):
 
-    [orgID, status] = introspect(Api_Key)
+    [orgID, status] = introspect(API_KEY)
 
     if status == "ACTIVE":
 
@@ -126,9 +134,9 @@ async def chat(req: dict, Api_Key: str = Header(None)):
 
 
 @app.post("/ai/spec-populator/publish-api", status_code=status.HTTP_201_CREATED)
-async def publish_api(req: dict, Api_Key: str = Header(None)):
+async def publish_api(req: dict, API_KEY: str = Header(None)):
 
-    [orgID, status] = introspect(Api_Key)
+    [orgID, status] = introspect(API_KEY)
 
     if status == "ACTIVE":
 
@@ -139,13 +147,13 @@ async def publish_api(req: dict, Api_Key: str = Header(None)):
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
     else:
-            raise HTTPException(status_code=401, detail="Your key has expired")
+        raise HTTPException(status_code=401, detail="Your key has expired")
 
 
 @app.delete("/ai/spec-populator/remove-api/{uuid}")
-async def remove_api(uuid : str, Api_Key: str = Header(None)):
+async def remove_api(uuid : str, API_KEY: str = Header(None)):
     
-    [orgID, status] = introspect(Api_Key)
+    [orgID, status] = introspect(API_KEY)
 
     if status == "ACTIVE":
 
@@ -156,10 +164,14 @@ async def remove_api(uuid : str, Api_Key: str = Header(None)):
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
     else:
-            raise HTTPException(status_code=401, detail="Your key has expired")
+        raise HTTPException(status_code=401, detail="Your key has expired")
 
 @app.get("/ai/spec-populator/api-count")
-async def api_count(Api_Key: str = Header(None)):
+async def api_count(API_KEY: str = Header(None)):
 
-    count_response = {"count" : 100, "limit": 1000}
-    return count_response
+    [orgID, status] = introspect(API_KEY)
+    if status == "ACTIVE":
+        count_response = {"count" : 100, "limit": 1000}
+        return count_response
+    else:
+        raise HTTPException(status_code=401, detail="Your key has expired")
