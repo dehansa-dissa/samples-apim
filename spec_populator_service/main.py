@@ -15,13 +15,12 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
 
     if source == "apim":
         api_type = req["api_type"]
-        match api_type:
-            case "REST":
-                record = await pre_process_openapi(req["api_spec"])
-            case "GRAPHQL":
-                record = await pre_process_graphql_sdl(req["sdl_schema"])
-            case "ASYNC":
-                record = await pre_process_asyncapi_def(req["async_spec"])
+        if api_type == "REST":
+            record = await pre_process_openapi(req["api_spec"])
+        elif api_type == "GRAPHQL":
+            record = await pre_process_graphql_sdl(req["sdl_schema"])
+        elif api_type == "ASYNC":
+            record = await pre_process_asyncapi_def(req["async_spec"])
         
         # Add available subscription plans
         record["apim_description"] = req["description"]
