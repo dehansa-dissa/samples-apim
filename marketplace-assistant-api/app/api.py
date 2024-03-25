@@ -46,6 +46,7 @@ AZURE_ENDPOINT =  os.getenv('AZURE_ENDPOINT')
 AZURE_EMBEDDING_DEPLOYMENT = os.getenv('AZURE_EMBEDDING_DEPLOYMENT', "OpenAPIEmbeddings")
 AZURE_CHAT_DEPLOYMENT = os.getenv('AZURE_CHAT_DEPLOYMENT', "APIM-Deployment")
 AZURE_CHAT_VERSION = os.getenv('AZURE_CHAT_VERSION', "2023-12-01-preview")
+# TODO: implement debug logging switch
 
 # request input format
 class Query(BaseModel):
@@ -59,7 +60,7 @@ class QuerySSEResponse(BaseModel):
 
 @lru_cache()
 def get_vectorstore(orgID: str) -> Milvus:
-    collection_name = orgID + '__apim__'
+    collection_name = "apim__" + orgID.replace("-", "_")
     model_name = 'text-embedding-ada-002'
     embeddings = AzureOpenAIEmbeddings(
         model=model_name,

@@ -8,7 +8,7 @@ url = os.getenv('MILVERSE_URL')
 def upsert_vector_for_onprem(embed, orgID, api: API, tenant):
 
     mc = MilvusClient(uri=url, token=api_key)
-    collection_name = orgID + "__apim__"
+    collection_name = "apim__" + orgID.replace("-", "_")
 
     has = mc.has_collection(collection_name)
     if not has:
@@ -57,7 +57,7 @@ def upsert_vector_for_onprem(embed, orgID, api: API, tenant):
 def upsert_vector_for_choreo(embed, record, orgID, api_id, api_name):
 
     mc = MilvusClient(uri=url, token=url)
-    collection_name = orgID + "__choreo__"
+    collection_name = "__choreo__" + orgID.replace("-", "_")
 
     has = mc.has_collection(collection_name)
     if not has:
@@ -99,7 +99,7 @@ def upsert_vector_for_choreo(embed, record, orgID, api_id, api_name):
 
 def delete_vector_for_onprem(uuid, orgID):
 
-    collection = orgID + "__apim__"
+    collection = "apim__" + orgID.replace("-", "_")
     mc = MilvusClient(uri=url, token=api_key)
 
     res = mc.delete(
