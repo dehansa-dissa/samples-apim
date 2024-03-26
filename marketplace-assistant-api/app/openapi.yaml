@@ -99,7 +99,6 @@ components:
       required:
         - query
         - history
-        - tenant_domain
       title: Query
     ValidationError:
       properties:
