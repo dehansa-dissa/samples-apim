@@ -13,6 +13,7 @@ import os
 import asyncio
 from typing import Any
 import json
+from typing import Optional
 from langchain_openai import AzureOpenAIEmbeddings
 import uvicorn
 from fastapi import FastAPI, Depends
@@ -55,7 +56,7 @@ SOURCE_PLATFORM = os.getenv('SOURCE_PLATFORM')
 class Query(BaseModel):
     query: str
     history: list
-    tenant_domain: str
+    tenant_domain: Optional[str] = None
 
 
 class QuerySSEResponse(BaseModel):
