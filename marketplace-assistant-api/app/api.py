@@ -9,31 +9,33 @@
 #
 # --------------------------------------------------------------------------------------
 
-import os
 import asyncio
-from typing import Any
+import os
+from typing import Any, List
 import json
 from typing import Optional
 from langchain_openai import AzureOpenAIEmbeddings
-import uvicorn
+from operator import itemgetter
 from fastapi import FastAPI, Depends
 from fastapi.responses import StreamingResponse
 from queue import Queue
 from langchain.callbacks.tracers import ConsoleCallbackHandler
 from pydantic import BaseModel, BaseSettings
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, PromptTemplate
+from langchain_core.output_parsers import StrOutputParser, BaseOutputParser
 from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnableParallel
 import asyncio
+from pydantic import BaseModel
 
 from functools import partial
 from functools import lru_cache
 from typing import AsyncGenerator, Literal
 
 from langchain.chat_models import AzureChatOpenAI
+from langchain.chains import LLMChain
 from langchain_community.vectorstores import Milvus
 from langchain.retrievers.multi_query import MultiQueryRetriever
-from langchain.prompts import PromptTemplate
 
 from constants import CHOREO, APIM
 
@@ -52,6 +54,8 @@ SOURCE_PLATFORM = os.getenv('SOURCE_PLATFORM')
 
 
 # TODO: implement debug logging switch
+
+collection_name = os.getenv("COLLECTION_NAME")
 # request input format
 class Query(BaseModel):
     query: str
@@ -65,12 +69,7 @@ class QuerySSEResponse(BaseModel):
 
 
 @lru_cache()
-def get_vectorstore(orgID: str) -> Milvus:
-    if SOURCE_PLATFORM == CHOREO:
-        collection_name = 'choreo__' + orgID.replace("-", "_")
-    elif SOURCE_PLATFORM == APIM:
-        collection_name = "apim__" + orgID.replace("-", "_")
-
+def get_vectorstore() -> Milvus:
     model_name = 'text-embedding-ada-002'
     embeddings = AzureOpenAIEmbeddings(
         model=model_name,
@@ -93,16 +92,15 @@ def get_vectorstore(orgID: str) -> Milvus:
 
     return vectorstore
 
-
-def get_retriever(tenant_domain, orgID, ) -> MultiQueryRetriever:
-    vectorstore = get_vectorstore(orgID)
+def get_retriever(tenant_domain, orgID) -> MultiQueryRetriever:
+    vectorstore = get_vectorstore()
     # TODO: Try adding a Self Query retriever
     # Incorporate score based filtering mechanism once Milverse introduces it
     if SOURCE_PLATFORM == APIM:
         retriever = vectorstore.as_retriever(search_type="similarity",
-                                             search_kwargs={"k": 5, "expr": 'tenant_domain == "' + tenant_domain + '"'})
+                                             search_kwargs={"k": 5, "expr": 'org_id == "' + orgID + '" && tenant_domain == "' + tenant_domain + '"'})
     elif SOURCE_PLATFORM == CHOREO:
-        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5})
+        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5, "expr": 'org_id == "' + orgID + '"'})
 
     llm = AzureChatOpenAI(
         #     temperature=0.3,
@@ -113,8 +111,30 @@ def get_retriever(tenant_domain, orgID, ) -> MultiQueryRetriever:
         azure_endpoint=AZURE_ENDPOINT,
     )
 
-    mq_retriever = MultiQueryRetriever.from_llm(
-        retriever=retriever, llm=llm
+
+    QUERY_PROMPT = PromptTemplate(
+        input_variables=["question"],
+        template="""You are an AI language model assistant. Your task is to generate three 
+        different versions of the given user question to retrieve relevant documents from a vector 
+        database. By generating multiple perspectives on the user question, your goal is to help
+        the user overcome some of the limitations of the distance-based similarity search. 
+        Provide these alternative questions separated by newlines.
+        Original question: {question}""",
+    )
+
+    class LineListOutputParser(BaseOutputParser[List[str]]):
+        """Output parser for a list of lines."""
+
+        def parse(self, text: str) -> List[str]:
+            lines = text.strip().split("\n")
+            return lines
+
+
+    output_parser = LineListOutputParser()
+    llm_chain = LLMChain(llm=llm, prompt=QUERY_PROMPT, output_parser=output_parser)
+
+    mq_retriever = MultiQueryRetriever(
+        retriever=retriever, llm_chain=llm_chain, parser_key="lines"
     )
     return mq_retriever
 
@@ -146,8 +166,7 @@ def prepare_rag_chain(tenant_domain: str, orgID: str):
             ("human", "{question}"),
         ]
     )
-    contextualize_q_chain = contextualize_q_prompt | llm | StrOutputParser()
-
+    # TODO: alter prompt so that we can handle both streaming case and REST case. We can keep the core of the prompt same and alter the rendering instructions.
     qa_system_prompt = """System: You are an assistant who only speaks using JSON. Based on the provided API details, 
     recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs.
     Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
@@ -155,28 +174,36 @@ def prepare_rag_chain(tenant_domain: str, orgID: str):
       {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
         \"version\": \"2.0\"}}, {{\"apiId\": \"id2\", \"apiName\": \"SampleAPI2\", \"version\": \"4.0\"}}]}}.
     Make sure to give an easily understandable explanation of the API or APIs selected in the \"response\" section. Leave the \"apis\" list empty in case you do not have any API recommendations included in the response.
-    Given below are the actual API context you need to use to construct the response.
-    {context}"""
+    Given below are the actual API context you need to use to construct the response. If you can't find the API from the context, just say that you don't know.
+    Context: {context}"""
     qa_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", qa_system_prompt),
             ("human", "{question}"),
         ]
     )
-
-    def contextualized_question(input: dict):
-        if input.get("chat_history"):
-            return contextualize_q_chain
-        else:
-            return input["question"]
-
-    rag_chain = (
-            RunnablePassthrough.assign(
-                context=contextualized_question | retriever | format_docs
-            )
-            | qa_prompt
-            | llm
+        
+    _inputs = RunnableParallel(
+        standalone_question=RunnablePassthrough.assign(
+            chat_history=lambda x: x["chat_history"]
+        )
+        | contextualize_q_prompt
+        | llm
+        | StrOutputParser(),
     )
+
+    # def cond_input(input: dict):
+    #     if input.get("chat_history"):
+    #         return _inputs
+    #     else:
+    #         return input["question"]
+
+    _context = {
+        "context": itemgetter("standalone_question") | retriever | format_docs,
+        "question": lambda x: x["standalone_question"],
+    }
+    rag_chain = _inputs | _context | qa_prompt | llm
+
     return rag_chain
 
 
