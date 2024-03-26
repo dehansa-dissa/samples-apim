@@ -72,7 +72,7 @@ async def prepare(req: dict, x_request_id: str = Header(None), API_KEY: str = He
     
     [orgID, status] = introspect(API_KEY)
     if status == "ACTIVE":
-        response =  requests.post(api_chat_endpoint + "/prepare", headers={"x-request-id": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
+        response =  requests.post(api_chat_endpoint + "/prepare", headers={"apiChatRequestId": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
         
         if response.status_code == 201:
             return response.json()
@@ -87,7 +87,7 @@ async def execute(req: dict , x_request_id: str = Header(None), API_KEY: str = H
 
     [orgID, status] = introspect(API_KEY)
     if status == "ACTIVE":
-        response =  requests.post(api_chat_endpoint + "/chat", headers={"x-request-id": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
+        response =  requests.post(api_chat_endpoint + "/chat", headers={"apiChatRequestId": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
         
         if response.status_code == 201:
             return response.json()
