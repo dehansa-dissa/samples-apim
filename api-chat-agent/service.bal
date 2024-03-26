@@ -18,11 +18,6 @@ configurable string azureOpenAIServiceUrl = ?;
 configurable string azureOpenAIDeploymentId = "test-agent-chat";
 const AZURE_OPENAI_API_VERSION = "2023-07-01-preview";
 
-// remove after modifying the configs. 
-configurable string azureOpenAIApiVersion = "";
-configurable string azureOpenAIChatDeploymentId = "";
-configurable string azureOpenAITextDeploymentId = "";
-
 configurable string redisHost = ?;
 configurable string redisPassword = ?;
 
@@ -161,6 +156,7 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
             log:printDebug("Agent Restoration Started.", id = testCaseId);
             CacheRecord|error cachedRecord = retrieveCachedTestCase(testCaseId);
             if cachedRecord is error {
+                log:printError("Error while retrieving the cached record.", cachedRecord);
                 return handleServerError(error CachingError("Error while retrieving the cached record."), EXECUTION, {"id": testCaseId});
             }
             apiSpec = cachedRecord.apiSpec;
