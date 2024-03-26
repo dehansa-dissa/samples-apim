@@ -34,18 +34,21 @@ from langchain_community.vectorstores import Milvus
 from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain.prompts import PromptTemplate
 
+from constants import CHOREO, APIM
 
 api = FastAPI(
     title="API Marketplace Chatbot",
     version="0.1.0",
 )
 
-ZILLIZ_CLOUD_URI =  os.getenv('ZILLIZ_CLOUD_URI')
+ZILLIZ_CLOUD_URI = os.getenv('ZILLIZ_CLOUD_URI')
 ZILLIZ_CLOUD_API_KEY = os.getenv('ZILLIZ_CLOUD_API_KEY')
-AZURE_ENDPOINT =  os.getenv('AZURE_ENDPOINT')
+AZURE_ENDPOINT = os.getenv('AZURE_ENDPOINT')
 AZURE_EMBEDDING_DEPLOYMENT = os.getenv('AZURE_EMBEDDING_DEPLOYMENT', "OpenAPIEmbeddings")
 AZURE_CHAT_DEPLOYMENT = os.getenv('AZURE_CHAT_DEPLOYMENT', "APIM-Deployment")
 AZURE_CHAT_VERSION = os.getenv('AZURE_CHAT_VERSION', "2023-12-01-preview")
+SOURCE_PLATFORM = os.getenv('SOURCE_PLATFORM')
+
 
 # request input format
 class Query(BaseModel):
@@ -53,13 +56,20 @@ class Query(BaseModel):
     history: list
     tenant_domain: str
 
+
 class QuerySSEResponse(BaseModel):
     type: Literal["start", "streaming", "end", "error"]
     value: str
 
+
 @lru_cache()
 def get_vectorstore(orgID: str) -> Milvus:
-    collection_name = orgID + '__apim__'
+
+    if SOURCE_PLATFORM == CHOREO:
+        collection_name = 'choreo__' + orgID.replace("-", "_")
+    elif SOURCE_PLATFORM == APIM:
+        collection_name = "apim__" + orgID.replace("-", "_")
+
     model_name = 'text-embedding-ada-002'
     embeddings = AzureOpenAIEmbeddings(
         model=model_name,
@@ -67,6 +77,7 @@ def get_vectorstore(orgID: str) -> Milvus:
         azure_endpoint=AZURE_ENDPOINT,
         openai_api_type="azure",
     )
+    # Todo Check if the collection is available in the Milvus
     vectorstore = Milvus(
         embeddings,
         connection_args={
@@ -81,15 +92,21 @@ def get_vectorstore(orgID: str) -> Milvus:
 
     return vectorstore
 
-def get_retriever(tenant_domain, orgID) -> MultiQueryRetriever:
+
+def get_retriever(tenant_domain, orgID, ) -> MultiQueryRetriever:
     vectorstore = get_vectorstore(orgID)
     # TODO: Try adding a Self Query retriever
     # Incorporate score based filtering mechanism once Milverse introduces it
-    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5, "expr": 'tenant_domain == "' + tenant_domain + '"'})
+    if SOURCE_PLATFORM == APIM:
+        retriever = vectorstore.as_retriever(search_type="similarity",
+                                         search_kwargs={"k": 5, "expr": 'tenant_domain == "' + tenant_domain + '"'})
+    elif SOURCE_PLATFORM == CHOREO:
+        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5})
+
     llm = AzureChatOpenAI(
-    #     temperature=0.3,
+        #     temperature=0.3,
         model_name="gpt-35-turbo",
-    #     max_tokens=2048,
+        #     max_tokens=2048,
         deployment_name=AZURE_CHAT_DEPLOYMENT,
         api_version=AZURE_CHAT_VERSION,
         azure_endpoint=AZURE_ENDPOINT,
@@ -102,7 +119,8 @@ def get_retriever(tenant_domain, orgID) -> MultiQueryRetriever:
 
 
 def format_docs(docs):
-    return "\n\n".join(str({"api_details": doc.metadata, "api_spec":doc.page_content}) for doc in docs)
+    return "\n\n".join(str({"api_details": doc.metadata, "api_spec": doc.page_content}) for doc in docs)
+
 
 def prepare_rag_chain(tenant_domain: str, orgID: str):
     retriever = get_retriever(tenant_domain, orgID)
@@ -119,14 +137,14 @@ def prepare_rag_chain(tenant_domain: str, orgID: str):
     )
 
     llm = AzureChatOpenAI(
-    #     temperature=0.3,
+        #     temperature=0.3,
         model_name="gpt-35-turbo",
-    #     max_tokens=2048,
-        deployment_name="APIM-Deployment",
-        api_version="2023-12-01-preview",
-        azure_endpoint='https://apim-ai-aus.openai.azure.com/',
+        #     max_tokens=2048,
+        deployment_name=AZURE_CHAT_DEPLOYMENT,
+        api_version=AZURE_CHAT_VERSION,
+        azure_endpoint=AZURE_ENDPOINT,
     )
-    
+
     contextualize_q_system_prompt = """Given a chat history and the latest user question \
     which might reference context in the chat history, formulate a standalone question \
     which can be understood without the chat history. Do NOT answer the question, \
@@ -153,20 +171,18 @@ def prepare_rag_chain(tenant_domain: str, orgID: str):
         ]
     )
 
-
     def contextualized_question(input: dict):
         if input.get("chat_history"):
             return contextualize_q_chain
         else:
             return input["question"]
 
-
     rag_chain = (
-        RunnablePassthrough.assign(
-            context=contextualized_question | retriever | format_docs
-        )
-        | qa_prompt
-        | llm
+            RunnablePassthrough.assign(
+                context=contextualized_question | retriever | format_docs
+            )
+            | qa_prompt
+            | llm
     )
     return rag_chain
 
@@ -175,26 +191,28 @@ async def in_thread(func, *args):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, partial(func, *args))
 
+
 async def prepare_history(history: list):
-    return [(chat["role"],chat["content"]) for chat in history]
+    return [(chat["role"], chat["content"]) for chat in history]
+
 
 async def generate_response(
-    tenant_domain: str, message: str, history: list, orgID: str
+        tenant_domain: str, message: str, history: list, orgID: str
 ):
     results = await asyncio.gather(
-        in_thread(prepare_rag_chain, tenant_domain, orgID), 
+        in_thread(prepare_rag_chain, tenant_domain, orgID),
         prepare_history(history),
     )
     rag_chain = results[0]
     chat_history = results[1]
-    
-    return(rag_chain.invoke({ 
+
+    return (rag_chain.invoke({
         "question": message,
         "chat_history": chat_history},
         # config={
         #     'callbacks': [ConsoleCallbackHandler()]
         #     }
-        ))
+    ))
     # response = ""
     # async for token in rag_chain.astream({ 
     #     "question": message,
@@ -204,11 +222,10 @@ async def generate_response(
 
 
 async def generate_sse_response(
-    tenant_domain: str, message: str, history: list, orgID: str
+        tenant_domain: str, message: str, history: list, orgID: str
 ) -> AsyncGenerator[str, QuerySSEResponse]:
-    
     results = await asyncio.gather(
-        in_thread(prepare_rag_chain, tenant_domain, orgID), 
+        in_thread(prepare_rag_chain, tenant_domain, orgID),
         prepare_history(history),
     )
     rag_chain = results[0]
@@ -217,9 +234,9 @@ async def generate_sse_response(
     response = ""
     try:
         yield QuerySSEResponse(type="start", value="").json()
-        async for token in rag_chain.astream({ 
-                            "question": message,
-                            "chat_history": chat_history}):  # type: ignore
+        async for token in rag_chain.astream({
+            "question": message,
+            "chat_history": chat_history}):  # type: ignore
             yield QuerySSEResponse(type="streaming", value=token.content).json()
             response += token.content
 
@@ -227,21 +244,25 @@ async def generate_sse_response(
     except Exception as e:  # TODO: Add proper exception handling
         yield QuerySSEResponse(type="error", value=str(e)).json()
 
+
 @api.post("/marketplace-assistant")
 async def marketplace_assistant(request: Query, orgID: str):
-    response = await generate_response(tenant_domain=request.tenant_domain, message=request.query, history=request.history, orgID=orgID)
-    
+    response = await generate_response(tenant_domain=request.tenant_domain, message=request.query,
+                                       history=request.history, orgID=orgID)
+
     return {"response": response.content, "apis": []}
+
 
 @api.post("/marketplace-assistant/streaming")
 async def marketplace_assistant_sse(
-    request: Query, orgID: str
+        request: Query, orgID: str
 ) -> StreamingResponse:
-
     return StreamingResponse(
-        generate_sse_response(tenant_domain=request.tenant_domain, message=request.query, history=request.history, orgID=orgID),
+        generate_sse_response(tenant_domain=request.tenant_domain, message=request.query, history=request.history,
+                              orgID=orgID),
         media_type="text/event-stream",
     )
+
 
 @api.get("/health")
 def health():
