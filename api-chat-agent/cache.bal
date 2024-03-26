@@ -61,6 +61,7 @@ isolated function clearTestCaseCache(string testCaseId) {
 }
 
 isolated function updateTestCaseCache(string testCaseId, CacheRecord value) {
+    log:printError("Caching the test case: ", 'id = testCaseId, value = value.toJsonString());
     retry<RetryManager> (CACHE_RETRY_COUNT) {
         _ = check redis->setEx(string `${TESTCASE_NAMESPACE}:${testCaseId}`, value.toJsonString(), REDIS_TESTCASE_KEY_EXPIRATION_TIME);
     } on fail error e {
