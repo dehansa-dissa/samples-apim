@@ -68,11 +68,11 @@ def introspect(on_prem_key):
 
 
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
-async def prepare(req: dict, x_request_id: str = Header(None), API_KEY: str = Header(None)):
+async def prepare(req: dict, apiChatRequestId: str = Header(None), API_KEY: str = Header(None)):
     
     [orgID, status] = introspect(API_KEY)
     if status == "ACTIVE":
-        response =  requests.post(api_chat_endpoint + "/prepare", headers={"apiChatRequestId": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
+        response =  requests.post(api_chat_endpoint + "/prepare", headers={"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
         
         if response.status_code == 201:
             return response.json()
@@ -83,11 +83,11 @@ async def prepare(req: dict, x_request_id: str = Header(None), API_KEY: str = He
 
 
 @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
-async def execute(req: dict , x_request_id: str = Header(None), API_KEY: str = Header(None)):
+async def execute(req: dict , apiChatRequestId: str = Header(None), API_KEY: str = Header(None)):
 
     [orgID, status] = introspect(API_KEY)
     if status == "ACTIVE":
-        response =  requests.post(api_chat_endpoint + "/chat", headers={"apiChatRequestId": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
+        response =  requests.post(api_chat_endpoint + "/chat", headers={"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
         
         if response.status_code == 201:
             return response.json()
