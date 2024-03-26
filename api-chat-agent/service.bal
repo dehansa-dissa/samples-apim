@@ -18,11 +18,6 @@ configurable string azureOpenAIServiceUrl = ?;
 configurable string azureOpenAIDeploymentId = "test-agent-chat";
 const AZURE_OPENAI_API_VERSION = "2023-07-01-preview";
 
-// remove after modifying the configs. 
-configurable string azureOpenAIApiVersion = "";
-configurable string azureOpenAIChatDeploymentId = "";
-configurable string azureOpenAITextDeploymentId = "";
-
 configurable string redisHost = ?;
 configurable string redisPassword = ?;
 
