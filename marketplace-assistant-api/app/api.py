@@ -12,7 +12,7 @@
 import os
 import asyncio
 from typing import Any
-import time
+import json
 from langchain_openai import AzureOpenAIEmbeddings
 import uvicorn
 from fastapi import FastAPI, Depends
@@ -46,6 +46,7 @@ AZURE_ENDPOINT =  os.getenv('AZURE_ENDPOINT')
 AZURE_EMBEDDING_DEPLOYMENT = os.getenv('AZURE_EMBEDDING_DEPLOYMENT', "OpenAPIEmbeddings")
 AZURE_CHAT_DEPLOYMENT = os.getenv('AZURE_CHAT_DEPLOYMENT', "APIM-Deployment")
 AZURE_CHAT_VERSION = os.getenv('AZURE_CHAT_VERSION', "2023-12-01-preview")
+# TODO: implement debug logging switch
 
 # request input format
 class Query(BaseModel):
@@ -59,7 +60,7 @@ class QuerySSEResponse(BaseModel):
 
 @lru_cache()
 def get_vectorstore(orgID: str) -> Milvus:
-    collection_name = orgID + '__apim__'
+    collection_name = "apim__" + orgID.replace("-", "_")
     model_name = 'text-embedding-ada-002'
     embeddings = AzureOpenAIEmbeddings(
         model=model_name,
@@ -107,17 +108,6 @@ def format_docs(docs):
 def prepare_rag_chain(tenant_domain: str, orgID: str):
     retriever = get_retriever(tenant_domain, orgID)
 
-    QA_PROMPT = PromptTemplate(
-        input_variables=["query", "contexts"],
-        template="""System: Use the following Open API definitions to provide easily understandable answers to the user's question. 
-    If you don't know the answer, just say that you don't know, don't try to make up an answer.
-
-        Contexts:
-        {contexts}
-
-        Human: {query}""",
-    )
-
     llm = AzureChatOpenAI(
     #     temperature=0.3,
         model_name="gpt-35-turbo",
@@ -140,15 +130,18 @@ def prepare_rag_chain(tenant_domain: str, orgID: str):
     )
     contextualize_q_chain = contextualize_q_prompt | llm | StrOutputParser()
 
-    qa_system_prompt = """You are an assistant for question-answering tasks. \
-    Use the following pieces of retrieved context to answer the question. \
-    If you don't know the answer, just say that you don't know. \
-
+    qa_system_prompt = """System: You are an assistant who only speaks using JSON. Based on the provided API details, 
+    recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs.
+    Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
+    Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
+      {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
+        \"version\": \"2.0\"}}, {{\"apiId\": \"id2\", \"apiName\": \"SampleAPI2\", \"version\": \"4.0\"}}]}}.
+    Make sure to give an easily understandable explanation of the API or APIs selected in the \"response\" section. Leave the \"apis\" list empty in case you do not have any API recommendations included in the response.
+    Given below are the actual API context you need to use to construct the response.
     {context}"""
     qa_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", qa_system_prompt),
-            MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{question}"),
         ]
     )
@@ -227,11 +220,18 @@ async def generate_sse_response(
     except Exception as e:  # TODO: Add proper exception handling
         yield QuerySSEResponse(type="error", value=str(e)).json()
 
+def parse_json(json_resp):
+    try:
+        json_object = json.loads(json_resp)
+    except ValueError as e:
+        return json_resp
+    return json_object
+
 @api.post("/marketplace-assistant")
 async def marketplace_assistant(request: Query, orgID: str):
     response = await generate_response(tenant_domain=request.tenant_domain, message=request.query, history=request.history, orgID=orgID)
     
-    return {"response": response.content, "apis": []}
+    return parse_json(response.content)
 
 @api.post("/marketplace-assistant/streaming")
 async def marketplace_assistant_sse(
