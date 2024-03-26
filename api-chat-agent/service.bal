@@ -156,6 +156,7 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
             log:printDebug("Agent Restoration Started.", id = testCaseId);
             CacheRecord|error cachedRecord = retrieveCachedTestCase(testCaseId);
             if cachedRecord is error {
+                log:printError("Error while retrieving the cached record.", cachedRecord);
                 return handleServerError(error CachingError("Error while retrieving the cached record."), EXECUTION, {"id": testCaseId});
             }
             apiSpec = cachedRecord.apiSpec;
