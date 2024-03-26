@@ -166,7 +166,7 @@ def prepare_rag_chain(tenant_domain: str, orgID: str):
             ("human", "{question}"),
         ]
     )
-
+    # TODO: alter prompt so that we can handle both streaming case and REST case. We can keep the core of the prompt same and alter the rendering instructions.
     qa_system_prompt = """System: You are an assistant who only speaks using JSON. Based on the provided API details, 
     recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs.
     Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
