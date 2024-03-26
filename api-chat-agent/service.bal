@@ -105,7 +105,6 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
     # + return - Test preparation response with API specification and sample queries
     isolated resource function post prepare(@http:Header string apiChatRequestId, TestPreparationRequest payload) returns TestPreparationResponse|InternalServerError|ErrorInfo {
         string trackingId = apiChatRequestId;
-        log:printError("Tracking ID of prepare call >>> " + trackingId);
         // check for the cached api specification
         string hashedSpec = getHashedString(payload.openapi.toString());
         TestPreparationResponse|error? cachedSpec = retrieveCachedApiSpec(trackingId, hashedSpec);
@@ -247,7 +246,6 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
     # + return - Test result
     isolated resource function post chat(@http:Header string apiChatRequestId, TestInitializationRequest|TestExecutionResultRequest payload) returns TestExecutionOnPremResponse|TestCompletionResponse|InternalServerError|ErrorInfo|http:BadRequest {
         string testCaseId = apiChatRequestId;
-        log:printError("Tracking ID of chat call >>> " + apiChatRequestId);
         string command;
         int iteration = 1;
         agent:HttpApiSpecification apiSpec;
@@ -263,7 +261,6 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
             log:printDebug("Agent Restoration Started.", id = testCaseId);
             CacheRecord|error cachedRecord = retrieveCachedTestCase(testCaseId);
             if cachedRecord is error {
-                log:printError("Error while retrieving the cached record.", cachedRecord);
                 return handleServerError(error CachingError("Error while retrieving the cached record."), EXECUTION, {"id": testCaseId});
             }
             apiSpec = cachedRecord.apiSpec;
