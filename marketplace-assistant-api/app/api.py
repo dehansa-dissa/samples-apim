@@ -37,7 +37,8 @@ from langchain.chains import LLMChain
 from langchain_community.vectorstores import Milvus
 from langchain.retrievers.multi_query import MultiQueryRetriever
 
-from constants import CHOREO, APIM
+CHOREO = "choreo"
+APIM = "apim"
 
 api = FastAPI(
     title="API Marketplace Chatbot",
