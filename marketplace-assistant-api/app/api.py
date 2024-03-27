@@ -115,7 +115,7 @@ def get_retriever(tenant_domain, orgID) -> MultiQueryRetriever:
 
     QUERY_PROMPT = PromptTemplate(
         input_variables=["question"],
-        template="""You are an AI language model assistant. Your task is to generate three 
+        template="""You are an API Marketplace assistant. Your task is to generate three 
         different versions of the given user question to retrieve relevant documents from a vector 
         database. By generating multiple perspectives on the user question, your goal is to help
         the user overcome some of the limitations of the distance-based similarity search. 
@@ -156,10 +156,13 @@ def prepare_rag_chain(tenant_domain: str, orgID: str):
         azure_endpoint=AZURE_ENDPOINT,
     )
 
-    contextualize_q_system_prompt = """Given a chat history and the latest user question \
+    contextualize_q_system_prompt = """You are a API Marketplace assistant. \
+    Given a chat history and the latest user question \
     which might reference context in the chat history, formulate a standalone question \
-    which can be understood without the chat history. Do NOT answer the question, \
-    just reformulate it if needed and otherwise return it as is."""
+    which can be understood without the chat history. \
+    Here, the human is a Application developer trying to interact with you. \
+    Do NOT answer the question, just reformulate it if needed and otherwise return it as is. \
+    Please ignore the history if the latest question is not relevant to the history"""
     contextualize_q_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", contextualize_q_system_prompt),
@@ -168,14 +171,15 @@ def prepare_rag_chain(tenant_domain: str, orgID: str):
         ]
     )
     # TODO: alter prompt so that we can handle both streaming case and REST case. We can keep the core of the prompt same and alter the rendering instructions.
-    qa_system_prompt = """System: You are an assistant who only speaks using JSON. Based on the provided API details, 
-    recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs.
+    qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
+    recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you don't know politely.
+    Uderstand the provided context and IGNORE the APIs that does not match the human question. 
     Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
     Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
       {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
         \"version\": \"2.0\"}}, {{\"apiId\": \"id2\", \"apiName\": \"SampleAPI2\", \"version\": \"4.0\"}}]}}.
     Make sure to give an easily understandable explanation of the API or APIs selected in the \"response\" section. Leave the \"apis\" list empty in case you do not have any API recommendations included in the response.
-    Given below are the actual API context you need to use to construct the response. If you can't find the API from the context, just say that you don't know.
+    Given below are the actual API context you need to use to construct the response.
     Context: {context}"""
     qa_prompt = ChatPromptTemplate.from_messages(
         [
@@ -234,12 +238,6 @@ async def generate_response(
         #     'callbacks': [ConsoleCallbackHandler()]
         #     }
     ))
-    # response = ""
-    # async for token in rag_chain.astream({ 
-    #     "question": message,
-    #     "chat_history": chat_history}):
-    #     yield token.content
-    # response += token.content
 
 
 async def generate_sse_response(
@@ -270,7 +268,7 @@ def parse_json(json_resp):
     try:
         json_object = json.loads(json_resp)
     except ValueError as e:
-        return json_resp
+        return {"response": json_resp, "apis": []}
     return json_object
 
 
