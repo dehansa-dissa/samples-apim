@@ -297,9 +297,3 @@ async def marketplace_assistant_sse(
 def health():
     """Check the api is running"""
     return {"status": "Running"}
-
-
-if __name__ == '__main__':
-    import uvicorn
-
-    uvicorn.run(api, port=8000)
