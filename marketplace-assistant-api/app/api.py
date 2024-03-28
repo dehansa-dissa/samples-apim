@@ -76,7 +76,7 @@ class Query(BaseModel):
 
 
 class ChoreoQuery(BaseModel):
-    question: str
+    question: list
     history: Optional[list] = []
     tenant_domain: Optional[str] = None
 
@@ -283,7 +283,7 @@ async def generate_response(
     ))
 
 
-async def generate_choreo_response(message: str, history: list, orgID: str):
+async def generate_choreo_response(messages: list, history: list, orgID: str):
     results = await asyncio.gather(
         in_thread(prepare_rag_chain, None, orgID),
         prepare_history(history),
@@ -291,8 +291,12 @@ async def generate_choreo_response(message: str, history: list, orgID: str):
     rag_chain = results[0]
     chat_history = results[1]
 
+    questions = ""
+    for message in messages:
+        questions = questions + message + "\n"
+
     assist_response = (rag_chain.invoke({
-        "question": message,
+        "question": questions,
         "chat_history": chat_history},
     ))
 
@@ -409,7 +413,7 @@ async def marketplace_assistant(request: Query, orgID: str):
 
 @api.post("/choreo-marketplace-assistant")
 async def marketplace_assistant(request: ChoreoQuery, orgID: str):
-    response = await generate_choreo_response(message=request.question, history=request.history, orgID=orgID)
+    response = await generate_choreo_response(messages=request.question, history=request.history, orgID=orgID)
 
     return response
 
