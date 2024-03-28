@@ -40,6 +40,16 @@ from langchain.retrievers.multi_query import MultiQueryRetriever
 CHOREO = "choreo"
 APIM = "apim"
 
+# streaming stage constants
+START_STREAM = "START_STREAM"
+FIND_LLM_RESPONSE = "FIND_LLM_RESPONSE"
+SEND_LLM_RESPONSE = "SEND_LLM_RESPONSE"
+END_LLM_RESPONSE = "END_LLM_RESPONSE"
+FIND_API = "FIND_API"
+SEND_API = "SEND_API"
+BUFFER_API = "BUFFER_API"
+FINISH_STREAM = "FINISH_STREAM"
+
 api = FastAPI(
     title="API Marketplace Chatbot",
     version="0.1.0",
@@ -53,10 +63,11 @@ AZURE_CHAT_DEPLOYMENT = os.getenv('AZURE_CHAT_DEPLOYMENT', "APIM-Deployment")
 AZURE_CHAT_VERSION = os.getenv('AZURE_CHAT_VERSION', "2023-12-01-preview")
 SOURCE_PLATFORM = os.getenv('SOURCE_PLATFORM')
 
-
 # TODO: implement debug logging switch
 
 collection_name = os.getenv("COLLECTION_NAME")
+
+
 # request input format
 class Query(BaseModel):
     query: str
@@ -93,15 +104,18 @@ def get_vectorstore() -> Milvus:
 
     return vectorstore
 
+
 def get_retriever(tenant_domain, orgID) -> MultiQueryRetriever:
     vectorstore = get_vectorstore()
     # TODO: Try adding a Self Query retriever
     # Incorporate score based filtering mechanism once Milverse introduces it
     if SOURCE_PLATFORM == APIM:
         retriever = vectorstore.as_retriever(search_type="similarity",
-                                             search_kwargs={"k": 5, "expr": 'org_id == "' + orgID + '" && tenant_domain == "' + tenant_domain + '"'})
+                                             search_kwargs={"k": 5,
+                                                            "expr": 'org_id == "' + orgID + '" && tenant_domain == "' + tenant_domain + '"'})
     elif SOURCE_PLATFORM == CHOREO:
-        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5, "expr": 'org_id == "' + orgID + '"'})
+        retriever = vectorstore.as_retriever(search_type="similarity",
+                                             search_kwargs={"k": 5, "expr": 'org_id == "' + orgID + '"'})
 
     llm = AzureChatOpenAI(
         #     temperature=0.3,
@@ -111,7 +125,6 @@ def get_retriever(tenant_domain, orgID) -> MultiQueryRetriever:
         api_version=AZURE_CHAT_VERSION,
         azure_endpoint=AZURE_ENDPOINT,
     )
-
 
     QUERY_PROMPT = PromptTemplate(
         input_variables=["question"],
@@ -130,7 +143,6 @@ def get_retriever(tenant_domain, orgID) -> MultiQueryRetriever:
             lines = text.strip().split("\n")
             return lines
 
-
     output_parser = LineListOutputParser()
     llm_chain = LLMChain(llm=llm, prompt=QUERY_PROMPT, output_parser=output_parser)
 
@@ -144,7 +156,7 @@ def format_docs(docs):
     return "\n\n".join(str({"api_details": doc.metadata, "api_spec": doc.page_content}) for doc in docs)
 
 
-def prepare_rag_chain(tenant_domain: str, orgID: str):
+def prepare_rag_chain(tenant_domain: str, orgID: str, stream=False):
     retriever = get_retriever(tenant_domain, orgID)
 
     llm = AzureChatOpenAI(
@@ -167,30 +179,44 @@ def prepare_rag_chain(tenant_domain: str, orgID: str):
             ("human", "{question}"),
         ]
     )
-    # TODO: alter prompt so that we can handle both streaming case and REST case. We can keep the core of the prompt same and alter the rendering instructions.
-    qa_system_prompt = """System: You are an assistant who only speaks using JSON. Based on the provided API details, 
-    recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs.
-    Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
-    Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
-      {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
-        \"version\": \"2.0\"}}, {{\"apiId\": \"id2\", \"apiName\": \"SampleAPI2\", \"version\": \"4.0\"}}]}}.
-    Make sure to give an easily understandable explanation of the API or APIs selected in the \"response\" section. Leave the \"apis\" list empty in case you do not have any API recommendations included in the response.
-    Given below are the actual API context you need to use to construct the response. If you can't find the API from the context, just say that you don't know.
-    Context: {context}"""
+
+    # Decided to use the same prompt for both streaming and non-streaming for now.
+    # Condition was added so if needed, we can add a separate prompt for streaming.
+    if stream:
+        qa_system_prompt = """System: You are an assistant who only speaks using JSON. Based on the provided API details,
+                recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs.
+                Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
+                Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
+                  {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
+                    \"version\": \"2.0\"}}, {{\"apiId\": \"id2\", \"apiName\": \"SampleAPI2\", \"version\": \"4.0\"}}]}}.
+                Make sure to give an easily understandable explanation of the API or APIs selected in the \"response\" section. Leave the \"apis\" list empty in case you do not have any API recommendations included in the response.
+                Given below are the actual API context you need to use to construct the response. If you can't find the API from the context, just say that you don't know.
+                Context: {context}"""
+    else:
+        qa_system_prompt = """System: You are an assistant who only speaks using JSON. Based on the provided API details,
+            recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs.
+            Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
+            Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
+              {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
+                \"version\": \"2.0\"}}, {{\"apiId\": \"id2\", \"apiName\": \"SampleAPI2\", \"version\": \"4.0\"}}]}}.
+            Make sure to give an easily understandable explanation of the API or APIs selected in the \"response\" section. Leave the \"apis\" list empty in case you do not have any API recommendations included in the response.
+            Given below are the actual API context you need to use to construct the response. If you can't find the API from the context, just say that you don't know.
+            Context: {context}"""
+
     qa_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", qa_system_prompt),
             ("human", "{question}"),
         ]
     )
-        
+
     _inputs = RunnableParallel(
         standalone_question=RunnablePassthrough.assign(
             chat_history=lambda x: x["chat_history"]
         )
-        | contextualize_q_prompt
-        | llm
-        | StrOutputParser(),
+                            | contextualize_q_prompt
+                            | llm
+                            | StrOutputParser(),
     )
 
     # def cond_input(input: dict):
@@ -235,7 +261,7 @@ async def generate_response(
         #     }
     ))
     # response = ""
-    # async for token in rag_chain.astream({ 
+    # async for token in rag_chain.astream({
     #     "question": message,
     #     "chat_history": chat_history}):
     #     yield token.content
@@ -246,24 +272,70 @@ async def generate_sse_response(
         tenant_domain: str, message: str, history: list, orgID: str
 ) -> AsyncGenerator[str, QuerySSEResponse]:
     results = await asyncio.gather(
-        in_thread(prepare_rag_chain, tenant_domain, orgID),
+        in_thread(prepare_rag_chain, tenant_domain, orgID, True),
         prepare_history(history),
     )
     rag_chain = results[0]
     chat_history = results[1]
 
-    response = ""
     try:
-        yield QuerySSEResponse(type="start", value="").json()
-        async for token in rag_chain.astream({
-            "question": message,
-            "chat_history": chat_history}):  # type: ignore
-            yield QuerySSEResponse(type="streaming", value=token.content).json()
-            response += token.content
+        stage = START_STREAM
+        api_buffer = ""
+        async for token in rag_chain.astream({"question": message, "chat_history": chat_history}):
+            if stage == START_STREAM:
+                if "{" not in token.content:
+                    yield token.content
+                    continue
+                stage = FIND_LLM_RESPONSE
 
-        yield QuerySSEResponse(type="end", value="").json()
+            stage, response = await process_sse_response(stage, token.content)
+
+            if not response:
+                continue
+
+            if stage == SEND_LLM_RESPONSE or stage == END_LLM_RESPONSE:
+                yield response
+                if stage == END_LLM_RESPONSE:
+                    stage = FIND_API
+                continue
+
+            if stage == BUFFER_API:
+                api_buffer = api_buffer + response
+
+            if stage == SEND_API:
+                if api_buffer is not "":
+                    api_buffer = api_buffer + response
+                    stage = FIND_API
+                    yield api_buffer
+                api_buffer = ""
+                continue
+
     except Exception as e:  # TODO: Add proper exception handling
         yield QuerySSEResponse(type="error", value=str(e)).json()
+
+
+async def process_sse_response(stage, token_content):
+    if stage == FIND_LLM_RESPONSE:
+        if token_content.startswith("\":"):
+            return SEND_LLM_RESPONSE, None
+
+    elif stage == SEND_LLM_RESPONSE:
+        if "\"," in token_content:
+            head, sep, tail = token_content.partition(',')
+            return END_LLM_RESPONSE, head
+
+    elif stage == FIND_API:
+        if "{" in token_content:
+            head, sep, tail = token_content.partition('{')
+            return BUFFER_API, "\n" + sep + tail
+        else:
+            return FIND_API, None
+
+    elif stage == BUFFER_API and "}" in token_content:
+        head, sep, tail = token_content.partition('}')
+        return SEND_API, head + sep
+
+    return stage, token_content
 
 
 def parse_json(json_resp):
