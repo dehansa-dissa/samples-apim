@@ -57,7 +57,7 @@ def upsert_vector_for_onprem(embed, orgID, api: API, tenant):
     return response
 
 
-def upsert_vector_for_choreo(embed, record, orgID, api_id, api_name):
+def upsert_vector_for_choreo(embed, record, orgID, api_id, api_name, api_type):
     mc = MilvusClient(uri=url, token=api_key)
     if create_collection:
         has = mc.has_collection(collection_name)
@@ -92,6 +92,7 @@ def upsert_vector_for_choreo(embed, record, orgID, api_id, api_name):
     payload = {
         "page_content": str(record),
         "api_name": api_name,
+        "api_type": api_type,
         "id": orgID + api_id,
         "org_id": orgID,
         "vector": res

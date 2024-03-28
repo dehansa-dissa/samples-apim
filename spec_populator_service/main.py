@@ -41,14 +41,9 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
     elif source == "choreo":
         record = await pre_process_openapi(req["api_spec"])
         loop = asyncio.get_event_loop()
-        api = API(
-            id=uuid,
-            type=req["api_type"],
-            name=req["api_name"],
-            spec=record
-        )
         response = await loop.run_in_executor(None,
-                                              partial(upsert_vector_for_choreo, embed, record, orgID, uuid, api_name))
+                                              partial(upsert_vector_for_choreo, embed, record, orgID, uuid,
+                                                      req["api_name"], req["api_type"]))
 
     return {"message": response}
 
