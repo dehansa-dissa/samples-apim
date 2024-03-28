@@ -2,8 +2,8 @@ from fastapi import FastAPI, Header, HTTPException
 import json
 import os
 from pydantic import BaseModel
-import requests
 from fastapi import status
+import aiohttp
 
 api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
 marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
@@ -52,47 +52,49 @@ org_map = {
 
 app = FastAPI()
 
-def introspect(on_prem_key):
-        
+async def introspect(on_prem_key):
     if on_prem_key in org_map.keys():
         return org_map[on_prem_key]
     else:
-        response =  requests.post(introspect_endpoint, json={"key": on_prem_key})
-        
-        if response.status_code == 200:
-            res = [response.json()["orgUuid"], response.json()["status"]]
-            org_map[on_prem_key] = res
-            return res
-        else:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(introspect_endpoint, json={"key": on_prem_key}) as response:
+                if response.status == 200:
+                    res_json = await response.json()
+                    res = [res_json["orgUuid"], res_json["status"]]
+                    org_map[on_prem_key] = res
+                    return res
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
 
 
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
-async def prepare(req: dict, x_request_id: str = Header(None), API_KEY: str = Header(None)):
+async def prepare(req: dict, apiChatRequestId: str = Header(None), API_KEY: str = Header(None)):
     
-    [orgID, status] = introspect(API_KEY)
+    [orgID, status] = await introspect(API_KEY)
     if status == "ACTIVE":
-        response =  requests.post(api_chat_endpoint + "/prepare", headers={"apiChatRequestId": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
-        
-        if response.status_code == 201:
-            return response.json()
-        else:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
+        async with aiohttp.ClientSession() as session:
+            headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
+            async with session.post(api_chat_endpoint + "/prepare", headers=headers, json=req) as response:
+                if response.status == 201:
+                    return await response.json()
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
     else:
         raise HTTPException(status_code=401, detail="Your key has expired")
 
 
 @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
-async def execute(req: dict , x_request_id: str = Header(None), API_KEY: str = Header(None)):
+async def execute(req: dict , apiChatRequestId: str = Header(None), API_KEY: str = Header(None)):
 
-    [orgID, status] = introspect(API_KEY)
+    [orgID, status] = await introspect(API_KEY)
     if status == "ACTIVE":
-        response =  requests.post(api_chat_endpoint + "/chat", headers={"apiChatRequestId": x_request_id, "Authorization": f"Bearer {api_chat_access_token}"}, json=req)
-        
-        if response.status_code == 201:
-            return response.json()
-        else:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
+        async with aiohttp.ClientSession() as session:
+            headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
+            async with session.post(api_chat_endpoint + "/chat", headers=headers, json=req) as response:
+                if response.status == 201:
+                    return await response.json()
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
     else:
         raise HTTPException(status_code=401, detail="Your key has expired")
 
@@ -100,16 +102,12 @@ async def execute(req: dict , x_request_id: str = Header(None), API_KEY: str = H
 @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
 async def chat(req: dict, API_KEY: str = Header(None)):
 
-    [orgID, status] = introspect(API_KEY)
+    [orgID, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
-
         history_string = req["history"]
-
         data_list = json.loads(history_string)
-
         objects_list = []
-
 
         for item in data_list:
             role = item['role']
@@ -122,30 +120,32 @@ async def chat(req: dict, API_KEY: str = Header(None)):
             "history": objects_list,
             "tenant_domain": req['tenant_domain']
         }
-               
-        response =  requests.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'orgID':  orgID}, json=payload ,headers={"Authorization": f"Bearer {marketplace_chat_access_token}"})
 
-        if response.status_code == 200:
-            return response.json()
-        else:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
+            async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'orgID':  orgID}, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
     else:
-            raise HTTPException(status_code=401, detail="Your key has expired")
+        raise HTTPException(status_code=401, detail="Your key has expired")
 
 
 @app.post("/ai/spec-populator/publish-api", status_code=status.HTTP_201_CREATED)
 async def publish_api(req: dict, API_KEY: str = Header(None)):
 
-    [orgID, status] = introspect(API_KEY)
+    [orgID, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
-
-        response =  requests.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req, params={'orgID':  orgID}, headers={"Authorization": f"Bearer {api_publisher_endpoint_access_token}"})
-
-        if response.status_code == 200:
-            return response.json()
-        else:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+            print(api_publisher_endpoint)
+            async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req, params={'orgID':  orgID}, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
     else:
         raise HTTPException(status_code=401, detail="Your key has expired")
 
@@ -153,23 +153,23 @@ async def publish_api(req: dict, API_KEY: str = Header(None)):
 @app.delete("/ai/spec-populator/remove-api/{uuid}")
 async def remove_api(uuid : str, API_KEY: str = Header(None)):
     
-    [orgID, status] = introspect(API_KEY)
+    [orgID, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
-
-        response =  requests.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'orgID':  orgID}, headers={"Authorization": f"Bearer {api_publisher_endpoint_access_token}"})
-
-        if response.status_code == 200:
-            return response.json()
-        else:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+            async with session.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'orgID':  orgID}, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
     else:
         raise HTTPException(status_code=401, detail="Your key has expired")
 
 @app.get("/ai/spec-populator/api-count")
 async def api_count(API_KEY: str = Header(None)):
 
-    [orgID, status] = introspect(API_KEY)
+    [orgID, status] = await introspect(API_KEY)
     if status == "ACTIVE":
         count_response = {"count" : 100, "limit": 1000}
         return count_response
