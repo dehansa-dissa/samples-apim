@@ -121,7 +121,7 @@ async def chat(req: dict, API_KEY: str = Header(None)):
             "tenant_domain": req['tenant_domain']
         }
 
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(trust_env=True) as session:
             headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
             async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'orgID':  orgID}, json=payload, headers=headers, ssl=False) as response:
                 if response.status == 200:
@@ -138,7 +138,7 @@ async def publish_api(req: dict, API_KEY: str = Header(None)):
     [orgID, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(trust_env=True) as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             print(api_publisher_endpoint)
             async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req, params={'orgID':  orgID}, headers=headers, ssl=False) as response:
@@ -156,7 +156,7 @@ async def remove_api(uuid : str, API_KEY: str = Header(None)):
     [orgID, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(trust_env=True) as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             async with session.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'orgID':  orgID}, headers=headers, ssl=False) as response:
                 if response.status == 200:
