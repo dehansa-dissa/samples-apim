@@ -408,10 +408,10 @@ def parse_choreo_json(json_resp):
 
 
 def create_table_markdown(api_list):
-    table = "\nAPI ID | API Name | API Version\n"
-    table += "------- | -------- | ----------\n"
+    table = "\n|API ID | API Name | API Version|\n"
+    table += "|------- | -------- | ----------|\n"
     for api_info in api_list:
-        table += f"{api_info['apiId']} | {api_info['apiName']} | {api_info['version']}\n"
+        table += f"|{api_info['apiId']} | {api_info['apiName']} | {api_info['version']}|\n"
     return table
 
 
