@@ -308,7 +308,6 @@ async def generate_choreo_response(messages: list, history: list, orgID: str):
     return assist_response_json
 
 
-
 async def generate_sse_response(
         tenant_domain: str, message: str, history: list, orgID: str
 ) -> AsyncGenerator[str, QuerySSEResponse]:
@@ -390,8 +389,21 @@ def parse_json(json_resp):
 def parse_choreo_json(json_resp):
     try:
         json_object = json.loads(json_resp)
+        # todo get the correct token counts
+        if "usage" not in json_object:
+            json_object["usage"] = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
+            }
     except ValueError as e:
-        return {"response": json_resp}
+        return {"response": json_resp,
+                "usage": {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0
+                }
+                }
     return json_object
 
 
