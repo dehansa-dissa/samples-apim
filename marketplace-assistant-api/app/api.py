@@ -75,6 +75,12 @@ class Query(BaseModel):
     tenant_domain: Optional[str] = None
 
 
+class ChoreoQuery(BaseModel):
+    question: list
+    history: Optional[list] = []
+    tenant_domain: Optional[str] = None
+
+
 class QuerySSEResponse(BaseModel):
     type: Literal["start", "streaming", "end", "error"]
     value: str
@@ -183,23 +189,33 @@ def prepare_rag_chain(tenant_domain: str, orgID: str, stream=False):
         ]
     )
 
-    # Decided to use the same prompt for both streaming and non-streaming for now.
-    # Condition was added so if needed, we can add a separate prompt for streaming.
-    if stream:
-        qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
+    if SOURCE_PLATFORM == CHOREO:
+        # Condition was added so if needed, we can add a separate prompt for streaming.
+        if stream:
+            qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
             recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you don't know politely.
-            Uderstand the provided context and IGNORE the APIs that does not match the human question. 
+            Understand the provided context and IGNORE the APIs that does not match the human question. 
             Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
             Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
               {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
                 \"version\": \"2.0\"}}, {{\"apiId\": \"id2\", \"apiName\": \"SampleAPI2\", \"version\": \"4.0\"}}]}}.
+            Make sure to give an easily understandable explanation of the API or APIs selected in the \"response\" section. Leave the \"apis\" list empty in case you do not have any API recommendations included in the response.
+            Given below are the actual API context you need to use to construct the response. 
+            Context: {context}"""
+        else:
+            qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
+            recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you don't know politely.
+            Understand the provided context and IGNORE the APIs that does not match the human question. 
+            Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
+            Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
+                {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",\"version\": \"2.0\"}}, {{\"apiId\": \"id2\", \"apiName\": \"SampleAPI2\", \"version\": \"4.0\"}}]}}.
             Make sure to give an easily understandable explanation of the API or APIs selected in the \"response\" section. Leave the \"apis\" list empty in case you do not have any API recommendations included in the response.
             Given below are the actual API context you need to use to construct the response.
             Context: {context}"""
     else:
         qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
             recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you don't know politely.
-            Uderstand the provided context and IGNORE the APIs that does not match the human question. 
+            Understand the provided context and IGNORE the APIs that does not match the human question. 
             Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
             Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
               {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
@@ -267,6 +283,31 @@ async def generate_response(
     ))
 
 
+async def generate_choreo_response(messages: list, history: list, orgID: str):
+    results = await asyncio.gather(
+        in_thread(prepare_rag_chain, None, orgID),
+        prepare_history(history),
+    )
+    rag_chain = results[0]
+    chat_history = results[1]
+
+    questions = ""
+    for message in messages:
+        questions = questions + message + "\n"
+
+    assist_response = (rag_chain.invoke({
+        "question": questions,
+        "chat_history": chat_history},
+    ))
+
+    assist_response_json = parse_choreo_json(assist_response.content)
+    table_markdown = create_table_markdown(assist_response_json["apis"])
+    del assist_response_json["apis"]
+    assist_response_json["response"] = assist_response_json["response"] + table_markdown
+
+    return assist_response_json
+
+
 async def generate_sse_response(
         tenant_domain: str, message: str, history: list, orgID: str
 ) -> AsyncGenerator[str, QuerySSEResponse]:
@@ -302,7 +343,7 @@ async def generate_sse_response(
                 api_buffer = api_buffer + response
 
             if stage == SEND_API:
-                if api_buffer is not "":
+                if api_buffer != "":
                     api_buffer = api_buffer + response
                     stage = FIND_API
                     yield api_buffer
@@ -345,12 +386,48 @@ def parse_json(json_resp):
     return json_object
 
 
+def parse_choreo_json(json_resp):
+    try:
+        json_object = json.loads(json_resp)
+        # todo get the correct token counts
+        if "usage" not in json_object:
+            json_object["usage"] = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
+            }
+    except ValueError as e:
+        return {"response": json_resp,
+                "usage": {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0
+                }
+                }
+    return json_object
+
+
+def create_table_markdown(api_list):
+    table = "\nAPI ID | API Name | API Version\n"
+    table += "------- | -------- | ----------\n"
+    for api_info in api_list:
+        table += f"{api_info['apiId']} | {api_info['apiName']} | {api_info['version']}\n"
+    return table
+
+
 @api.post("/marketplace-assistant")
 async def marketplace_assistant(request: Query, orgID: str):
     response = await generate_response(tenant_domain=request.tenant_domain, message=request.query,
                                        history=request.history, orgID=orgID)
 
     return parse_json(response.content)
+
+
+@api.post("/choreo-marketplace-assistant")
+async def marketplace_assistant(request: ChoreoQuery, orgID: str):
+    response = await generate_choreo_response(messages=request.question, history=request.history, orgID=orgID)
+
+    return response
 
 
 @api.post("/marketplace-assistant/streaming")

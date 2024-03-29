@@ -68,6 +68,59 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /bulk_add_vector:
+    post:
+      summary: Bulk Add Vector
+      operationId: bulk_add_vector_bulk_add_vector_post
+      parameters:
+        - required: true
+          schema:
+            type: string
+            title: Orgid
+          name: orgID
+          in: query
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Req
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api_count:
+    get:
+      summary: Get Api Count
+      operationId: get_api_count_api_count_get
+      parameters:
+        - required: true
+          schema:
+            type: string
+            title: Orgid
+          name: orgID
+          in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     HTTPValidationError:
