@@ -3,7 +3,7 @@ from langchain_openai import AzureOpenAIEmbeddings
 import yaml
 from dataclasses import dataclass
 import re
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Dict
 
 azure_type = "azure"
 azure_endpoint = os.getenv("AZURE_ENDPOINT")
@@ -48,13 +48,29 @@ class ReducedGrapQLSDL:
     mutations: str
     subscriptions: str
 
-@dataclass
 class ReducedAsyncAPISpec:
-    title: str
-    description: str
-    servers: List[dict]
-    endpoints: List[Tuple[str, Union[str, None], dict]]
+    def __init__(self, title: str, description: str, channels: List[Tuple[str, str]]):
+        self.title = title
+        self.description = description
+        self.channels = channels
 
+async def reduce_asyncapi_spec(spec: Dict) -> ReducedAsyncAPISpec:
+    """Simplify the AsyncAPI spec."""
+    # Extract title and description
+    title = spec.get("info", {}).get("title", "")
+    description = spec.get("info", {}).get("description", "")
+
+    # Extract channels with their descriptions
+    channels = [
+        (channel_name, channel.get("description", ""))
+        for channel_name, channel in spec.get("channels", {}).items()
+    ]
+
+    return ReducedAsyncAPISpec(
+        title=title,
+        description=description,
+        channels=channels
+    )
 
 async def reduce_openapi_spec(spec: dict) -> ReducedOpenAPISpec:
     """Simplify the spec. Aim is to have a smaller target for retrieval and more importantly, a smaller results from retrieval."""
@@ -74,7 +90,7 @@ async def reduce_openapi_spec(spec: dict) -> ReducedOpenAPISpec:
         endpoints=endpoints,
     )
 
-def reduce_graphql_schema(schema_text):
+async def reduce_graphql_schema(schema_text):
     # Remove white spaces
     schema_text = re.sub(r'\s+', ' ', schema_text)
     
@@ -102,16 +118,14 @@ async def pre_process_openapi(api_spec):
 
 
 async def pre_process_graphql_sdl(sdl_schema):
-    schema_dict = yaml.safe_load(sdl_schema)
     
-    schema = await reduce_graphql_schema(schema_dict)
-    print(schema.__dict__)
-    return schema.__dict__
+    schema = await reduce_graphql_schema(sdl_schema)
+    return schema
 
 async def pre_process_asyncapi_def(async_spec):
     api_spec_dict = yaml.safe_load(async_spec)
     
-    api_spec = await reduce_openapi_spec(api_spec_dict)
+    api_spec = await reduce_asyncapi_spec(api_spec_dict)
     record = api_spec.__dict__
 
     return record
