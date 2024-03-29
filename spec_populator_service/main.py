@@ -112,7 +112,7 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str):
 
         # return {"message": response}
 
-@app.get("/api-count")
+@app.get("/api_count")
 async def get_api_count(orgID: str):
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(None, partial(get_vector_count_for_onprem, orgID))

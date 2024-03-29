@@ -172,7 +172,7 @@ async def api_count(API_KEY: str = Header(None)):
     if status == "ACTIVE":
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-            async with session.get(api_publisher_endpoint + "/api-count/" , params={'orgID':  orgID}, headers=headers) as response:
+            async with session.get(api_publisher_endpoint + "/api_count/" , params={'orgID':  orgID}, headers=headers) as response:
                 if response.status == 200:
                     count = (await response.json())['count']
                     return {"count": count, "limit": 1000}

@@ -11,8 +11,14 @@ paths:
         - required: false
           schema:
             type: string
-            title: X-Request-Id
-          name: x-request-id
+            title: Apichatrequestid
+          name: apiChatRequestId
+          in: header
+        - required: false
+          schema:
+            type: string
+            title: Api-Key
+          name: API-KEY
           in: header
       requestBody:
         content:
@@ -41,8 +47,14 @@ paths:
         - required: false
           schema:
             type: string
-            title: X-Request-Id
-          name: x-request-id
+            title: Apichatrequestid
+          name: apiChatRequestId
+          in: header
+        - required: false
+          schema:
+            type: string
+            title: Api-Key
+          name: API-KEY
           in: header
       requestBody:
         content:
@@ -72,7 +84,7 @@ paths:
           schema:
             type: string
             title: Api-Key
-          name: Api-Key
+          name: API-KEY
           in: header
       requestBody:
         content:
@@ -102,7 +114,7 @@ paths:
           schema:
             type: string
             title: Api-Key
-          name: Api-Key
+          name: API-KEY
           in: header
       requestBody:
         content:
@@ -138,7 +150,7 @@ paths:
           schema:
             type: string
             title: Api-Key
-          name: Api-Key
+          name: API-KEY
           in: header
       responses:
         '200':
@@ -161,8 +173,38 @@ paths:
           schema:
             type: string
             title: Api-Key
-          name: Api-Key
+          name: API-KEY
           in: header
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /ai/spec-populator/bulk-upload:
+    post:
+      summary: Upload Bulk Apis
+      operationId: upload_bulk_apis_ai_spec_populator_bulk_upload_post
+      parameters:
+        - required: false
+          schema:
+            type: string
+            title: Api-Key
+          name: API-KEY
+          in: header
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Req
+        required: true
       responses:
         '200':
           description: Successful Response
