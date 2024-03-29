@@ -28,7 +28,7 @@ def upsert_vector_for_onprem(embed, orgID, api: API, tenant):
             index_params = mc.prepare_index_params()
 
             index_params.add_index(
-                field_name="vector", 
+                field_name="vector",
                 index_type="AUTOINDEX",
                 metric_type="L2"
             )
@@ -57,9 +57,9 @@ def upsert_vector_for_onprem(embed, orgID, api: API, tenant):
     return response
 
 
-def upsert_vector_for_choreo(embed, record, orgID, api_id, api_name):
+def upsert_vector_for_choreo(embed, orgID, api: API):
 
-    mc = MilvusClient(uri=url, token=url)
+    mc = MilvusClient(uri=url, token=api_key)
     if create_collection:
         has = mc.has_collection(collection_name)
         if not has:
@@ -69,16 +69,16 @@ def upsert_vector_for_choreo(embed, record, orgID, api_id, api_name):
                 enable_dynamic_field=False,
             )
             schema.add_field(field_name="id", datatype=DataType.VARCHAR, is_primary=True, max_length=100)
-            schema.add_field(field_name="api_name", datatype=DataType.VARCHAR, max_length=512)
+            schema.add_field(field_name="metadata", datatype=DataType.JSON, max_length=2000)
             schema.add_field(field_name="api_type", datatype=DataType.VARCHAR, max_length=100)
             schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=1536)
-            schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=512,  is_partition_key=True)
             schema.add_field(field_name="page_content", datatype=DataType.VARCHAR, max_length=10000)
+            schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=512, is_partition_key=True)
 
             index_params = mc.prepare_index_params()
 
             index_params.add_index(
-                field_name="vector", 
+                field_name="vector",
                 index_type="AUTOINDEX",
                 metric_type="L2"
             )
@@ -89,15 +89,22 @@ def upsert_vector_for_choreo(embed, record, orgID, api_id, api_name):
                 schema=schema,
                 index_params=index_params
             )
-        
-    res = embed.embed_query(str(record))
-    payload={
-            "page_content": str(record),
-            "api_name": api_name,
-            "id": orgID + api_id,
-            "org_id": orgID,
-            "vector": res
-        }
+
+    res = embed.embed_query(str(api.__dict__))
+    payload = {
+        "page_content": str(api.spec),
+        "metadata": {
+            "id": api.id,
+            "api_name": api.name,
+            "api_version": api.version,
+            "api_type": api.type
+        },
+        "id": orgID + api.id,
+        "vector": res,
+        "api_type": api.type,
+        "org_id": orgID,
+    }
+
     response = mc.upsert(collection_name=collection_name, data=payload)
     return response
 

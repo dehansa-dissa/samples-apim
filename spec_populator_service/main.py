@@ -38,8 +38,18 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
         response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, api, req["tenant_domain"]))
     elif source == "choreo":
         record = await pre_process_openapi(req["api_spec"])
+        record["apim_description"] = req["description"]
+        api = API(
+            id=uuid,
+            # The actual version is used instead of what is in the Spec,
+            # since we know this is the truth, and the spec version can be outdated
+            version=req["version"],
+            type=req["api_type"],
+            name=req["api_name"],
+            spec=record
+        )
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None,partial(upsert_vector_for_choreo, embed, record, orgID, uuid))
+        response = await loop.run_in_executor(None,partial(upsert_vector_for_choreo, embed, orgID, api))
 
     return {"message": response}
 
