@@ -173,7 +173,7 @@ def prepare_rag_chain(tenant_domain: str, orgID: str, stream=False):
     which might reference context in the chat history, formulate a standalone question \
     which can be understood without the chat history. \
     Here, the human is a Application developer trying to interact with you. \
-    Do NOT answer the question, just reformulate it if needed and otherwise return it as is. \
+    Strict Condition: Do NOT answer the question!!, just reformulate it if needed and otherwise return it as is \
     Please ignore the history if the latest question is not relevant to the history"""
     contextualize_q_prompt = ChatPromptTemplate.from_messages(
         [
