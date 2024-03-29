@@ -101,7 +101,7 @@ def upsert_vector_for_choreo(embed, record, orgID, api_id, api_name, api_type):
     return response
 
 
-def delete_vector_for_onprem(uuid, orgID):
+def delete_vector(uuid, orgID):
     mc = MilvusClient(uri=url, token=api_key)
     uuid = [orgID + id for id in uuid]
     res = mc.delete(

@@ -50,9 +50,8 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
 
 @app.delete("/remove_vector/{uuid}")
 async def remove_vector(uuid: str, orgID: str):
-    if source == "apim":
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(delete_vector_for_onprem, [uuid], orgID))
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(None, partial(delete_vector, [uuid], orgID))
 
     return {"message": response}
 
