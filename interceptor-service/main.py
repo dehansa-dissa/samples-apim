@@ -64,7 +64,11 @@ async def introspect(on_prem_key):
                     org_map[on_prem_key] = res
                     return res
                 else:
-                    raise HTTPException(status_code=response.status, detail=await response.text())
+                    responseMessage = await response.text()
+                    if "invalid key" in responseMessage:
+                        raise HTTPException(status_code=401, detail="Provided key is invalid")
+                    else:
+                        raise HTTPException(status_code=response.status, detail=responseMessage)
 
 
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
