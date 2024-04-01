@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from utils import *
 from typing import Dict, Any
 import asyncio
+import uvicorn
 from functools import partial
 import json
 
@@ -11,9 +12,9 @@ source = os.getenv("SOURCE_PLATFORM")
 
 app = FastAPI()
 
+
 @app.post("/add_vector/{uuid}")
 async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
-
     if source == "apim":
         api_type = req["api_type"]
         if api_type == "REST":
@@ -22,7 +23,7 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
             record = await pre_process_graphql_sdl(req["sdl_schema"])
         elif api_type == "ASYNC":
             record = await pre_process_asyncapi_def(req["async_spec"])
-        
+
         # Add available subscription plans
         record["apim_description"] = req["description"]
         api = API(
@@ -36,23 +37,24 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
         )
 
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, api, req["tenant_domain"]))
+        response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, api,
+                                                            req["tenant_domain"]))
     elif source == "choreo":
         record = await pre_process_openapi(req["api_spec"])
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None,partial(upsert_vector_for_choreo, embed, record, orgID, uuid))
+        response = await loop.run_in_executor(None,
+                                              partial(upsert_vector_for_choreo, embed, record, orgID, uuid,
+                                                      req["api_name"], req["api_type"]))
 
     return {"message": response}
+
 
 @app.delete("/remove_vector/{uuid}")
-async def remove_vector(uuid : str, orgID: str):
-
-    if source == "apim":
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(delete_vector_for_onprem, [uuid], orgID))
+async def remove_vector(uuid: str, orgID: str):
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(None, partial(delete_vector, [uuid], orgID))
 
     return {"message": response}
-
 
 @app.post("/bulk_add_vector")
 async def bulk_add_vector(req: Dict[str, Any], orgID: str):
@@ -118,4 +120,3 @@ async def get_api_count(orgID: str):
     response = await loop.run_in_executor(None, partial(get_vector_count_for_onprem, orgID))
     print(response[0]["count(*)"])
     return {"count": response[0]["count(*)"]}
-
