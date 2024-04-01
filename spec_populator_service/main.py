@@ -17,7 +17,7 @@ app = FastAPI()
 async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
     if source == "apim":
         api_type = req["api_type"]
-        if api_type == "HTTP" or api_type == "APIPRODUCT" or api_type == "SOAP" or api_type == "SOAPTOREST" :
+        if api_type == "REST" or api_type == "HTTP" or api_type == "APIPRODUCT" or api_type == "SOAP" or api_type == "SOAPTOREST" :
             record = await pre_process_openapi(req["api_spec"])
         elif api_type == "GRAPHQL":
             record = await pre_process_graphql_sdl(req["sdl_schema"])
