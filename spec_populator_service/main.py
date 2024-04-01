@@ -18,7 +18,10 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: str | No
     # TODO: Handle 400 error if request info not sufficient (eg: no KeyID)
     if source == "apim":
         api_type = req["api_type"]
-        if api_type == "REST" or api_type == "HTTP" or api_type == "APIPRODUCT" or api_type == "SOAP" or api_type == "SOAPTOREST" :
+        if api_type == "APIPRODUCT":
+            api_type = "HTTP"
+            record = await pre_process_openapi(req["api_spec"])
+        elif api_type == "REST" or api_type == "HTTP" or api_type == "SOAP" or api_type == "SOAPTOREST" :
             record = await pre_process_openapi(req["api_spec"])
         elif api_type == "GRAPHQL":
             record = await pre_process_graphql_sdl(req["sdl_schema"])
@@ -32,7 +35,7 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: str | No
             # The actual version is used instead of what is in the Spec,
             # since we know this is the truth, and the spec version can be outdated
             version=req["version"],
-            type=req["api_type"],
+            type=api_type,
             name=req["api_name"],
             spec=record
         )
