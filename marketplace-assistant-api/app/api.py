@@ -235,9 +235,9 @@ def prepare_rag_chain(tenant_domain: str, orgID: str, stream=False):
         standalone_question=RunnablePassthrough.assign(
             chat_history=lambda x: x["chat_history"]
         )
-                            | contextualize_q_prompt
-                            | llm
-                            | StrOutputParser(),
+        | contextualize_q_prompt
+        | llm
+        | StrOutputParser(),
     )
 
     # def cond_input(input: dict):
@@ -298,13 +298,18 @@ async def generate_choreo_response(messages: list, history: list, orgID: str):
     assist_response = (rag_chain.invoke({
         "question": questions,
         "chat_history": chat_history},
+        # config={
+        #     'callbacks': [ConsoleCallbackHandler()]
+        #     }
     ))
 
     assist_response_json = parse_choreo_json(assist_response.content)
-    table_markdown = create_table_markdown(assist_response_json["apis"])
-    del assist_response_json["apis"]
-    assist_response_json["response"] = assist_response_json["response"] + table_markdown
+    if "apis" in assist_response_json.keys():
+        table_markdown = create_table_markdown(assist_response_json["apis"])
+        del assist_response_json["apis"]
+        assist_response_json["response"] = assist_response_json["response"] + table_markdown
 
+    assist_response_json["response"] = create_str_markdown(assist_response_json["response"])
     return assist_response_json
 
 
@@ -408,11 +413,15 @@ def parse_choreo_json(json_resp):
 
 
 def create_table_markdown(api_list):
-    table = "\nAPI ID | API Name | API Version\n"
-    table += "------- | -------- | ----------\n"
+    table = "\n|API ID | API Name | API Version|\n"
+    table += "|------- | -------- | ----------|\n"
     for api_info in api_list:
-        table += f"{api_info['apiId']} | {api_info['apiName']} | {api_info['version']}\n"
+        table += f"|{api_info['apiId']} | {api_info['apiName']} | {api_info['version']}|\n"
     return table
+
+
+def create_str_markdown(response):
+    return "\n" + response
 
 
 @api.post("/marketplace-assistant")
