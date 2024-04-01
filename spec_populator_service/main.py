@@ -17,11 +17,11 @@ app = FastAPI()
 async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
     if source == "apim":
         api_type = req["api_type"]
-        if api_type == "REST":
+        if api_type == "HTTP" or api_type == "APIPRODUCT" or api_type == "SOAP" or api_type == "SOAPTOREST" :
             record = await pre_process_openapi(req["api_spec"])
         elif api_type == "GRAPHQL":
             record = await pre_process_graphql_sdl(req["sdl_schema"])
-        elif api_type == "ASYNC":
+        elif api_type == "ASYNC" or api_type == "WS" or api_type == "WEBSUB" or api_type == "SSE" or api_type == "WEBHOOK":
             record = await pre_process_asyncapi_def(req["async_spec"])
 
         # Add available subscription plans
