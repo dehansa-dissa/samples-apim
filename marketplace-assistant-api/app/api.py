@@ -77,7 +77,7 @@ class Query(BaseModel):
 
 class ChoreoQuery(BaseModel):
     questions: list
-    # history: Optional[list]
+    history: Optional[list]
     # tenant_domain: Optional[str] = None
 
 
