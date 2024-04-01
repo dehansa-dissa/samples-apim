@@ -64,7 +64,11 @@ async def introspect(on_prem_key):
                     org_map[on_prem_key] = res
                     return res
                 else:
-                    raise HTTPException(status_code=response.status, detail=await response.text())
+                    responseMessage = await response.text()
+                    if "invalid key" in responseMessage:
+                        raise HTTPException(status_code=401, detail="Provided key is invalid")
+                    else:
+                        raise HTTPException(status_code=response.status, detail=responseMessage)
 
 
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
@@ -149,7 +153,6 @@ async def publish_api(req: dict, API_KEY: str = Header(None)):
     else:
         raise HTTPException(status_code=401, detail="Your key has expired")
 
-
 @app.delete("/ai/spec-populator/remove-api/{uuid}")
 async def remove_api(uuid : str, API_KEY: str = Header(None)):
     
@@ -171,7 +174,32 @@ async def api_count(API_KEY: str = Header(None)):
 
     [orgID, status] = await introspect(API_KEY)
     if status == "ACTIVE":
-        count_response = {"count" : 100, "limit": 1000}
-        return count_response
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+            async with session.get(api_publisher_endpoint + "/api_count/" , params={'orgID':  orgID}, headers=headers) as response:
+                if response.status == 200:
+                    count = (await response.json())['count']
+                    return {"count": count, "limit": 1000}
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
     else:
         raise HTTPException(status_code=401, detail="Your key has expired")
+
+
+@app.post("/ai/spec-populator/bulk-upload")
+async def upload_bulk_apis(req: dict,API_KEY: str = Header(None)):
+
+    [orgID, status] = await introspect(API_KEY)
+
+    if status == "ACTIVE":
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+            print(api_publisher_endpoint)
+            async with session.post(api_publisher_endpoint + '/bulk_add_vector', json=req, params={'orgID':  orgID}, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
+    else:
+        raise HTTPException(status_code=401, detail="Your key has expired")
+
