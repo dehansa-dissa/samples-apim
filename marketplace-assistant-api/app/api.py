@@ -76,9 +76,14 @@ class Query(BaseModel):
 
 
 class ChoreoQuery(BaseModel):
-    question: list
-    history: Optional[list] = []
-    tenant_domain: Optional[str] = None
+    questions: list
+    history: Optional[list]
+    # tenant_domain: Optional[str] = None
+
+
+class ChoreoResponse(BaseModel):
+    content: str
+    usage: dict
 
 
 class QuerySSEResponse(BaseModel):
@@ -281,7 +286,10 @@ async def generate_response(
     ))
 
 
-async def generate_choreo_response(messages: list, history: list, orgID: str):
+# todo refactor the orgID to a proper format
+async def generate_choreo_response(messages: list, orgID: str):
+    history = []
+    response = ChoreoResponse(content="", usage={})
     results = await asyncio.gather(
         in_thread(prepare_rag_chain, None, orgID),
         prepare_history(history),
@@ -305,10 +313,12 @@ async def generate_choreo_response(messages: list, history: list, orgID: str):
     if "apis" in assist_response_json.keys():
         table_markdown = create_table_markdown(assist_response_json["apis"])
         del assist_response_json["apis"]
+        # todo change the key names to constants
         assist_response_json["response"] = assist_response_json["response"] + table_markdown
 
-    assist_response_json["response"] = create_str_markdown(assist_response_json["response"])
-    return assist_response_json
+    response.content = create_str_markdown(assist_response_json["response"])
+    response.usage = assist_response_json["usage"]
+    return response
 
 
 async def generate_sse_response(
@@ -432,7 +442,7 @@ async def marketplace_assistant(request: Query, orgID: str):
 
 @api.post("/choreo-marketplace-assistant")
 async def marketplace_assistant(request: ChoreoQuery, orgID: str):
-    response = await generate_choreo_response(messages=request.question, history=request.history, orgID=orgID)
+    response = await generate_choreo_response(messages=request.questions, orgID=orgID)
 
     return response
 
