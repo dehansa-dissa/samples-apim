@@ -77,6 +77,8 @@ class Query(BaseModel):
 
 class ChoreoQuery(BaseModel):
     questions: list
+    # history: Optional[list]
+    # tenant_domain: Optional[str] = None
 
 
 class ChoreResponse(BaseModel):
@@ -301,7 +303,7 @@ async def generate_choreo_response(messages: list, orgID: str):
         questions = questions + message + "\n"
 
     assist_response = (rag_chain.invoke({
-        "questions": questions,
+        "question": questions,
         "chat_history": chat_history},
         # config={
         #     'callbacks': [ConsoleCallbackHandler()]
@@ -312,11 +314,11 @@ async def generate_choreo_response(messages: list, orgID: str):
     if "apis" in assist_response_json.keys():
         table_markdown = create_table_markdown(assist_response_json["apis"])
         del assist_response_json["apis"]
-        response.content = assist_response_json["response"] + table_markdown
+        assist_response_json["response"] = assist_response_json["response"] + table_markdown
 
     response.content = create_str_markdown(assist_response_json["response"])
     response.usage = assist_response_json["usage"]
-    return assist_response_json
+    return response
 
 
 async def generate_sse_response(
