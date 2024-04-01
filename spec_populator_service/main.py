@@ -8,13 +8,14 @@ from functools import partial
 import json
 
 embed = get_emb_model()
-source = os.getenv("SOURCE_PLATFORM")
+source = os.getenv("SOURCE_PLATFORM", "apim")
 
 app = FastAPI()
 
 
 @app.post("/add_vector/{uuid}")
-async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
+async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: str | None = None):
+    # TODO: Handle 400 error if request info not sufficient (eg: no KeyID)
     if source == "apim":
         api_type = req["api_type"]
         if api_type == "REST" or api_type == "HTTP" or api_type == "APIPRODUCT" or api_type == "SOAP" or api_type == "SOAPTOREST" :
@@ -37,7 +38,7 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
         )
 
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, api,
+        response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, keyID, api,
                                                             req["tenant_domain"]))
     elif source == "choreo":
         record = await pre_process_openapi(req["api_spec"])
@@ -58,15 +59,15 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str):
 
 
 @app.delete("/remove_vector/{uuid}")
-async def remove_vector(uuid: str, orgID: str):
+async def remove_vector(uuid: str, keyID: str):
     loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(None, partial(delete_vector, [uuid], orgID))
+    response = await loop.run_in_executor(None, partial(delete_vector, [uuid], keyID))
 
     return {"message": response}
 
 
 @app.post("/bulk_add_vector")
-async def bulk_add_vector(req: Dict[str, Any], orgID: str):
+async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
 
     api_details_list = req["apis"]
 
@@ -105,10 +106,11 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str):
                         "api_version": api.version,
                         "api_type": api.type
                     },
-                    "id": orgID + api.id,
+                    "id": keyID + api.id,
                     "vector": res,
                     "api_type": api.type,
                     "org_id": orgID,
+                    "key_id": keyID,
                     "tenant_domain": api_details["tenant_domain"]
                 }
             api_list.append(payload)

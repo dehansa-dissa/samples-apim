@@ -25,6 +25,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, Prom
 from langchain_core.output_parsers import StrOutputParser, BaseOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.runnables import RunnableParallel
+from langchain.callbacks import get_openai_callback
 import asyncio
 from pydantic import BaseModel
 
@@ -116,17 +117,17 @@ def get_vectorstore() -> Milvus:
     return vectorstore
 
 
-def get_retriever(tenant_domain, orgID) -> MultiQueryRetriever:
+def get_retriever(tenant_domain, partitionID) -> MultiQueryRetriever:
     vectorstore = get_vectorstore()
     # TODO: Try adding a Self Query retriever
     # Incorporate score based filtering mechanism once Milverse introduces it
     if SOURCE_PLATFORM == APIM:
         retriever = vectorstore.as_retriever(search_type="similarity",
                                              search_kwargs={"k": 5,
-                                                            "expr": 'org_id == "' + orgID + '" && tenant_domain == "' + tenant_domain + '"'})
+                                                            "expr": 'key_id == "' + partitionID + '" && tenant_domain == "' + tenant_domain + '"'})
     elif SOURCE_PLATFORM == CHOREO:
         retriever = vectorstore.as_retriever(search_type="similarity",
-                                             search_kwargs={"k": 5, "expr": 'org_id == "' + orgID + '"'})
+                                             search_kwargs={"k": 5, "expr": 'org_id == "' + partitionID + '"'})
 
     llm = AzureChatOpenAI(
         #     temperature=0.3,
@@ -167,8 +168,8 @@ def format_docs(docs):
     return "\n\n".join(str({"api_details": doc.metadata, "api_spec": doc.page_content}) for doc in docs)
 
 
-def prepare_rag_chain(tenant_domain: str, orgID: str, stream=False):
-    retriever = get_retriever(tenant_domain, orgID)
+def prepare_rag_chain(tenant_domain: str, partitionID: str, stream=False):
+    retriever = get_retriever(tenant_domain, partitionID)
 
     llm = AzureChatOpenAI(
         #     temperature=0.3,
@@ -181,9 +182,9 @@ def prepare_rag_chain(tenant_domain: str, orgID: str, stream=False):
 
     contextualize_q_system_prompt = """You are a API Marketplace assistant. \
     Given a chat history and the latest user question \
-    which might reference context in the chat history, formulate a standalone question \
+    which might reference context in the chat history, formulate a standalone question that should be a replacement for the human's question \
     which can be understood without the chat history. \
-    Here, the human is a Application developer trying to interact with you. \
+    Here, the human is an Application developer trying to interact with you. \
     Strict Condition: Do NOT answer the question!!, just reformulate it if needed and otherwise return it as is \
     Please ignore the history if the latest question is not relevant to the history"""
     contextualize_q_prompt = ChatPromptTemplate.from_messages(
@@ -268,22 +269,25 @@ async def prepare_history(history: list):
 
 
 async def generate_response(
-        tenant_domain: str, message: str, history: list, orgID: str
+        tenant_domain: str, message: str, history: list, partitionID: str
 ):
     results = await asyncio.gather(
-        in_thread(prepare_rag_chain, tenant_domain, orgID),
+        in_thread(prepare_rag_chain, tenant_domain, partitionID),
         prepare_history(history),
     )
     rag_chain = results[0]
     chat_history = results[1]
 
-    return (rag_chain.invoke({
-        "question": message,
-        "chat_history": chat_history},
-        # config={
-        #     'callbacks': [ConsoleCallbackHandler()]
-        #     }
-    ))
+    
+    with get_openai_callback() as cb:
+        chain_response = rag_chain.invoke({
+            "question": message,
+            "chat_history": chat_history},
+            # config={
+            #     'callbacks': [ConsoleCallbackHandler()]
+            #     }
+        )
+    return (chain_response)
 
 
 # todo refactor the orgID to a proper format
@@ -433,9 +437,9 @@ def create_str_markdown(response):
 
 
 @api.post("/marketplace-assistant")
-async def marketplace_assistant(request: Query, orgID: str):
+async def marketplace_assistant(request: Query, keyID: str):
     response = await generate_response(tenant_domain=request.tenant_domain, message=request.query,
-                                       history=request.history, orgID=orgID)
+                                       history=request.history, partitionID=keyID)
 
     return parse_json(response.content)
 

@@ -7,8 +7,8 @@ url = os.getenv('MILVERSE_URL')
 collection_name = os.getenv("COLLECTION_NAME")
 create_collection = os.getenv("CREATE_COLLECTION", True)
 
+def upsert_vector_for_onprem(embed, orgID, keyID, api: API, tenant):
 
-def upsert_vector_for_onprem(embed, orgID, api: API, tenant):
     mc = MilvusClient(uri=url, token=api_key)
     if create_collection:
         has = mc.has_collection(collection_name)
@@ -22,7 +22,8 @@ def upsert_vector_for_onprem(embed, orgID, api: API, tenant):
             schema.add_field(field_name="api_type", datatype=DataType.VARCHAR, max_length=100)
             schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=1536)
             schema.add_field(field_name="page_content", datatype=DataType.VARCHAR, max_length=10000)
-            schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=512, is_partition_key=True)
+            schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=512)
+            schema.add_field(field_name="key_id", datatype=DataType.VARCHAR, max_length=512, is_partition_key=True)
             schema.add_field(field_name="tenant_domain", datatype=DataType.VARCHAR, max_length=512)
 
             index_params = mc.prepare_index_params()
@@ -47,19 +48,20 @@ def upsert_vector_for_onprem(embed, orgID, api: API, tenant):
             "api_version": api.version,
             "api_type": api.type
         },
-        "id": orgID + api.id,
+        "id": keyID + api.id,
         "vector": res,
         "api_type": api.type,
         "org_id": orgID,
+        "key_id": keyID,
         "tenant_domain": tenant
     }
     response = mc.upsert(collection_name=collection_name, data=payload)
     return response
 
 
-def delete_vector(uuid, orgID):
+def delete_vector(uuid, keyID):
     mc = MilvusClient(uri=url, token=api_key)
-    uuid = [orgID + id for id in uuid]
+    uuid = [keyID + id for id in uuid]
     res = mc.delete(
         collection_name=collection_name,
         ids=uuid
@@ -82,7 +84,8 @@ def upsert_bulk_vector_for_onprem(payload):
             schema.add_field(field_name="api_type", datatype=DataType.VARCHAR, max_length=100)
             schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=1536)
             schema.add_field(field_name="page_content", datatype=DataType.VARCHAR, max_length=10000)
-            schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=512,  is_partition_key=True)
+            schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=512)
+            schema.add_field(field_name="key_id", datatype=DataType.VARCHAR, max_length=512, is_partition_key=True)
             schema.add_field(field_name="tenant_domain", datatype=DataType.VARCHAR, max_length=512)
 
             index_params = mc.prepare_index_params()
