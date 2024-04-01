@@ -81,7 +81,7 @@ class ChoreoQuery(BaseModel):
     # tenant_domain: Optional[str] = None
 
 
-class ChoreResponse(BaseModel):
+class ChoreoResponse(BaseModel):
     content: str
     usage: dict
 
@@ -288,7 +288,7 @@ async def generate_response(
 
 async def generate_choreo_response(messages: list, orgID: str):
     history = []
-    response = ChoreResponse(content="", usage={})
+    response = ChoreoResponse(content="", usage={})
     results = await asyncio.gather(
         in_thread(prepare_rag_chain, None, orgID),
         prepare_history(history),
