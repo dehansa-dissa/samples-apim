@@ -286,6 +286,7 @@ async def generate_response(
     ))
 
 
+# todo refactor the orgID to a proper format
 async def generate_choreo_response(messages: list, orgID: str):
     history = []
     response = ChoreoResponse(content="", usage={})
@@ -312,6 +313,7 @@ async def generate_choreo_response(messages: list, orgID: str):
     if "apis" in assist_response_json.keys():
         table_markdown = create_table_markdown(assist_response_json["apis"])
         del assist_response_json["apis"]
+        # todo change the key names to constants
         assist_response_json["response"] = assist_response_json["response"] + table_markdown
 
     response.content = create_str_markdown(assist_response_json["response"])
