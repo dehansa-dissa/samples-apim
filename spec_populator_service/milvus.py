@@ -59,9 +59,9 @@ def upsert_vector_for_onprem(embed, orgID, keyID, api: API, tenant):
     return response
 
 
-def delete_vector(uuid, keyID):
+def delete_vector(uuid, record_id):
     mc = MilvusClient(uri=url, token=api_key)
-    uuid = [keyID + id for id in uuid]
+    uuid = [record_id + id for id in uuid]
     res = mc.delete(
         collection_name=collection_name,
         ids=uuid

@@ -1,7 +1,7 @@
 from milvus import *
 from fastapi import FastAPI
 from utils import *
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import asyncio
 import uvicorn
 from functools import partial
@@ -14,7 +14,7 @@ app = FastAPI()
 
 
 @app.post("/add_vector/{uuid}")
-async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: str | None = None):
+async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional[str] = None):
     # TODO: Handle 400 error if request info not sufficient (eg: no KeyID)
     if source == "apim":
         api_type = req["api_type"]
@@ -62,9 +62,12 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: str | No
 
 
 @app.delete("/remove_vector/{uuid}")
-async def remove_vector(uuid: str, keyID: str):
+async def remove_vector(uuid: str, keyID: Optional[str] = None, orgID: Optional[str] = None):
     loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(None, partial(delete_vector, [uuid], keyID))
+    if source == "apim":
+        response = await loop.run_in_executor(None, partial(delete_vector, [uuid], keyID))
+    elif source == "choreo":
+        response = await loop.run_in_executor(None, partial(delete_vector, [uuid], orgID))
 
     return {"message": response}
 
