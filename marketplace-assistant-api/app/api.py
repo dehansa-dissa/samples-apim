@@ -289,7 +289,6 @@ async def generate_response(
     return chain_response
 
 
-# todo refactor the orgID to a proper format
 async def generate_choreo_response(messages: list, org_id: str):
     history = []
     response = ChoreoResponse(content="", usage={})
@@ -314,22 +313,17 @@ async def generate_choreo_response(messages: list, org_id: str):
         ))
 
     assist_response_json = parse_choreo_json(assist_response.content)
-    if "apis" in assist_response_json.keys():
-        table_markdown = create_table_markdown(assist_response_json["apis"])
-        del assist_response_json["apis"]
-        # todo change the key names to constants
-        assist_response_json["response"] = assist_response_json["response"] + table_markdown
-
     response.content = create_str_markdown(assist_response_json["response"])
     response.usage = assist_response_json["usage"]
+
     return response
 
 
 async def generate_sse_response(
-        tenant_domain: str, message: str, history: list, orgID: str
+        tenant_domain: str, message: str, history: list, org_id: str
 ) -> AsyncGenerator[str, QuerySSEResponse]:
     results = await asyncio.gather(
-        in_thread(prepare_rag_chain, tenant_domain, orgID, True),
+        in_thread(prepare_rag_chain, tenant_domain, org_id, True),
         prepare_history(history),
     )
     rag_chain = results[0]
@@ -424,14 +418,6 @@ def parse_choreo_json(json_resp):
     return json_object
 
 
-def create_table_markdown(api_list):
-    table = "\n|API ID | API Name | API Version|\n"
-    table += "|------- | -------- | ----------|\n"
-    for api_info in api_list:
-        table += f"|{api_info['apiId']} | {api_info['apiName']} | {api_info['version']}|\n"
-    return table
-
-
 def create_str_markdown(response):
     return "\n" + response
 
@@ -457,7 +443,7 @@ async def marketplace_assistant_sse(
 ) -> StreamingResponse:
     return StreamingResponse(
         generate_sse_response(tenant_domain=request.tenant_domain, message=request.query, history=request.history,
-                              orgID=orgID),
+                              org_id=orgID),
         media_type="text/event-stream",
     )
 
