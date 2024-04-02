@@ -60,7 +60,7 @@ async def introspect(on_prem_key):
             async with session.post(introspect_endpoint, json={"key": on_prem_key}) as response:
                 if response.status == 200:
                     res_json = await response.json()
-                    res = [res_json["orgUuid"], res_json["status"]]
+                    res = [res_json["orgUuid"], res_json["handle"], res_json["status"]]
                     org_map[on_prem_key] = res
                     return res
                 else:
@@ -74,7 +74,7 @@ async def introspect(on_prem_key):
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
 async def prepare(req: dict, apiChatRequestId: str = Header(None), API_KEY: str = Header(None)):
     
-    [orgID, status] = await introspect(API_KEY)
+    [orgID, handle, status] = await introspect(API_KEY)
     if status == "ACTIVE":
         async with aiohttp.ClientSession() as session:
             headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
@@ -90,7 +90,7 @@ async def prepare(req: dict, apiChatRequestId: str = Header(None), API_KEY: str 
 @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
 async def execute(req: dict , apiChatRequestId: str = Header(None), API_KEY: str = Header(None)):
 
-    [orgID, status] = await introspect(API_KEY)
+    [orgID, handle, status] = await introspect(API_KEY)
     if status == "ACTIVE":
         async with aiohttp.ClientSession() as session:
             headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
@@ -106,7 +106,7 @@ async def execute(req: dict , apiChatRequestId: str = Header(None), API_KEY: str
 @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
 async def chat(req: dict, API_KEY: str = Header(None)):
 
-    [orgID, status] = await introspect(API_KEY)
+    [orgID, handle, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
         history_string = req["history"]
@@ -127,7 +127,7 @@ async def chat(req: dict, API_KEY: str = Header(None)):
 
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
-            async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'orgID':  orgID}, json=payload, headers=headers) as response:
+            async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'keyID': handle}, json=payload, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
@@ -139,13 +139,13 @@ async def chat(req: dict, API_KEY: str = Header(None)):
 @app.post("/ai/spec-populator/publish-api", status_code=status.HTTP_201_CREATED)
 async def publish_api(req: dict, API_KEY: str = Header(None)):
 
-    [orgID, status] = await introspect(API_KEY)
+    [orgID, handle, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             print(api_publisher_endpoint)
-            async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req, params={'orgID':  orgID}, headers=headers) as response:
+            async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req, params={'orgID': orgID, 'keyID': handle}, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
@@ -156,12 +156,12 @@ async def publish_api(req: dict, API_KEY: str = Header(None)):
 @app.delete("/ai/spec-populator/remove-api/{uuid}")
 async def remove_api(uuid : str, API_KEY: str = Header(None)):
     
-    [orgID, status] = await introspect(API_KEY)
+    [orgID, handle, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-            async with session.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'orgID':  orgID}, headers=headers) as response:
+            async with session.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'keyID': handle}, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
@@ -172,11 +172,11 @@ async def remove_api(uuid : str, API_KEY: str = Header(None)):
 @app.get("/ai/spec-populator/api-count")
 async def api_count(API_KEY: str = Header(None)):
 
-    [orgID, status] = await introspect(API_KEY)
+    [orgID, handle, status] = await introspect(API_KEY)
     if status == "ACTIVE":
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-            async with session.get(api_publisher_endpoint + "/api_count/" , params={'orgID':  orgID}, headers=headers) as response:
+            async with session.get(api_publisher_endpoint + "/api_count/" , params={'orgID': orgID}, headers=headers) as response:
                 if response.status == 200:
                     count = (await response.json())['count']
                     return {"count": count, "limit": 1000}
@@ -189,13 +189,13 @@ async def api_count(API_KEY: str = Header(None)):
 @app.post("/ai/spec-populator/bulk-upload")
 async def upload_bulk_apis(req: dict,API_KEY: str = Header(None)):
 
-    [orgID, status] = await introspect(API_KEY)
+    [orgID, handle, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             print(api_publisher_endpoint)
-            async with session.post(api_publisher_endpoint + '/bulk_add_vector', json=req, params={'orgID':  orgID}, headers=headers) as response:
+            async with session.post(api_publisher_endpoint + '/bulk_add_vector', json=req, params={'orgID': handle, 'keyID': handle}, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
