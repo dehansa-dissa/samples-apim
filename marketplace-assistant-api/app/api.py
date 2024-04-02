@@ -117,17 +117,17 @@ def get_vectorstore() -> Milvus:
     return vectorstore
 
 
-def get_retriever(tenant_domain, partitionID) -> MultiQueryRetriever:
+def get_retriever(tenant_domain, partition_id) -> MultiQueryRetriever:
     vectorstore = get_vectorstore()
     # TODO: Try adding a Self Query retriever
     # Incorporate score based filtering mechanism once Milverse introduces it
     if SOURCE_PLATFORM == APIM:
         retriever = vectorstore.as_retriever(search_type="similarity",
                                              search_kwargs={"k": 5,
-                                                            "expr": 'key_id == "' + partitionID + '" && tenant_domain == "' + tenant_domain + '"'})
+                                                            "expr": 'key_id == "' + partition_id + '" && tenant_domain == "' + tenant_domain + '"'})
     elif SOURCE_PLATFORM == CHOREO:
         retriever = vectorstore.as_retriever(search_type="similarity",
-                                             search_kwargs={"k": 5, "expr": 'org_id == "' + partitionID + '"'})
+                                             search_kwargs={"k": 5, "expr": 'org_id == "' + partition_id + '"'})
 
     llm = AzureChatOpenAI(
         #     temperature=0.3,
@@ -168,8 +168,8 @@ def format_docs(docs):
     return "\n\n".join(str({"api_details": doc.metadata, "api_spec": doc.page_content}) for doc in docs)
 
 
-def prepare_rag_chain(tenant_domain: str, partitionID: str, stream=False):
-    retriever = get_retriever(tenant_domain, partitionID)
+def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
+    retriever = get_retriever(tenant_domain, partition_id)
 
     llm = AzureChatOpenAI(
         #     temperature=0.3,
@@ -278,7 +278,6 @@ async def generate_response(
     rag_chain = results[0]
     chat_history = results[1]
 
-    
     with get_openai_callback() as cb:
         chain_response = rag_chain.invoke({
             "question": message,
@@ -287,15 +286,15 @@ async def generate_response(
             #     'callbacks': [ConsoleCallbackHandler()]
             #     }
         )
-    return (chain_response)
+    return chain_response
 
 
 # todo refactor the orgID to a proper format
-async def generate_choreo_response(messages: list, orgID: str):
+async def generate_choreo_response(messages: list, org_id: str):
     history = []
     response = ChoreoResponse(content="", usage={})
     results = await asyncio.gather(
-        in_thread(prepare_rag_chain, None, orgID),
+        in_thread(prepare_rag_chain, None, org_id),
         prepare_history(history),
     )
     rag_chain = results[0]
@@ -305,13 +304,14 @@ async def generate_choreo_response(messages: list, orgID: str):
     for message in messages:
         questions = questions + message + "\n"
 
-    assist_response = (rag_chain.invoke({
-        "question": questions,
-        "chat_history": chat_history},
-        # config={
-        #     'callbacks': [ConsoleCallbackHandler()]
-        #     }
-    ))
+    with get_openai_callback() as cb:
+        assist_response = (rag_chain.invoke({
+            "question": questions,
+            "chat_history": chat_history},
+            # config={
+            #     'callbacks': [ConsoleCallbackHandler()]
+            #     }
+        ))
 
     assist_response_json = parse_choreo_json(assist_response.content)
     if "apis" in assist_response_json.keys():
@@ -446,7 +446,7 @@ async def marketplace_assistant(request: Query, keyID: str):
 
 @api.post("/choreo-marketplace-assistant")
 async def marketplace_assistant(request: ChoreoQuery, orgID: str):
-    response = await generate_choreo_response(messages=request.questions, orgID=orgID)
+    response = await generate_choreo_response(messages=request.questions, org_id=orgID)
 
     return response
 
