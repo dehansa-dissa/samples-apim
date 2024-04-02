@@ -312,7 +312,7 @@ async def generate_choreo_response(messages: list, org_id: str):
             #     }
         ))
 
-    assist_response_json = parse_choreo_json(assist_response.content)
+    assist_response_json = parse_choreo_json(assist_response.content, cb)
     response.content = create_str_markdown(assist_response_json["response"])
     response.usage = assist_response_json["usage"]
 
@@ -397,22 +397,22 @@ def parse_json(json_resp):
     return json_object
 
 
-def parse_choreo_json(json_resp):
+def parse_choreo_json(json_resp, token_usage):
     try:
         json_object = json.loads(json_resp)
         # todo get the correct token counts
         if "usage" not in json_object:
             json_object["usage"] = {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0
+                "prompt_tokens": token_usage.prompt_tokens,
+                "completion_tokens": token_usage.completion_tokens,
+                "total_tokens": token_usage.total_tokens
             }
     except ValueError as e:
         return {"response": json_resp,
                 "usage": {
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "total_tokens": 0
+                    "prompt_tokens": token_usage.prompt_tokens,
+                    "completion_tokens": token_usage.completion_tokens,
+                    "total_tokens": token_usage.total_tokens
                 }
                 }
     return json_object
