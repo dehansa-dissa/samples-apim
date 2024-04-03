@@ -117,13 +117,13 @@ def upsert_vector_for_choreo(embed, orgID, api: API):
                 auto_id=False,
                 enable_dynamic_field=False,
             )
-            schema.add_field(field_name="id", datatype=DataType.VARCHAR, is_primary=True, max_length=100)
-            schema.add_field(field_name="metadata", datatype=DataType.JSON, max_length=2000)
-            schema.add_field(field_name="api_type", datatype=DataType.VARCHAR, max_length=100)
-            schema.add_field(field_name="api_name", datatype=DataType.VARCHAR, max_length=100)
+            schema.add_field(field_name="id", datatype=DataType.VARCHAR, is_primary=True, max_length=65000)
+            schema.add_field(field_name="metadata", datatype=DataType.JSON, max_length=65000)
+            schema.add_field(field_name="api_type", datatype=DataType.VARCHAR, max_length=65000)
+            schema.add_field(field_name="api_name", datatype=DataType.VARCHAR, max_length=65000)
             schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=1536)
-            schema.add_field(field_name="page_content", datatype=DataType.VARCHAR, max_length=10000)
-            schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=512, is_partition_key=True)
+            schema.add_field(field_name="page_content", datatype=DataType.VARCHAR, max_length=65000)
+            schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=65000, is_partition_key=True)
 
             index_params = mc.prepare_index_params()
 
