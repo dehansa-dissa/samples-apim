@@ -172,7 +172,7 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
     retriever = get_retriever(tenant_domain, partition_id)
 
     llm = AzureChatOpenAI(
-            temperature=0.3,
+        temperature=0.3,
         model_name="gpt-35-turbo",
         #     max_tokens=2048,
         deployment_name=AZURE_CHAT_DEPLOYMENT,
