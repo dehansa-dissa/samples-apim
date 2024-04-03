@@ -172,7 +172,7 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
     retriever = get_retriever(tenant_domain, partition_id)
 
     llm = AzureChatOpenAI(
-        #     temperature=0.3,
+        temperature=0.3,
         model_name="gpt-35-turbo",
         #     max_tokens=2048,
         deployment_name=AZURE_CHAT_DEPLOYMENT,
@@ -180,13 +180,10 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
         azure_endpoint=AZURE_ENDPOINT,
     )
 
-    contextualize_q_system_prompt = """You are a API Marketplace assistant. \
-    Given a chat history and the latest user question \
-    which might reference context in the chat history, formulate a standalone question that should be a replacement for the human's question \
-    which can be understood without the chat history. \
-    Here, the human is an Application developer trying to interact with you. \
-    Strict Condition: Do NOT answer the question!!, just reformulate it if needed and otherwise return it as is \
-    Please ignore the history if the latest question is not relevant to the history"""
+    contextualize_q_system_prompt = """You are a helpful assistant. Based on the chat history, please rephrase the final user’s question into a standalone question. \
+    STRICT CONDITION: DO NOT ANSWER THE QUESTION!!, just reformulate it if needed and otherwise return it as is \
+    Please ignore the history if the latest question is not relevant to the history
+    Make sure to reference any relevant API names from the history in the new question"""
     contextualize_q_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", contextualize_q_system_prompt),
@@ -218,7 +215,7 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
             Context: {context}"""
     else:
         qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
-            recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you don't know politely.
+            recommend all relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you are not aware of such an API politely.
             Understand the provided context and IGNORE the APIs that does not match the human question. 
             Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
             Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
