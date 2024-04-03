@@ -211,7 +211,7 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
         else:
             qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. Who only speak correct markdown text. Based on the provided API details, 
             recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you don't know politely.
-            Understand the provided context and IGNORE the APIs that does not match the human question. DO NOT SHOW ANY URLs in the response. 
+            Understand the provided context and IGNORE the APIs that does not match the human question. DO NOT SHOW ANY URLS including REDIRECT URLS in the response. 
             Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
             Only recommend APIs that are specified in the context and avoid including made-up APIs.
             Given below are the actual API context you need to use to construct the response.
@@ -289,7 +289,6 @@ async def generate_response(
     return chain_response
 
 
-# todo refactor the orgID to a proper format
 async def generate_choreo_response(messages: list, org_id: str):
     history = []
     response = ChoreoResponse(content="", usage={})
@@ -313,23 +312,18 @@ async def generate_choreo_response(messages: list, org_id: str):
             #     }
         ))
 
-    assist_response_json = parse_choreo_json(assist_response.content)
-    if "apis" in assist_response_json.keys():
-        table_markdown = create_table_markdown(assist_response_json["apis"])
-        del assist_response_json["apis"]
-        # todo change the key names to constants
-        assist_response_json["response"] = assist_response_json["response"] + table_markdown
-
+    assist_response_json = parse_choreo_json(assist_response.content, cb)
     response.content = create_str_markdown(assist_response_json["response"])
     response.usage = assist_response_json["usage"]
+
     return response
 
 
 async def generate_sse_response(
-        tenant_domain: str, message: str, history: list, orgID: str
+        tenant_domain: str, message: str, history: list, org_id: str
 ) -> AsyncGenerator[str, QuerySSEResponse]:
     results = await asyncio.gather(
-        in_thread(prepare_rag_chain, tenant_domain, orgID, True),
+        in_thread(prepare_rag_chain, tenant_domain, org_id, True),
         prepare_history(history),
     )
     rag_chain = results[0]
@@ -403,33 +397,25 @@ def parse_json(json_resp):
     return json_object
 
 
-def parse_choreo_json(json_resp):
+def parse_choreo_json(json_resp, token_usage):
     try:
         json_object = json.loads(json_resp)
         # todo get the correct token counts
         if "usage" not in json_object:
             json_object["usage"] = {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0
+                "prompt_tokens": token_usage.prompt_tokens,
+                "completion_tokens": token_usage.completion_tokens,
+                "total_tokens": token_usage.total_tokens
             }
     except ValueError as e:
         return {"response": json_resp,
                 "usage": {
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "total_tokens": 0
+                    "prompt_tokens": token_usage.prompt_tokens,
+                    "completion_tokens": token_usage.completion_tokens,
+                    "total_tokens": token_usage.total_tokens
                 }
                 }
     return json_object
-
-
-def create_table_markdown(api_list):
-    table = "\n|API ID | API Name | API Version|\n"
-    table += "|------- | -------- | ----------|\n"
-    for api_info in api_list:
-        table += f"|{api_info['apiId']} | {api_info['apiName']} | {api_info['version']}|\n"
-    return table
 
 
 def create_str_markdown(response):
@@ -457,7 +443,7 @@ async def marketplace_assistant_sse(
 ) -> StreamingResponse:
     return StreamingResponse(
         generate_sse_response(tenant_domain=request.tenant_domain, message=request.query, history=request.history,
-                              orgID=orgID),
+                              org_id=orgID),
         media_type="text/event-stream",
     )
 

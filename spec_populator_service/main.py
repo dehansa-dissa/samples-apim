@@ -44,6 +44,7 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional
         response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, keyID, api,
                                                             req["tenant_domain"]))
     elif source == "choreo":
+        # TODO: Implement for APIs other that REST
         record = await pre_process_openapi(req["api_spec"])
         record["apim_description"] = req["description"]
         api = API(
