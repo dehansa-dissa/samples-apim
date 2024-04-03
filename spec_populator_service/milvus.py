@@ -160,11 +160,11 @@ def upsert_vector_for_choreo(embed, orgID, api: API):
     return response
 
 
-def get_vector_count_for_onprem(orgID):
+def get_vector_count_for_org(org_id):
     mc = MilvusClient(uri=url, token=api_key)
     res = mc.query(
         collection_name=collection_name,
-        filter= f'(org_id == "{orgID}")',
+        filter= f'(org_id == "{org_id}")',
         output_fields=["count(*)"],
     )
     return res
