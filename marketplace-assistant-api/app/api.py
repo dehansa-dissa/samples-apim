@@ -386,14 +386,16 @@ async def process_sse_response(stage, token_content):
 
     return stage, token_content
 
-
 def parse_json(json_resp):
     try:
         json_object = json.loads(json_resp)
+        #Handle the case where the LLM responds with the key name instead of apiName
+        if "name" in json_object:
+            json_object["apiName"] = json_object["name"]
+            del json_object["name"]
     except ValueError as e:
         return {"response": json_resp, "apis": []}
     return json_object
-
 
 def parse_choreo_json(json_resp, token_usage):
     try:
