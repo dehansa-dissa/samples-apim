@@ -183,7 +183,8 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
     contextualize_q_system_prompt = """You are a helpful assistant. Based on the chat history, please rephrase the final user’s question into a standalone question. \
     STRICT CONDITION: DO NOT ANSWER THE QUESTION!!, just reformulate it if needed and otherwise return it as is \
     Please ignore the history if the latest question is not relevant to the history
-    Make sure to reference any relevant API names from the history in the new question"""
+    Make sure to reference any relevant API names from the history in the new question
+    If the human question is not a valid english language text, return it as it is"""
     contextualize_q_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", contextualize_q_system_prompt),
