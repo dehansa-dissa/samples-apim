@@ -39,7 +39,7 @@ class API:
 class ReducedOpenAPISpec:
     title: str
     description: str
-    servers: List[dict]
+    # servers: List[dict]
     endpoints: List[Tuple[str, Union[str, None], dict]]
 
 @dataclass
@@ -72,6 +72,7 @@ async def reduce_asyncapi_spec(spec: Dict) -> ReducedAsyncAPISpec:
         channels=channels
     )
 
+
 async def reduce_openapi_spec(spec: dict) -> ReducedOpenAPISpec:
     """Simplify the spec. Aim is to have a smaller target for retrieval and more importantly, a smaller results from retrieval."""
     # 1. Consider only get, post, patch, delete endpoints.
@@ -85,7 +86,7 @@ async def reduce_openapi_spec(spec: dict) -> ReducedOpenAPISpec:
     return ReducedOpenAPISpec(
         title=spec["info"].get("title", ""),
         description=spec["info"].get("description", ""),
-        servers=spec.get("servers"),
+        # servers=spec.get("servers"),
 #         licence=spec["info"].get("licence", "").get("name", ""),
         endpoints=endpoints,
     )
