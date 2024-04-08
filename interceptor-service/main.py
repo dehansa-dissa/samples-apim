@@ -83,7 +83,7 @@ async def fetch_api_count(orgID):
         async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID}) as response:
             if response.status == 200:
                 count = (await response.json())['count']
-                return {"count": count, "limit": 1000}
+                return count
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
@@ -156,7 +156,8 @@ async def publish_api(req: dict, API_KEY: str = Header(None)):
     [orgID, handle, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
-        if fetch_api_count(orgID) >= 1000:
+        count = await fetch_api_count(orgID)
+        if count <= 1000:
             async with aiohttp.ClientSession() as session:
                 headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
                 async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req,
@@ -191,7 +192,7 @@ async def api_count(API_KEY: str = Header(None)):
     [orgID, handle, status] = await introspect(API_KEY)
     if status == "ACTIVE":
         count = await fetch_api_count(orgID)
-        return count
+        return {"count": count, "limit": 1000}
     else:
         raise HTTPException(status_code=401, detail="Your key has expired")
 
