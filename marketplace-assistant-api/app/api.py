@@ -215,9 +215,10 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
             Given below are the actual API context you need to use to construct the response.
             Context: {context}"""
     else:
-        qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
-            recommend all relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you are not aware of such an API politely.
-            Understand the provided context and IGNORE the APIs that does not match the human question. 
+        qa_system_prompt = """You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
+            recommend all relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. 
+            Strict Condition: If you can't find the API from the context, Just say that you are not aware of such an API politely. Please don't share false information!
+            Understand the provided context, which is are the only APIs you are aware of and IGNORE the APIs that does not match the human question. 
             Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
             Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
               {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
