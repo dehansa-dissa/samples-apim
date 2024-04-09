@@ -165,7 +165,10 @@ def get_retriever(tenant_domain, partition_id) -> MultiQueryRetriever:
 
 
 def format_docs(docs):
-    return "\n\n".join(str({"api_details": doc.metadata, "api_spec": doc.page_content}) for doc in docs)
+    if not docs:
+        return ["No API information available!"]
+    else:
+        return "\n\n".join(str({"api_details": doc.metadata, "api_spec": doc.page_content}) for doc in docs)
 
 
 def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
@@ -278,7 +281,7 @@ async def generate_response(
     chat_history = results[1]
 
     with get_openai_callback() as cb:
-        chain_response = rag_chain.invoke({
+        chain_response = await rag_chain.ainvoke({
             "question": message,
             "chat_history": chat_history},
             # config={
