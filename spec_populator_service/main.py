@@ -45,13 +45,18 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional
                                                             req["tenant_domain"]))
     elif source == "choreo":
         # TODO: Implement for APIs other that REST
-        api_type = req["api_type"]
-        if api_type == "REST":
-            record = await pre_process_openapi(req["api_spec"])
-        elif api_type == "GRAPHQL":
-            record = await pre_process_graphql_sdl(req["sdl_schema"])
-        elif api_type == "ASYNC":
-            record = await pre_process_asyncapi_def(req["async_spec"])
+
+        # Since we only have REST APIs in Choreo, we can directly process the OpenAPI spec
+        record = await pre_process_openapi(req["api_spec"])
+
+        # Commenting out the below code since we only have REST APIs in Choreo
+        # api_type = req["api_type"]
+        # if api_type == "REST":
+        #     record = await pre_process_openapi(req["api_spec"])
+        # elif api_type == "GRAPHQL":
+        #     record = await pre_process_graphql_sdl(req["sdl_schema"])
+        # elif api_type == "ASYNC":
+        #     record = await pre_process_asyncapi_def(req["async_spec"])
 
         # record = await pre_process_openapi(req["api_spec"])
         record["apim_description"] = req["description"]
