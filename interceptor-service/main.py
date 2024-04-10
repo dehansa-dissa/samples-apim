@@ -71,8 +71,8 @@ async def introspect(on_prem_key):
                 return [res_json["orgUuid"], res_json["handle"], res_json["status"]]
             else:
                 responseMessage = await response.text()
-                if "invalid key" in responseMessage:
-                    raise HTTPException(status_code=401, detail="Provided key is invalid")
+                if "invalid key" in responseMessage or "expired" in responseMessage:
+                    raise HTTPException(status_code=401, detail="Provided key is invalid or expired")
                 else:
                     raise HTTPException(status_code=response.status, detail=responseMessage)
 
