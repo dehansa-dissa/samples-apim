@@ -7,8 +7,8 @@ url = os.getenv('MILVERSE_URL')
 collection_name = os.getenv("COLLECTION_NAME")
 create_collection = os.getenv("CREATE_COLLECTION", True)
 
-def upsert_vector_for_onprem(embed, orgID, keyID, api: API, tenant):
 
+def upsert_vector_for_onprem(embed, orgID, keyID, api: API, tenant):
     mc = MilvusClient(uri=url, token=api_key)
     if create_collection:
         has = mc.has_collection(collection_name)
@@ -70,7 +70,6 @@ def delete_vector(uuid, record_id):
 
 
 def upsert_bulk_vector_for_onprem(payload):
-
     mc = MilvusClient(uri=url, token=api_key)
     if create_collection:
         has = mc.has_collection(collection_name)
@@ -101,29 +100,27 @@ def upsert_bulk_vector_for_onprem(payload):
                 schema=schema,
                 index_params=index_params
             )
-    
+
     response = mc.insert(collection_name=collection_name, data=payload)
     return response
 
 
 def upsert_vector_for_choreo(embed, orgID, api: API):
-
     mc = MilvusClient(uri=url, token=api_key)
     if create_collection:
         has = mc.has_collection(collection_name)
         if not has:
-
             schema = MilvusClient.create_schema(
                 auto_id=False,
                 enable_dynamic_field=False,
             )
-            schema.add_field(field_name="id", datatype=DataType.VARCHAR, is_primary=True, max_length=100)
-            schema.add_field(field_name="metadata", datatype=DataType.JSON, max_length=2000)
-            schema.add_field(field_name="api_type", datatype=DataType.VARCHAR, max_length=100)
-            schema.add_field(field_name="api_name", datatype=DataType.VARCHAR, max_length=100)
+            schema.add_field(field_name="id", datatype=DataType.VARCHAR, is_primary=True, max_length=65000)
+            schema.add_field(field_name="metadata", datatype=DataType.JSON, max_length=65000)
+            schema.add_field(field_name="api_type", datatype=DataType.VARCHAR, max_length=65000)
+            schema.add_field(field_name="api_name", datatype=DataType.VARCHAR, max_length=65000)
             schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=1536)
-            schema.add_field(field_name="page_content", datatype=DataType.VARCHAR, max_length=10000)
-            schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=512, is_partition_key=True)
+            schema.add_field(field_name="page_content", datatype=DataType.VARCHAR, max_length=65000)
+            schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=65000, is_partition_key=True)
 
             index_params = mc.prepare_index_params()
 
@@ -160,12 +157,11 @@ def upsert_vector_for_choreo(embed, orgID, api: API):
     return response
 
 
-def get_vector_count_for_onprem(orgID):
+def get_vector_count_for_org(org_id):
     mc = MilvusClient(uri=url, token=api_key)
     res = mc.query(
         collection_name=collection_name,
-        filter= f'(org_id == "{orgID}")',
+        filter=f'(org_id == "{org_id}")',
         output_fields=["count(*)"],
     )
     return res
-

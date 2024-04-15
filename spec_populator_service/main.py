@@ -45,7 +45,15 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional
                                                             req["tenant_domain"]))
     elif source == "choreo":
         # TODO: Implement for APIs other that REST
-        record = await pre_process_openapi(req["api_spec"])
+        api_type = req["api_type"]
+        if api_type == "REST":
+            record = await pre_process_openapi(req["api_spec"])
+        elif api_type == "GRAPHQL":
+            record = await pre_process_graphql_sdl(req["sdl_schema"])
+        elif api_type == "ASYNC":
+            record = await pre_process_asyncapi_def(req["async_spec"])
+
+        # record = await pre_process_openapi(req["api_spec"])
         record["apim_description"] = req["description"]
         api = API(
             id=uuid,
@@ -135,6 +143,6 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
 @app.get("/api_count")
 async def get_api_count(orgID: str):
     loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(None, partial(get_vector_count_for_onprem, orgID))
+    response = await loop.run_in_executor(None, partial(get_vector_count_for_org, orgID))
     print(response[0]["count(*)"])
     return {"count": response[0]["count(*)"]}
