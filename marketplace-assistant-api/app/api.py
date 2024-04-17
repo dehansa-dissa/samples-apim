@@ -165,14 +165,17 @@ def get_retriever(tenant_domain, partition_id) -> MultiQueryRetriever:
 
 
 def format_docs(docs):
-    return "\n\n".join(str({"api_details": doc.metadata, "api_spec": doc.page_content}) for doc in docs)
+    if not docs:
+        return ["No API information available!"]
+    else:
+        return "\n\n".join(str({"api_details": doc.metadata, "api_spec": doc.page_content}) for doc in docs)
 
 
 def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
     retriever = get_retriever(tenant_domain, partition_id)
 
     llm = AzureChatOpenAI(
-        #     temperature=0.3,
+        temperature=0.3,
         model_name="gpt-35-turbo",
         #     max_tokens=2048,
         deployment_name=AZURE_CHAT_DEPLOYMENT,
@@ -180,13 +183,11 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
         azure_endpoint=AZURE_ENDPOINT,
     )
 
-    contextualize_q_system_prompt = """You are a API Marketplace assistant. \
-    Given a chat history and the latest user question \
-    which might reference context in the chat history, formulate a standalone question that should be a replacement for the human's question \
-    which can be understood without the chat history. \
-    Here, the human is an Application developer trying to interact with you. \
-    Strict Condition: Do NOT answer the question!!, just reformulate it if needed and otherwise return it as is \
-    Please ignore the history if the latest question is not relevant to the history"""
+    contextualize_q_system_prompt = """You are a helpful assistant. Based on the chat history, please rephrase the final user’s question into a standalone question. \
+    STRICT CONDITION: DO NOT ANSWER THE QUESTION!!, just reformulate it if needed and otherwise return it as is \
+    Please ignore the history if the latest question is not relevant to the history
+    Make sure to reference any relevant API names from the history in the new question
+    If the human question is not a valid english language text, return it as it is"""
     contextualize_q_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", contextualize_q_system_prompt),
@@ -210,16 +211,17 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
             Context: {context}"""
         else:
             qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. Who only speak correct markdown text. Based on the provided API details, 
-            recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you don't know politely.
-            Understand the provided context and IGNORE the APIs that does not match the human question. DO NOT SHOW ANY URLs in the response. 
+            recommend all relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you are not aware of such an API politely.
+            Understand the provided context and IGNORE the APIs that does not match the human question. DO NOT SHOW ANY URLS including REDIRECT URLS in the response. 
             Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
             Only recommend APIs that are specified in the context and avoid including made-up APIs.
             Given below are the actual API context you need to use to construct the response.
             Context: {context}"""
     else:
-        qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
-            recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you don't know politely.
-            Understand the provided context and IGNORE the APIs that does not match the human question. 
+        qa_system_prompt = """You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
+            recommend all relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. 
+            Strict Condition: If you can't find the API from the context, Just say that you are not aware of such an API politely. Please don't share false information!
+            Understand the provided context, which is are the only APIs you are aware of and IGNORE the APIs that does not match the human question. 
             Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
             Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
               {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
@@ -279,7 +281,7 @@ async def generate_response(
     chat_history = results[1]
 
     with get_openai_callback() as cb:
-        chain_response = rag_chain.invoke({
+        chain_response = await rag_chain.ainvoke({
             "question": message,
             "chat_history": chat_history},
             # config={
@@ -388,14 +390,16 @@ async def process_sse_response(stage, token_content):
 
     return stage, token_content
 
-
 def parse_json(json_resp):
     try:
         json_object = json.loads(json_resp)
+        #Handle the case where the LLM responds with the key name instead of apiName
+        if "name" in json_object:
+            json_object["apiName"] = json_object["name"]
+            del json_object["name"]
     except ValueError as e:
         return {"response": json_resp, "apis": []}
     return json_object
-
 
 def parse_choreo_json(json_resp, token_usage):
     try:
