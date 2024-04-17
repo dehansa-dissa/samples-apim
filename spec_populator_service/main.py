@@ -93,11 +93,11 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
         for api_details in api_details_list:
 
             api_type = api_details["api_type"]
-            if api_type == "REST":
+            if api_type == "REST" or api_type == "HTTP" or api_type == "SOAP" or api_type == "SOAPTOREST" or api_type == "APIPRODUCT":
                 record = await pre_process_openapi(api_details["api_spec"])
             elif api_type == "GRAPHQL":
                 record = await pre_process_graphql_sdl(api_details["sdl_schema"])
-            elif api_type == "ASYNC":
+            elif api_type == "ASYNC" or api_type == "WS" or api_type == "WEBSUB" or api_type == "SSE" or api_type == "WEBHOOK":
                 record = await pre_process_asyncapi_def(api_details["async_spec"])
             
             # Add available subscription plans
@@ -146,3 +146,11 @@ async def get_api_count(orgID: str):
     response = await loop.run_in_executor(None, partial(get_vector_count_for_org, orgID))
     print(response[0]["count(*)"])
     return {"count": response[0]["count(*)"]}
+
+@app.delete("/bulk_remove_vector")
+async def bulk_remove_vector(orgID: str, keyID: str):
+
+    if source == "apim":
+
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, partial(delete_bulk_vector_for_onprem, orgID, keyID))

@@ -121,6 +121,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /bulk_remove_vector:
+    delete:
+      summary: Bulk Remove Vector
+      operationId: bulk_remove_vector_bulk_remove_vector_delete
+      parameters:
+        - name: orgID
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Orgid
+        - name: keyID
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Keyid
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     HTTPValidationError:
