@@ -14,6 +14,14 @@ introspect_endpoint = os.getenv("INTROSPECTION_ENDPOINT")
 marketplace_chat_access_token = os.getenv("MARKETPLACE_CHAT_ENDPOINT_TOKEN")
 api_publisher_endpoint_access_token = os.getenv("API_PUBLISHER_ENDPOINT_ACCESS_TOKEN")
 
+# api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
+# marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
+# api_publisher_endpoint = os.getenv("API_PUBLISHER_ENDPOINT", "http://localhost:8000")
+# api_chat_access_token = os.getenv("API_CHAT_ENDPOINT_ACCESS_TOKEN")
+# introspect_endpoint = os.getenv("INTROSPECTION_ENDPOINT", "https://apis.choreo.dev/onprem-key-mgt/1.0.0/orgs/keys/introspect")
+# marketplace_chat_access_token = os.getenv("MARKETPLACE_CHAT_ENDPOINT_TOKEN")
+# api_publisher_endpoint_access_token = os.getenv("API_PUBLISHER_ENDPOINT_ACCESS_TOKEN", "")
+
 cache = SimpleMemoryCache()
 
 class Message(BaseModel):
@@ -231,6 +239,23 @@ async def upload_bulk_apis(req: dict, API_KEY: str = Header(None)):
 
 @app.delete("/ai/spec-populator/bulk-remove")
 async def remove_bulk_apis(API_KEY: str = Header(None)):
+    [orgID, handle, status] = await introspect(API_KEY)
+
+    if status == "ACTIVE":
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+            async with session.delete(api_publisher_endpoint + '/bulk_remove_vector',
+                                    params={'orgID': handle, 'keyID': handle}, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
+    else:
+        raise HTTPException(status_code=401, detail="Your key has expired")
+
+@app.delete("/ai/spec-populator/bulk-remove")
+async def remove_bulk_apis(API_KEY: str = Header(None)):
+    # print(API_KEY)
     [orgID, handle, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
