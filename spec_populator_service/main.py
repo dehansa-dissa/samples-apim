@@ -15,32 +15,36 @@ source = os.getenv("SOURCE_PLATFORM", "apim")
 app = FastAPI()
 
 
+async def get_pre_processed_spec(api_details):
+    api_type = api_details["api_type"]
+    if api_type == "APIPRODUCT":
+        api_type = "HTTP"
+        record = await pre_process_openapi(api_details["api_spec"])
+    elif api_type == "REST" or api_type == "HTTP" or api_type == "SOAP" or api_type == "SOAPTOREST":
+        record = await pre_process_openapi(api_details["api_spec"])
+    elif api_type == "GRAPHQL":
+        record = await pre_process_graphql_sdl(api_details["sdl_schema"])
+    elif api_type == "ASYNC" or api_type == "WS" or api_type == "WEBSUB" or api_type == "SSE" or api_type == "WEBHOOK":
+        record = await pre_process_asyncapi_def(api_details["async_spec"])
+
+    record["apim_description"] = api_details["description"]
+    api = API(
+        id=api_details["uuid"],
+        # The actual version is used instead of what is in the Spec,
+        # since we know this is the truth, and the spec version can be outdated
+        version=api_details["version"],
+        type=api_type,
+        name=api_details["api_name"],
+        spec=record
+    )
+    return api
+
+
 @app.post("/add_vector/{uuid}")
 async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional[str] = None):
     # TODO: Handle 400 error if request info not sufficient (eg: no KeyID)
     if source == "apim":
-        api_type = req["api_type"]
-        if api_type == "APIPRODUCT":
-            api_type = "HTTP"
-            record = await pre_process_openapi(req["api_spec"])
-        elif api_type == "REST" or api_type == "HTTP" or api_type == "SOAP" or api_type == "SOAPTOREST":
-            record = await pre_process_openapi(req["api_spec"])
-        elif api_type == "GRAPHQL":
-            record = await pre_process_graphql_sdl(req["sdl_schema"])
-        elif api_type == "ASYNC" or api_type == "WS" or api_type == "WEBSUB" or api_type == "SSE" or api_type == "WEBHOOK":
-            record = await pre_process_asyncapi_def(req["async_spec"])
-
-        # Add available subscription plans
-        record["apim_description"] = req["description"]
-        api = API(
-            id=uuid,
-            # The actual version is used instead of what is in the Spec,
-            # since we know this is the truth, and the spec version can be outdated
-            version=req["version"],
-            type=api_type,
-            name=req["api_name"],
-            spec=record
-        )
+        api = get_pre_processed_spec(req)
 
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, keyID, api,
@@ -92,26 +96,7 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
     if source == "apim":
 
         for api_details in api_details_list:
-
-            api_type = api_details["api_type"]
-            if api_type == "REST":
-                record = await pre_process_openapi(api_details["api_spec"])
-            elif api_type == "GRAPHQL":
-                record = await pre_process_graphql_sdl(api_details["sdl_schema"])
-            elif api_type == "ASYNC":
-                record = await pre_process_asyncapi_def(api_details["async_spec"])
-
-            # Add available subscription plans
-            record["apim_description"] = api_details["description"]
-            api = API(
-                id=api_details["uuid"],
-                # The actual version is used instead of what is in the Spec,
-                # since we know this is the truth, and the spec version can be outdated
-                version=api_details["version"],
-                type=api_details["api_type"],
-                name=api_details["api_name"],
-                spec=record
-            )
+            api = get_pre_processed_spec(api_details)
 
             res = embed.embed_query(str(api.__dict__))
             payload = {
@@ -147,3 +132,10 @@ async def get_api_count(orgID: str):
     response = await loop.run_in_executor(None, partial(get_vector_count_for_org, orgID))
     print(response[0]["count(*)"])
     return {"count": response[0]["count(*)"]}
+
+
+@app.delete("/bulk_remove_vector")
+async def bulk_remove_vector(orgID: str, keyID: str):
+    if source == "apim":
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, partial(delete_bulk_vector_for_onprem, orgID, keyID))

@@ -217,6 +217,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /ai/spec-populator/bulk-remove:
+    delete:
+      summary: Remove Bulk Apis
+      operationId: remove_bulk_apis_ai_spec_populator_bulk_remove_delete
+      parameters:
+        - name: API-KEY
+          in: header
+          required: false
+          schema:
+            type: string
+            title: Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+
 components:
   schemas:
     HTTPValidationError:

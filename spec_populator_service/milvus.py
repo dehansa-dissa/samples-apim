@@ -100,10 +100,17 @@ def upsert_bulk_vector_for_onprem(payload):
                 schema=schema,
                 index_params=index_params
             )
-
-    response = mc.insert(collection_name=collection_name, data=payload)
+    
+    response = mc.upsert(collection_name=collection_name, data=payload)
     return response
 
+def delete_bulk_vector_for_onprem(orgId, keyId):
+    mc = MilvusClient(uri=url, token=api_key)
+    res = mc.delete(
+        collection_name=collection_name,
+        filter=f"key_id == '{keyId}'"
+    )
+    return res
 
 def upsert_vector_for_choreo(embed, orgID, api: API):
     mc = MilvusClient(uri=url, token=api_key)
