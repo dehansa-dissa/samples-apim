@@ -87,6 +87,15 @@ async def fetch_api_count(orgID):
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
+async def fetch_api_count_for_upload(orgID):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID}) as response:
+            if response.status == 200:
+                count = (await response.json())['count']
+                return count
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
+
 
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
 async def prepare(req: dict, apiChatRequestId: str = Header(None), API_KEY: str = Header(None)):
@@ -204,7 +213,7 @@ async def upload_bulk_apis(req: dict, API_KEY: str = Header(None)):
     [orgID, handle, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
-        count = await fetch_api_count(orgID)
+        count = await fetch_api_count_for_upload(orgID)
         if count < 1000:
             req["apis"] = req["apis"][:1000-count]
             async with aiohttp.ClientSession() as session:
