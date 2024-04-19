@@ -97,7 +97,7 @@ class QuerySSEResponse(BaseModel):
 
 
 class MilvusProxy(Milvus):
-    def __init__(self, embeddings, proxy_connection, collection_name, text_field, metadata_field):
+    def __init__(self, embeddings, proxy_connection, collection_name, text_field, metadata_field, org_id):
         self.embedding_func = embeddings
         self.collection_name = collection_name
         self.proxy_connection = proxy_connection
@@ -113,9 +113,10 @@ class MilvusProxy(Milvus):
         self.vector_field: str = "vector"
         self.replica_number: int = 1
         self.fields: list[str] = OUTPUT_FIELDS
+        self.org_id = org_id
+
         self._embeddings = None
         self._vector_field = []
-
         self._text_field = 'page_content'
         self._metadata_field = 'metadata'
 
@@ -161,7 +162,7 @@ class MilvusProxy(Milvus):
         timeout = self.timeout or timeout
 
         endpoint_url = f"{self.proxy_connection['uri']}/search"
-        headers = {'Authorization': self.proxy_connection["token"]}
+        headers = {'Authorization': self.proxy_connection["token"], "org-id": self.org_id}
         res = requests.post(endpoint_url,
                             headers=headers,
                             json={
@@ -210,7 +211,7 @@ def get_vectorstore() -> Milvus:
 
 
 @lru_cache()
-def get_choreo_vectorstore(auth_token) -> Milvus:
+def get_choreo_vectorstore(auth_token, org_id) -> Milvus:
     model_name = 'text-embedding-ada-002'
     embeddings = AzureOpenAIEmbeddings(
         model=model_name,
@@ -227,7 +228,8 @@ def get_choreo_vectorstore(auth_token) -> Milvus:
         },
         collection_name=collection_name,
         text_field="page_content",
-        metadata_field="metadata"
+        metadata_field="metadata",
+        org_id=org_id
     )
 
     return vectorstore
@@ -243,7 +245,7 @@ def get_retriever(tenant_domain, partition_id, auth_token=None) -> MultiQueryRet
                                              search_kwargs={"k": 5,
                                                             "expr": 'key_id == "' + partition_id + '" && tenant_domain == "' + tenant_domain + '"'})
     elif SOURCE_PLATFORM == CHOREO:
-        vectorstore = get_choreo_vectorstore(auth_token)
+        vectorstore = get_choreo_vectorstore(auth_token, partition_id)
         retriever = vectorstore.as_retriever(search_type="similarity",
                                              search_kwargs={"k": 5, "expr": 'org_id == "' + partition_id + '"'})
 
@@ -426,9 +428,9 @@ async def generate_choreo_response(messages: list, org_id: str, auth_token: str)
         assist_response = (rag_chain.invoke({
             "question": questions,
             "chat_history": chat_history},
-            # config={
-            #     'callbacks': [ConsoleCallbackHandler()]
-            #     }
+            config={
+                'callbacks': [ConsoleCallbackHandler()]
+                }
         ))
 
     assist_response_json = parse_choreo_json(assist_response.content, cb)
