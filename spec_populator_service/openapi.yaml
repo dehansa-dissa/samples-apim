@@ -20,6 +20,12 @@ paths:
             title: Orgid
           name: orgID
           in: query
+        - required: false
+          schema:
+            type: string
+            title: Keyid
+          name: keyID
+          in: query
       requestBody:
         content:
           application/json:
@@ -50,7 +56,13 @@ paths:
             title: Uuid
           name: uuid
           in: path
-        - required: true
+        - required: false
+          schema:
+            type: string
+            title: Keyid
+          name: keyID
+          in: query
+        - required: false
           schema:
             type: string
             title: Orgid
@@ -78,6 +90,12 @@ paths:
             type: string
             title: Orgid
           name: orgID
+          in: query
+        - required: true
+          schema:
+            type: string
+            title: Keyid
+          name: keyID
           in: query
       requestBody:
         content:
@@ -126,18 +144,18 @@ paths:
       summary: Bulk Remove Vector
       operationId: bulk_remove_vector_bulk_remove_vector_delete
       parameters:
-        - name: orgID
-          in: query
-          required: true
+        - required: true
           schema:
             type: string
             title: Orgid
-        - name: keyID
+          name: orgID
           in: query
-          required: true
+        - required: true
           schema:
             type: string
             title: Keyid
+          name: keyID
+          in: query
       responses:
         '200':
           description: Successful Response
@@ -150,6 +168,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /health:
+    get:
+      summary: Health
+      description: Check the api is running
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
 components:
   schemas:
     HTTPValidationError:
