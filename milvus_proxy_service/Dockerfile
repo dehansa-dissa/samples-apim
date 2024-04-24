@@ -63,9 +63,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 # sources
 COPY --chown=${USER}:${GROUP} / milvus_proxy_service/
 
-# run script
-COPY --chown=${USER}:${GROUP} /entrypoint.sh .
-
 USER ${USER}
 
 EXPOSE 8000
