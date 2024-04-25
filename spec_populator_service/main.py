@@ -4,9 +4,9 @@ import asyncio
 from functools import partial
 import os
 
-from milvus import upsert_vector_for_onprem, upsert_vector_for_choreo, delete_vector, \
+from spec_populator_service.milvus import upsert_vector_for_onprem, upsert_vector_for_choreo, delete_vector, \
     upsert_bulk_vector_for_onprem, get_vector_count_for_org, delete_bulk_vector_for_onprem, delete_vector_for_choreo
-from utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
+from spec_populator_service.utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
     pre_process_asyncapi_def, API
 
 embed = get_emb_model()

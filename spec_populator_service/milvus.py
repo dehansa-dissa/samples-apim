@@ -1,6 +1,6 @@
 from pymilvus import DataType, MilvusClient
 import os
-from utils import API
+from spec_populator_service.utils import API
 
 api_key = os.getenv('MILVERSE_API_KEY')
 url = os.getenv('MILVERSE_URL')
