@@ -1,5 +1,3 @@
-import logging
-
 from fastapi import FastAPI
 from typing import Dict, Any, Optional
 import asyncio
@@ -52,9 +50,6 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional
         response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, keyID, api,
                                                             req["tenant_domain"]))
     elif source == "choreo":
-        logging.log(logging.INFO, f"Adding vector with UUID: {uuid}")
-        logging.log(logging.INFO, f"orgID: {orgID}")
-        logging.log(logging.INFO, f"Request: {req}")
         # TODO: Implement for APIs other that REST
         api_type = req["api_type"]
         if api_type == "REST":
@@ -82,9 +77,7 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional
 
 
 @app.delete("/remove_vector/{uuid}")
-async def remove_vector(uuid: str, keyID: Optional[str] = None, orgID: Optional[str] = None):
-    logging.log(logging.INFO, f"Removing vector with UUID: {uuid}")
-    logging.log(logging.INFO, f"orgID: {orgID}")
+async def remove_vector(uuid: str, keyID: Optional[str] = None):
     loop = asyncio.get_event_loop()
     if source == "apim":
         response = await loop.run_in_executor(None, partial(delete_vector, [uuid], keyID))
