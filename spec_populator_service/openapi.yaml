@@ -62,12 +62,6 @@ paths:
             title: Keyid
           name: keyID
           in: query
-        - required: false
-          schema:
-            type: string
-            title: Orgid
-          name: orgID
-          in: query
       responses:
         '200':
           description: Successful Response
