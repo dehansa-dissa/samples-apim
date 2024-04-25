@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from typing import Dict, Any, Optional
 import asyncio
@@ -55,9 +57,11 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional
         if api_type == "REST":
             record = await pre_process_openapi(req["api_spec"])
         elif api_type == "GRAPHQL":
-            record = await pre_process_graphql_sdl(req["sdl_schema"])
+            logging.info("Cannot process GraphQL APIs")
+            return {"message": "Cannot process GraphQL APIs"}
         elif api_type == "ASYNC":
-            record = await pre_process_asyncapi_def(req["async_spec"])
+            logging.info("Cannot process GraphQL APIs")
+            return {"message": "Cannot process Async APIs"}
 
         # record = await pre_process_openapi(req["api_spec"])
         record["apim_description"] = req["description"]
