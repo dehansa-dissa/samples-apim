@@ -127,6 +127,8 @@ if __name__ == '__main__':
     for document in mongo_documents:
         document_count += 1  # Increment the counter for each document
 
+        logging.info("Processing document %s", document_count)
+
         if csv_exists:
             org_id = document.get("organizationId")
             doc_id = str(document.get("_id"))
