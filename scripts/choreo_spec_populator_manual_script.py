@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def upsert_vector_for_choreo(params, request_body, doc_id):
-    sleep(1)
+    sleep(0.5)
     response = requests.post(SPEC_POPULATOR_URL + doc_id, json=request_body, params=params)
     return response
 
@@ -86,7 +86,7 @@ def push_rest_apis(document):
         logging.error("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
         logging.error("Response: %s", response.json())
     if response.status_code == 200:
-        insert_data("rest_api_pushed.csv", org_id, doc_id)
+        insert_data("corrupted_docs.csv", org_id, doc_id)
         logging.info("Pushed REST API for org_id: %s and id: %s", org_id, doc_id)
 
 
@@ -120,9 +120,13 @@ if __name__ == '__main__':
     document_count = 0
     rest_document_count = 0
 
-    csv_exists = check_file_exists("rest_api_pushed.csv")
+    csv_exists = check_file_exists("corrupted_docs.csv")
     if csv_exists:
-        data_df = pd.read_csv("rest_api_pushed.csv")
+        data_df = pd.read_csv("corrupted_docs.csv")
+
+    corrupted_csv_exists = check_file_exists("corrupted_docs.csv")
+    if csv_exists:
+        corrupted_df = pd.read_csv("corrupted_docs.csv")
 
     for document in mongo_documents:
         document_count += 1  # Increment the counter for each document
@@ -136,12 +140,22 @@ if __name__ == '__main__':
                 logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
                 continue
 
+        if corrupted_csv_exists:
+            org_id = document.get("organizationId")
+            doc_id = str(document.get("_id"))
+            if corrupted_df[(corrupted_df['org_id'] == org_id) & (corrupted_df['doc_id'] == doc_id)].shape[0] > 0:
+                logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                continue
+
         if doc_type := document.get("serviceType"):
             if doc_type == "REST":
                 rest_document_count += 1  # Increment the counter for each REST document
+                if str(document.get("_id")) == "653920d529799b00012d2210":
+                    logging.info("Document type is - %s", doc_type)
+                    continue
                 push_rest_apis(document)
             else:
-                logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
                 logging.info("Document type is - %s", doc_type)
 
     logging.info("Total document count - %s", document_count)  # Print the total number of documents
