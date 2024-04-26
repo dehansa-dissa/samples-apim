@@ -9,7 +9,7 @@ import os
 from spec_populator_service.milvus import upsert_vector_for_onprem, upsert_vector_for_choreo, delete_vector, \
     upsert_bulk_vector_for_onprem, get_vector_count_for_org, delete_bulk_vector_for_onprem, delete_vector_for_choreo
 from spec_populator_service.utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
-    pre_process_asyncapi_def, API
+    pre_process_asyncapi_def, API, ChoreoAPI
 
 embed = get_emb_model()
 source = os.getenv("SOURCE_PLATFORM", "apim")
@@ -65,14 +65,15 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional
 
         # record = await pre_process_openapi(req["api_spec"])
         record["apim_description"] = req["description"]
-        api = API(
+        api = ChoreoAPI(
             id=uuid,
             # The actual version is used instead of what is in the Spec,
             # since we know this is the truth, and the spec version can be outdated
             version=req["version"],
             type=req["api_type"],
             name=req["api_name"],
-            spec=record
+            spec=record,
+            api_uuid=req["api_uuid"]
         )
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, partial(upsert_vector_for_choreo, embed, orgID, api))
