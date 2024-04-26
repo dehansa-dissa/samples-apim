@@ -1,6 +1,6 @@
 from pymilvus import DataType, MilvusClient
 import os
-from spec_populator_service.utils import API
+from spec_populator_service.utils import API, ChoreoAPI
 
 api_key = os.getenv('MILVERSE_API_KEY')
 url = os.getenv('MILVERSE_URL')
@@ -69,6 +69,15 @@ def delete_vector(uuid, record_id):
     return res
 
 
+def delete_vector_for_choreo(uuid):
+    mc = MilvusClient(uri=url, token=api_key)
+    res = mc.delete(
+        collection_name=collection_name,
+        ids=uuid
+    )
+    return res
+
+
 def upsert_bulk_vector_for_onprem(payload):
     mc = MilvusClient(uri=url, token=api_key)
     if create_collection:
@@ -112,7 +121,8 @@ def delete_bulk_vector_for_onprem(orgId, keyId):
     )
     return res
 
-def upsert_vector_for_choreo(embed, orgID, api: API):
+
+def upsert_vector_for_choreo(embed, orgID, api: ChoreoAPI):
     mc = MilvusClient(uri=url, token=api_key)
     if create_collection:
         has = mc.has_collection(collection_name)
@@ -151,9 +161,10 @@ def upsert_vector_for_choreo(embed, orgID, api: API):
             "id": api.id,
             "api_name": api.name,
             "api_version": api.version,
-            "api_type": api.type
+            "api_type": api.type,
+            "api_uuid": api.api_uuid
         },
-        "id": orgID + api.id,
+        "id": api.id,
         "api_name": api.name,
         "vector": res,
         "api_type": api.type,

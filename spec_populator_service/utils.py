@@ -32,6 +32,16 @@ class API:
     name: str
     spec: dict
 
+
+@dataclass
+class ChoreoAPI:
+    id: str
+    version: str
+    type: str
+    name: str
+    spec: dict
+    api_uuid: str
+
 # Having the api type for Choreo even, 
 # because it might be needed in the future
 @dataclass
