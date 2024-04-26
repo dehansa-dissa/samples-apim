@@ -140,6 +140,9 @@ if __name__ == '__main__':
             if doc_type == "REST":
                 rest_document_count += 1  # Increment the counter for each REST document
                 push_rest_apis(document)
+            else:
+                logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                logging.info("Document type is - %s", doc_type)
 
     logging.info("Total document count - %s", document_count)  # Print the total number of documents
     logging.info("Rest document count - %s", rest_document_count)
