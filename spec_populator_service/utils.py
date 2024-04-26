@@ -10,7 +10,6 @@ azure_endpoint = os.getenv("AZURE_ENDPOINT")
 api_key = os.getenv("AZURE_OPENAI_API_KEY")
 azure_deployment = os.getenv("AZURE_DEPLOYMENT")
 
-
 def get_emb_model():
     
     model_name = 'text-embedding-ada-002'
@@ -32,6 +31,16 @@ class API:
     type: str
     name: str
     spec: dict
+
+
+@dataclass
+class ChoreoAPI:
+    id: str
+    version: str
+    type: str
+    name: str
+    spec: dict
+    api_uuid: str
 
 # Having the api type for Choreo even, 
 # because it might be needed in the future
