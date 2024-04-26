@@ -86,7 +86,7 @@ def push_rest_apis(document):
         logging.error("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
         logging.error("Response: %s", response.json())
     if response.status_code == 200:
-        insert_data("corrupted_docs.csv", org_id, doc_id)
+        insert_data("rest_api_pushed.csv", org_id, doc_id)
         logging.info("Pushed REST API for org_id: %s and id: %s", org_id, doc_id)
 
 
@@ -120,9 +120,9 @@ if __name__ == '__main__':
     document_count = 0
     rest_document_count = 0
 
-    csv_exists = check_file_exists("corrupted_docs.csv")
+    csv_exists = check_file_exists("rest_api_pushed.csv")
     if csv_exists:
-        data_df = pd.read_csv("corrupted_docs.csv")
+        data_df = pd.read_csv("rest_api_pushed.csv")
 
     corrupted_csv_exists = check_file_exists("corrupted_docs.csv")
     if csv_exists:
