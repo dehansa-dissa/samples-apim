@@ -83,8 +83,9 @@ def push_rest_apis(document):
 
     response = upsert_vector_for_choreo(params, request_body, doc_id)
     if response.status_code != 200:
-        logging.error("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
-        logging.error("Response: %s", response.json())
+        insert_data("corrupted_docs.csv", org_id, doc_id)
+        logging.info("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
+        logging.info("Response: %s", response.json())
     if response.status_code == 200:
         insert_data("rest_api_pushed.csv", org_id, doc_id)
         logging.info("Pushed REST API for org_id: %s and id: %s", org_id, doc_id)
