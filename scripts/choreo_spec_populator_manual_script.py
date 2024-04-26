@@ -1,17 +1,23 @@
 import logging
+import os
+import csv
+
+import pandas as pd
 import requests
 
 from pymongo import MongoClient, ASCENDING
 
 # Set the following configs as per the environment
 # URL of the service
-SPEC_POPULATOR_URL = ''
+SPEC_POPULATOR_URL = "http://localhost:8000/add_vector/"
 MONGODB_HOST = ""
 MONGODB_USER = ""
 MONGODB_NAME = ""
 MONGODB_PASSWORD = ""
 
 MONGODB_CONNECTION_URL = f"mongodb+srv://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONGODB_HOST}/?retryWrites=true&w=majority&connectTimeoutMS=360000"
+
+logging.basicConfig(level=logging.INFO)
 
 
 def upsert_vector_for_choreo(params, request_body, doc_id):
@@ -78,6 +84,7 @@ def push_rest_apis(document):
         logging.error("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
         logging.error("Response: %s", response.json())
     if response.status_code == 200:
+        insert_data("rest_api_pushed.csv", org_id, doc_id)
         logging.info("Pushed REST API for org_id: %s and id: %s", org_id, doc_id)
 
 
@@ -90,13 +97,40 @@ def read_data_from_mongodb():
     return documents
 
 
+def insert_data(file_name, org_id, doc_id):
+    file_exists = os.path.isfile(file_name)
+
+    with open(file_name, mode='a') as file:
+        writer = csv.writer(file)
+
+        if not file_exists:
+            writer.writerow(['org_id', 'doc_id'])  # writing the headers
+
+        writer.writerow([org_id, doc_id])
+
+
+def check_file_exists(file_name):
+    return os.path.isfile(file_name)
+
+
 if __name__ == '__main__':
     mongo_documents = read_data_from_mongodb()
     document_count = 0
     rest_document_count = 0
 
+    csv_exists = check_file_exists("rest_api_pushed.csv")
+    if csv_exists:
+        data_df = pd.read_csv("rest_api_pushed.csv")
+
     for document in mongo_documents:
         document_count += 1  # Increment the counter for each document
+
+        if csv_exists:
+            org_id = document.get("organizationId")
+            doc_id = str(document.get("_id"))
+            if data_df[(data_df['org_id'] == org_id) & (data_df['doc_id'] == doc_id)].shape[0] > 0:
+                logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                continue
 
         if doc_type := document.get("serviceType"):
             if doc_type == "REST":
