@@ -1,6 +1,7 @@
 import logging
 import os
 import csv
+from time import sleep
 
 import pandas as pd
 import requests
@@ -21,6 +22,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def upsert_vector_for_choreo(params, request_body, doc_id):
+    sleep(1)
     response = requests.post(SPEC_POPULATOR_URL + doc_id, json=request_body, params=params)
     return response
 
