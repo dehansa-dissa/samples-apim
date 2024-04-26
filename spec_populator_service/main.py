@@ -139,7 +139,7 @@ async def bulk_remove_vector(orgID: str, keyID: str):
     if source == "apim":
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, partial(delete_bulk_vector_for_onprem, orgID, keyID))
-
+        return {"message" : response}
 
 @app.get("/health")
 def health():
