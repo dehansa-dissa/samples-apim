@@ -134,13 +134,13 @@ if __name__ == '__main__':
     if corrupted_csv_exists:
         corrupted_df = pd.read_csv("corrupted_docs.csv")
 
+    if not os.path.exists('corrupted_files'):
+        os.makedirs('corrupted_files')
+
     for document in mongo_documents:
         document_count += 1  # Increment the counter for each document
 
         logging.info("Processing document %s", document_count)
-
-        if not os.path.exists('corrupted_files'):
-            os.makedirs('corrupted_files')
 
         if csv_exists:
             org_id = document.get("organizationId")
