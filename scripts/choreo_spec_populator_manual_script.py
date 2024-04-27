@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def upsert_vector_for_choreo(params, request_body, doc_id):
-    sleep(1)
+    sleep(0.5)
     response = requests.post(SPEC_POPULATOR_URL + doc_id, json=request_body, params=params)
     return response
 
@@ -82,12 +82,18 @@ def push_rest_apis(document):
     }
 
     response = upsert_vector_for_choreo(params, request_body, doc_id)
-    if response.status_code != 200:
-        logging.error("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
-        logging.error("Response: %s", response.json())
-    if response.status_code == 200:
+    logging.info("Response status code: %s", response.status_code)
+    if response.status_code == 500:
+        insert_data("corrupted_docs.csv", org_id, doc_id)
+        logging.info("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
+        with open(f'corrupted_files/{doc_id}.txt', 'w') as file:
+            file.write(content)
+    elif response.status_code == 200:
         insert_data("rest_api_pushed.csv", org_id, doc_id)
         logging.info("Pushed REST API for org_id: %s and id: %s", org_id, doc_id)
+    else:
+        logging.error("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
+        logging.error("Response: %s", response.json())
 
 
 def read_data_from_mongodb():
@@ -124,8 +130,17 @@ if __name__ == '__main__':
     if csv_exists:
         data_df = pd.read_csv("rest_api_pushed.csv")
 
+    corrupted_csv_exists = check_file_exists("corrupted_docs.csv")
+    if corrupted_csv_exists:
+        corrupted_df = pd.read_csv("corrupted_docs.csv")
+
+    if not os.path.exists('corrupted_files'):
+        os.makedirs('corrupted_files')
+
     for document in mongo_documents:
         document_count += 1  # Increment the counter for each document
+
+        logging.info("Processing document %s", document_count)
 
         if csv_exists:
             org_id = document.get("organizationId")
@@ -134,10 +149,20 @@ if __name__ == '__main__':
                 logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
                 continue
 
+        if corrupted_csv_exists:
+            org_id = document.get("organizationId")
+            doc_id = str(document.get("_id"))
+            if corrupted_df[(corrupted_df['org_id'] == org_id) & (corrupted_df['doc_id'] == doc_id)].shape[0] > 0:
+                logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                continue
+
         if doc_type := document.get("serviceType"):
             if doc_type == "REST":
                 rest_document_count += 1  # Increment the counter for each REST document
                 push_rest_apis(document)
+            else:
+                # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                logging.info("Document type is - %s", doc_type)
 
     logging.info("Total document count - %s", document_count)  # Print the total number of documents
     logging.info("Rest document count - %s", rest_document_count)
