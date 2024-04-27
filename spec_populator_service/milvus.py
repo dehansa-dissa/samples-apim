@@ -75,6 +75,7 @@ def delete_vector_for_choreo(uuid):
         collection_name=collection_name,
         ids=uuid
     )
+    mc.close()
     return res
 
 
@@ -172,6 +173,7 @@ def upsert_vector_for_choreo(embed, orgID, api: ChoreoAPI):
     }
 
     response = mc.upsert(collection_name=collection_name, data=payload)
+    mc.close()
     return response
 
 
@@ -182,4 +184,5 @@ def get_vector_count_for_org(org_id):
         filter=f'(org_id == "{org_id}")',
         output_fields=["count(*)"],
     )
+    mc.close()
     return res
