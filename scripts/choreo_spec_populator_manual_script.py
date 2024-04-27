@@ -82,10 +82,12 @@ def push_rest_apis(document):
     }
 
     response = upsert_vector_for_choreo(params, request_body, doc_id)
+    logging.info("Response status code: %s", response.status_code)
     if response.status_code == 500:
         insert_data("corrupted_docs.csv", org_id, doc_id)
         logging.info("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
-        logging.info("Response: %s", response.json())
+        with open(f'corrupted_files/{doc_id}.txt', 'w') as file:
+            file.write(content)
     elif response.status_code == 200:
         insert_data("rest_api_pushed.csv", org_id, doc_id)
         logging.info("Pushed REST API for org_id: %s and id: %s", org_id, doc_id)
@@ -129,13 +131,16 @@ if __name__ == '__main__':
         data_df = pd.read_csv("rest_api_pushed.csv")
 
     corrupted_csv_exists = check_file_exists("corrupted_docs.csv")
-    if csv_exists:
+    if corrupted_csv_exists:
         corrupted_df = pd.read_csv("corrupted_docs.csv")
 
     for document in mongo_documents:
         document_count += 1  # Increment the counter for each document
 
         logging.info("Processing document %s", document_count)
+
+        if not os.path.exists('corrupted_files'):
+            os.makedirs('corrupted_files')
 
         if csv_exists:
             org_id = document.get("organizationId")
@@ -154,9 +159,6 @@ if __name__ == '__main__':
         if doc_type := document.get("serviceType"):
             if doc_type == "REST":
                 rest_document_count += 1  # Increment the counter for each REST document
-                if str(document.get("_id")) == "653920d529799b00012d2210":
-                    logging.info("Document type is - %s", doc_type)
-                    continue
                 push_rest_apis(document)
             else:
                 # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
