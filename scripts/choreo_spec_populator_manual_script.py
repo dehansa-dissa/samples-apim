@@ -20,6 +20,8 @@ MONGODB_CONNECTION_URL = f"mongodb+srv://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONG
 
 logging.basicConfig(level=logging.INFO)
 
+from pymongo import MongoClient, ASCENDING
+import time
 
 def upsert_vector_for_choreo(params, request_body, doc_id):
     sleep(0.5)
@@ -96,15 +98,6 @@ def push_rest_apis(document):
         logging.error("Response: %s", response.json())
 
 
-def read_data_from_mongodb():
-    client = MongoClient(MONGODB_CONNECTION_URL)
-    db = client[MONGODB_NAME]
-    collection = db['resources']
-    documents = collection.find().sort("createdTime", ASCENDING)
-
-    return documents
-
-
 def insert_data(file_name, org_id, doc_id):
     file_exists = os.path.isfile(file_name)
 
@@ -122,7 +115,6 @@ def check_file_exists(file_name):
 
 
 if __name__ == '__main__':
-    mongo_documents = read_data_from_mongodb()
     document_count = 0
     rest_document_count = 0
 
@@ -137,32 +129,58 @@ if __name__ == '__main__':
     if not os.path.exists('corrupted_files'):
         os.makedirs('corrupted_files')
 
-    for document in mongo_documents:
-        document_count += 1  # Increment the counter for each document
+    client = MongoClient(MONGODB_CONNECTION_URL)
+    db = client[MONGODB_NAME]
+    collection = db['resources']
 
-        logging.info("Processing document %s", document_count)
+    with client.start_session() as session:
+        session.start_transaction()
+        cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime", ASCENDING)
 
-        if csv_exists:
-            org_id = document.get("organizationId")
-            doc_id = str(document.get("_id"))
-            if data_df[(data_df['org_id'] == org_id) & (data_df['doc_id'] == doc_id)].shape[0] > 0:
-                logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
-                continue
+        refresh_timestamp = time.time()
 
-        if corrupted_csv_exists:
-            org_id = document.get("organizationId")
-            doc_id = str(document.get("_id"))
-            if corrupted_df[(corrupted_df['org_id'] == org_id) & (corrupted_df['doc_id'] == doc_id)].shape[0] > 0:
-                logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
-                continue
+        while True:
+            if (time.time() - refresh_timestamp) > 300:  # 300 seconds = 5 minutes
+                print("Refreshing session")
+                session.end_session()
+                session = client.start_session()
+                session.start_transaction()
+                cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime", ASCENDING)
+                refresh_timestamp = time.time()
 
-        if doc_type := document.get("serviceType"):
-            if doc_type == "REST":
-                rest_document_count += 1  # Increment the counter for each REST document
-                push_rest_apis(document)
-            else:
-                # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
-                logging.info("Document type is - %s", doc_type)
+            try:
+                document = next(cursor)
+                document_count += 1  # Increment the counter for each document
+
+                logging.info("Processing document %s", document_count)
+
+                if csv_exists:
+                    org_id = document.get("organizationId")
+                    doc_id = str(document.get("_id"))
+                    if data_df[(data_df['org_id'] == org_id) & (data_df['doc_id'] == doc_id)].shape[0] > 0:
+                        logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                        continue
+
+                if corrupted_csv_exists:
+                    org_id = document.get("organizationId")
+                    doc_id = str(document.get("_id"))
+                    if corrupted_df[(corrupted_df['org_id'] == org_id) & (corrupted_df['doc_id'] == doc_id)].shape[
+                        0] > 0:
+                        logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                        continue
+
+                if doc_type := document.get("serviceType"):
+                    if doc_type == "REST":
+                        rest_document_count += 1  # Increment the counter for each REST document
+                        push_rest_apis(document)
+                    else:
+                        # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                        logging.info("Document type is - %s", doc_type)
+                # process document here
+            except StopIteration:
+                break
+
+        session.commit_transaction()
 
     logging.info("Total document count - %s", document_count)  # Print the total number of documents
     logging.info("Rest document count - %s", rest_document_count)
