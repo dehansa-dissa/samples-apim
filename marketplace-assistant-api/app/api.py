@@ -103,9 +103,9 @@ class MilvusProxy(Milvus):
         self.proxy_connection = proxy_connection
         self.text_field = text_field
         self.metadata_field = metadata_field
-        self.timeout: Optional[float] = None
+        self.timeout: Optional[float] = 10000
         self.consistency_level: str = "Session"
-        self.search_params: Optional[dict] = None
+        self.search_params: Optional[str] = ""
         self.drop_old: Optional[bool] = False
         self.auto_id: bool = False
         self.primary_field: str = "pk"
@@ -116,7 +116,7 @@ class MilvusProxy(Milvus):
         self.org_id = org_id
 
         self._embeddings = None
-        self._vector_field = []
+        self._vector_field = ''
         self._text_field = 'page_content'
         self._metadata_field = 'metadata'
 
@@ -132,7 +132,6 @@ class MilvusProxy(Milvus):
             self,
             query: str,
             k: int = 4,
-            param: Optional[dict] = None,
             expr: Optional[str] = None,
             timeout: Optional[float] = None,
             **kwargs: Any,
@@ -141,7 +140,7 @@ class MilvusProxy(Milvus):
         timeout = self.timeout or timeout
         embedding = self.embedding_func.embed_query(query)
         res = self.similarity_search_with_score_by_vector(
-            embedding=embedding, k=k, param=param, expr=expr, timeout=timeout, **kwargs
+            embedding=embedding, k=k, expr=expr, timeout=timeout, **kwargs
         )
         return [doc for doc, _ in res]
 
@@ -149,26 +148,22 @@ class MilvusProxy(Milvus):
             self,
             embedding: List[float],
             k: int = 4,
-            param: Optional[dict] = None,
             expr: Optional[str] = None,
             timeout: Optional[float] = None,
     ) -> List[Tuple[Document, float]]:
-
-        if param is None:
-            param = self.search_params
 
         # Determine result metadata fields with PK.
         output_fields = self.fields
         timeout = self.timeout or timeout
 
         endpoint_url = f"{self.proxy_connection['uri']}/search"
+        # headers = {'x-jwt-assertion': self.proxy_connection["token"], "org-id": self.org_id}
         headers = {'Authorization': self.proxy_connection["token"], "org-id": self.org_id}
         res = requests.post(endpoint_url,
                             headers=headers,
                             json={
                                 "data": [embedding],
                                 "anns_field": self._vector_field,
-                                "param": param,
                                 "limit": k,
                                 "expr": expr,
                                 "output_fields": output_fields,
@@ -414,9 +409,10 @@ async def generate_choreo_response(messages: list, org_id: str, auth_token: str)
     history = []
     response = ChoreoResponse(content="", usage={})
     results = await asyncio.gather(
-        in_thread(prepare_rag_chain, None, org_id, auth_token),
+        in_thread(prepare_rag_chain, None, org_id, False, auth_token),
         prepare_history(history),
     )
+
     rag_chain = results[0]
     chat_history = results[1]
 
@@ -430,7 +426,7 @@ async def generate_choreo_response(messages: list, org_id: str, auth_token: str)
             "chat_history": chat_history},
             config={
                 'callbacks': [ConsoleCallbackHandler()]
-                }
+            }
         ))
 
     assist_response_json = parse_choreo_json(assist_response.content, cb)
