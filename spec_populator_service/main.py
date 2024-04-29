@@ -46,7 +46,7 @@ async def get_pre_processed_spec(api_details):
 async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional[str] = None):
     # TODO: Handle 400 error if request info not sufficient (eg: no KeyID)
     if source == "apim":
-        api = get_pre_processed_spec(req)
+        api = await get_pre_processed_spec(req)
 
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, keyID, api,
@@ -101,7 +101,7 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
     if source == "apim":
 
         for api_details in api_details_list:
-            api = get_pre_processed_spec(api_details)
+            api = await get_pre_processed_spec(api_details)
 
             res = embed.embed_query(str(api.__dict__))
             payload = {
@@ -128,7 +128,7 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
         #     loop = asyncio.get_event_loop()
         #     response = await loop.run_in_executor(None,partial(upsert_vector_for_choreo, embed, record, orgID, api_details["uuid"]))
 
-        # return {"message": response}
+        return {"message": response}
 
 
 @app.get("/api_count")
@@ -144,7 +144,7 @@ async def bulk_remove_vector(orgID: str, keyID: str):
     if source == "apim":
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, partial(delete_bulk_vector_for_onprem, orgID, keyID))
-
+        return {"message" : response}
 
 @app.get("/health")
 def health():
