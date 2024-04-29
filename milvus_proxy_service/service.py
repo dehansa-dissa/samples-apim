@@ -48,7 +48,6 @@ class SearchReqBody(BaseModel):
     output_fields: list
     timeout: int
     anns_field: Optional[str]
-    param: str
     limit: int
 
 
