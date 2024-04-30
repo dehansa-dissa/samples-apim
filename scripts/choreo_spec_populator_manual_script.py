@@ -132,6 +132,7 @@ if __name__ == '__main__':
     client = MongoClient(MONGODB_CONNECTION_URL)
     db = client[MONGODB_NAME]
     collection = db['resources']
+    tries = 0
 
     for tries in range(MAX_RETRIES):
         try:
@@ -145,12 +146,12 @@ if __name__ == '__main__':
                 while document_count <= number_of_documents:
                     logging.info("Total number of documents: %s", number_of_documents)
                     if (time.time() - refresh_timestamp) > 300:  # 300 seconds = 5 minutes
-                        number_of_documents = collection.count_documents({}, session=session)
                         logging.info("Refreshing session")
                         session.end_session()
                         session = client.start_session()
                         session.start_transaction()
                         cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime", ASCENDING)
+                        number_of_documents = collection.count_documents({}, session=session)
                         refresh_timestamp = time.time()
 
                     try:
@@ -183,7 +184,9 @@ if __name__ == '__main__':
                                 # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
                                 logging.info("Document type is - %s", doc_type)
                         # process document here
-                    except StopIteration:
+                    except StopIteration as e:
+                        logging.exception("Error occurred while processing documents", exc_info=e)
+                        tries += 1
                         break
 
                 session.commit_transaction()
@@ -193,7 +196,7 @@ if __name__ == '__main__':
             logging.exception("Error occurred while processing documents", exc_info=e)
             continue
     else:
-        logging.error("Failed to commit transaction after %s retries", MAX_RETRIES)
+        logging.error("Failed to commit transaction after %s retries", tries)
 
     logging.info("Total document count - %s", document_count)  # Print the total number of documents
     logging.info("Rest document count - %s", rest_document_count)
