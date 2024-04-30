@@ -1,3 +1,5 @@
+import logging
+
 from pymilvus import DataType, MilvusClient
 import os
 from spec_populator_service.utils import API, ChoreoAPI
@@ -110,7 +112,7 @@ def upsert_bulk_vector_for_onprem(payload):
                 schema=schema,
                 index_params=index_params
             )
-    
+
     response = mc.upsert(collection_name=collection_name, data=payload)
     return response
 
@@ -173,6 +175,9 @@ def upsert_vector_for_choreo(embed, orgID, api: ChoreoAPI):
     }
 
     response = mc.upsert(collection_name=collection_name, data=payload)
+    data_count = mc.get_collection_stats(collection_name=collection_name)
+    logging.info("Response: %s", response)
+    logging.info("Collection stats", data_count)
     mc.close()
     return response
 
@@ -185,4 +190,13 @@ def get_vector_count_for_org(org_id):
         output_fields=["count(*)"],
     )
     mc.close()
+    return res
+
+
+def get_collection_raw_count(mc):
+    res = mc.query(
+        collection_name=collection_name,
+        output_fields=["count(*)"],
+    )
+    mc.get_collection_stats(collection_name=collection_name)
     return res

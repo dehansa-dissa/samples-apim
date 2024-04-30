@@ -13,6 +13,7 @@ from spec_populator_service.utils import get_emb_model, pre_process_openapi, pre
 
 embed = get_emb_model()
 source = os.getenv("SOURCE_PLATFORM", "apim")
+logging.basicConfig(level=logging.DEBUG)
 
 app = FastAPI()
 
