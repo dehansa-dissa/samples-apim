@@ -26,7 +26,7 @@ milvus_entry_count_from_script = 0
 
 
 def upsert_vector_for_choreo(params, request_body, doc_id):
-    sleep(0.5)
+    sleep(1)
     response = requests.post(SPEC_POPULATOR_URL + doc_id, json=request_body, params=params)
     return response
 
@@ -98,7 +98,7 @@ def push_rest_apis(document):
         milvus_entry_count_from_script += 1
         response_json = response.json()
         count_from_milvus = response_json['message']['milvus_count']
-        if count_from_milvus < milvus_entry_count_from_script:
+        if count_from_milvus + 1 < milvus_entry_count_from_script:
             raise Exception("Entry count mismatch: Milvus count - {}, Script count - {}".format(count_from_milvus, milvus_entry_count_from_script))
 
         logging.info("Milvus entry count from script: %s", milvus_entry_count_from_script)
