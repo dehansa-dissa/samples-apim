@@ -173,13 +173,22 @@ def upsert_vector_for_choreo(embed, orgID, api: ChoreoAPI):
         "api_type": api.type,
         "org_id": orgID,
     }
+    count = get_collection_raw_count(mc)
+    document_exist = query_document(api.id, mc)
+    if document_exist == 0:
+        milvus_res = mc.insert(collection_name=collection_name, data=payload)
+        response = {"insert_count": milvus_res.get("insert_count")}
+    else:
+        milvus_res = mc.upsert(collection_name=collection_name, data=payload)
+        response = {"upsert_count": milvus_res.get("upsert_count")}
 
-    response = mc.upsert(collection_name=collection_name, data=payload)
-    data_count = mc.get_collection_stats(collection_name=collection_name)
-    logging.info("Response: %s", response)
-    logging.info("Collection stats", data_count)
+    count_after = get_collection_raw_count(mc)
+
+    logging.info("Count before: %s, Count after: %s", count, count_after)
+    if document_exist == 0 and count_after == count:
+        logging.error("Failed to upsert document with id: %s", api.id)
     mc.close()
-    return response
+    return {"milvus_response": response, "milvus_count": count_after}
 
 
 def get_vector_count_for_org(org_id):
@@ -193,10 +202,19 @@ def get_vector_count_for_org(org_id):
     return res
 
 
+def query_document(uuid, mc):
+    response = mc.query(
+        collection_name=collection_name,
+        filter=f'(id == "{uuid}")',
+        output_fields=["count(*)"],
+    )
+    return response[0]["count(*)"]
+
+
 def get_collection_raw_count(mc):
-    res = mc.query(
+    response = mc.query(
         collection_name=collection_name,
         output_fields=["count(*)"],
     )
     mc.get_collection_stats(collection_name=collection_name)
-    return res
+    return response[0]["count(*)"]
