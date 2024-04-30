@@ -13,10 +13,10 @@ MAX_RETRIES = 3
 # Set the following configs as per the environment
 # URL of the service
 SPEC_POPULATOR_URL = 'http://localhost:8000/add_vector/'
-MONGODB_HOST = "choreo-apim.hu3zq.mongodb.net"
-MONGODB_USER = "dev_choreo_db_dev_user"
-MONGODB_NAME = "DEV_RESOURCE_REGISTRY_DB"
-MONGODB_PASSWORD = "wPeCDXBnTpuNIeab"
+MONGODB_HOST = ""
+MONGODB_USER = ""
+MONGODB_NAME = ""
+MONGODB_PASSWORD = ""
 
 MONGODB_CONNECTION_URL = f"mongodb+srv://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONGODB_HOST}/?retryWrites=true&w=majority&connectTimeoutMS=360000"
 
