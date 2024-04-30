@@ -2,15 +2,17 @@ import logging
 import os
 import csv
 from time import sleep
-
 import pandas as pd
 import requests
-
+from pymongo.errors import OperationFailure
 from pymongo import MongoClient, ASCENDING
+import time
+
+MAX_RETRIES = 3
 
 # Set the following configs as per the environment
 # URL of the service
-SPEC_POPULATOR_URL = "http://localhost:8000/add_vector/"
+SPEC_POPULATOR_URL = 'http://localhost:8000/add_vector/'
 MONGODB_HOST = ""
 MONGODB_USER = ""
 MONGODB_NAME = ""
@@ -20,8 +22,6 @@ MONGODB_CONNECTION_URL = f"mongodb+srv://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONG
 
 logging.basicConfig(level=logging.INFO)
 
-from pymongo import MongoClient, ASCENDING
-import time
 
 def upsert_vector_for_choreo(params, request_body, doc_id):
     sleep(0.5)
@@ -133,54 +133,67 @@ if __name__ == '__main__':
     db = client[MONGODB_NAME]
     collection = db['resources']
 
-    with client.start_session() as session:
-        session.start_transaction()
-        cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime", ASCENDING)
-
-        refresh_timestamp = time.time()
-
-        while True:
-            if (time.time() - refresh_timestamp) > 300:  # 300 seconds = 5 minutes
-                print("Refreshing session")
-                session.end_session()
-                session = client.start_session()
+    for tries in range(MAX_RETRIES):
+        try:
+            with client.start_session() as session:
                 session.start_transaction()
                 cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime", ASCENDING)
+
                 refresh_timestamp = time.time()
 
-            try:
-                document = next(cursor)
-                document_count += 1  # Increment the counter for each document
+                number_of_documents = collection.count_documents({}, session=session)
+                while document_count <= number_of_documents:
+                    logging.info("Total number of documents: %s", number_of_documents)
+                    if (time.time() - refresh_timestamp) > 300:  # 300 seconds = 5 minutes
+                        number_of_documents = collection.count_documents({}, session=session)
+                        logging.info("Refreshing session")
+                        session.end_session()
+                        session = client.start_session()
+                        session.start_transaction()
+                        cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime", ASCENDING)
+                        refresh_timestamp = time.time()
 
-                logging.info("Processing document %s", document_count)
+                    try:
+                        document = next(cursor)
+                        document_count += 1  # Increment the counter for each document
 
-                if csv_exists:
-                    org_id = document.get("organizationId")
-                    doc_id = str(document.get("_id"))
-                    if data_df[(data_df['org_id'] == org_id) & (data_df['doc_id'] == doc_id)].shape[0] > 0:
-                        logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
-                        continue
+                        logging.info("Processing document %s", document_count)
 
-                if corrupted_csv_exists:
-                    org_id = document.get("organizationId")
-                    doc_id = str(document.get("_id"))
-                    if corrupted_df[(corrupted_df['org_id'] == org_id) & (corrupted_df['doc_id'] == doc_id)].shape[
-                        0] > 0:
-                        logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
-                        continue
+                        if csv_exists:
+                            org_id = document.get("organizationId")
+                            doc_id = str(document.get("_id"))
+                            if data_df[(data_df['org_id'] == org_id) & (data_df['doc_id'] == doc_id)].shape[0] > 0:
+                                logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                                continue
 
-                if doc_type := document.get("serviceType"):
-                    if doc_type == "REST":
-                        rest_document_count += 1  # Increment the counter for each REST document
-                        push_rest_apis(document)
-                    else:
-                        # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
-                        logging.info("Document type is - %s", doc_type)
-                # process document here
-            except StopIteration:
+                        if corrupted_csv_exists:
+                            org_id = document.get("organizationId")
+                            doc_id = str(document.get("_id"))
+                            if corrupted_df[(corrupted_df['org_id'] == org_id) & (corrupted_df['doc_id'] == doc_id)].shape[
+                                0] > 0:
+                                logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                                continue
+
+                        if doc_type := document.get("serviceType"):
+                            if doc_type == "REST":
+                                rest_document_count += 1  # Increment the counter for each REST document
+                                push_rest_apis(document)
+                                tries = 0
+                            else:
+                                # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                                logging.info("Document type is - %s", doc_type)
+                        # process document here
+                    except StopIteration:
+                        break
+
+                session.commit_transaction()
+                # Break the loop after processing all the documents
                 break
-
-        session.commit_transaction()
+        except OperationFailure as e:
+            logging.exception("Error occurred while processing documents", exc_info=e)
+            continue
+    else:
+        logging.error("Failed to commit transaction after %s retries", MAX_RETRIES)
 
     logging.info("Total document count - %s", document_count)  # Print the total number of documents
     logging.info("Rest document count - %s", rest_document_count)
