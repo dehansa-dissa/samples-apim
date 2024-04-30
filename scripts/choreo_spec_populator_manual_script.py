@@ -2,30 +2,26 @@ import logging
 import os
 import csv
 from time import sleep
-
 import pandas as pd
 import requests
-
 from pymongo.errors import OperationFailure
+from pymongo import MongoClient, ASCENDING
+import time
 
 MAX_RETRIES = 3
 
-from pymongo import MongoClient, ASCENDING
-
 # Set the following configs as per the environment
 # URL of the service
-SPEC_POPULATOR_URL = "http://localhost:8000/add_vector/"
-MONGODB_HOST = ""
-MONGODB_USER = ""
-MONGODB_NAME = ""
-MONGODB_PASSWORD = ""
+SPEC_POPULATOR_URL = 'http://localhost:8000/add_vector/'
+MONGODB_HOST = "choreo-apim.hu3zq.mongodb.net"
+MONGODB_USER = "dev_choreo_db_dev_user"
+MONGODB_NAME = "DEV_RESOURCE_REGISTRY_DB"
+MONGODB_PASSWORD = "wPeCDXBnTpuNIeab"
 
 MONGODB_CONNECTION_URL = f"mongodb+srv://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONGODB_HOST}/?retryWrites=true&w=majority&connectTimeoutMS=360000"
 
 logging.basicConfig(level=logging.INFO)
 
-from pymongo import MongoClient, ASCENDING
-import time
 
 def upsert_vector_for_choreo(params, request_body, doc_id):
     sleep(0.5)
@@ -137,7 +133,7 @@ if __name__ == '__main__':
     db = client[MONGODB_NAME]
     collection = db['resources']
 
-    for _ in range(MAX_RETRIES):
+    for tries in range(MAX_RETRIES):
         try:
             with client.start_session() as session:
                 session.start_transaction()
@@ -147,10 +143,10 @@ if __name__ == '__main__':
 
                 number_of_documents = collection.count_documents({}, session=session)
                 while document_count <= number_of_documents:
-                    number_of_documents = collection.count_documents({}, session=session)
                     logging.info("Total number of documents: %s", number_of_documents)
                     if (time.time() - refresh_timestamp) > 300:  # 300 seconds = 5 minutes
-                        print("Refreshing session")
+                        number_of_documents = collection.count_documents({}, session=session)
+                        logging.info("Refreshing session")
                         session.end_session()
                         session = client.start_session()
                         session.start_transaction()
@@ -182,6 +178,7 @@ if __name__ == '__main__':
                             if doc_type == "REST":
                                 rest_document_count += 1  # Increment the counter for each REST document
                                 push_rest_apis(document)
+                                tries = 0
                             else:
                                 # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
                                 logging.info("Document type is - %s", doc_type)
@@ -192,7 +189,8 @@ if __name__ == '__main__':
                 session.commit_transaction()
                 # Break the loop after processing all the documents
                 break
-        except OperationFailure:
+        except OperationFailure as e:
+            logging.exception("Error occurred while processing documents", exc_info=e)
             continue
     else:
         logging.error("Failed to commit transaction after %s retries", MAX_RETRIES)
