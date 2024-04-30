@@ -62,8 +62,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 # sources
 COPY --chown=${USER}:${GROUP} / spec_populator_service/
 
+WORKDIR /home/${USER}/spec_populator_service/spec_populator_service
+
 USER ${USER}
 
 EXPOSE 8000
 
-CMD ["uvicorn", "spec_populator_service.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -2,7 +2,7 @@ import logging
 
 from pymilvus import DataType, MilvusClient
 import os
-from spec_populator_service.utils import API, ChoreoAPI
+from utils import API, ChoreoAPI
 
 api_key = os.getenv('MILVERSE_API_KEY')
 url = os.getenv('MILVERSE_URL')
