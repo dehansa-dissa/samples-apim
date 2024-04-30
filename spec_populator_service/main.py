@@ -13,6 +13,7 @@ from utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
 
 embed = get_emb_model()
 source = os.getenv("SOURCE_PLATFORM", "apim")
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
 

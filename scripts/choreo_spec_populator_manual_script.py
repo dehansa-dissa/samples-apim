@@ -22,6 +22,8 @@ MONGODB_CONNECTION_URL = f"mongodb+srv://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONG
 
 logging.basicConfig(level=logging.INFO)
 
+milvus_entry_count_from_script = 0
+
 
 def upsert_vector_for_choreo(params, request_body, doc_id):
     sleep(0.5)
@@ -30,6 +32,7 @@ def upsert_vector_for_choreo(params, request_body, doc_id):
 
 
 def push_rest_apis(document):
+    global milvus_entry_count_from_script
     content = None
 
     doc_id = str(document.get("_id"))
@@ -91,6 +94,14 @@ def push_rest_apis(document):
         with open(f'corrupted_files/{doc_id}.txt', 'w') as file:
             file.write(content)
     elif response.status_code == 200:
+        logging.info("Response: %s", response.json())
+        milvus_entry_count_from_script += 1
+        response_json = response.json()
+        count_from_milvus = response_json['message']['milvus_count']
+        if count_from_milvus < milvus_entry_count_from_script:
+            raise Exception("Entry count mismatch: Milvus count - {}, Script count - {}".format(count_from_milvus, milvus_entry_count_from_script))
+
+        logging.info("Milvus entry count from script: %s", milvus_entry_count_from_script)
         insert_data("rest_api_pushed.csv", org_id, doc_id)
         logging.info("Pushed REST API for org_id: %s and id: %s", org_id, doc_id)
     else:
@@ -150,7 +161,8 @@ if __name__ == '__main__':
                         session.end_session()
                         session = client.start_session()
                         session.start_transaction()
-                        cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime", ASCENDING)
+                        cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime",
+                                                                                                   ASCENDING)
                         number_of_documents = collection.count_documents({}, session=session)
                         refresh_timestamp = time.time()
 
@@ -165,12 +177,15 @@ if __name__ == '__main__':
                             doc_id = str(document.get("_id"))
                             if data_df[(data_df['org_id'] == org_id) & (data_df['doc_id'] == doc_id)].shape[0] > 0:
                                 logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                                milvus_entry_count_from_script += 1
+                                logging.info("Milvus entry count from script: %s", milvus_entry_count_from_script)
                                 continue
 
                         if corrupted_csv_exists:
                             org_id = document.get("organizationId")
                             doc_id = str(document.get("_id"))
-                            if corrupted_df[(corrupted_df['org_id'] == org_id) & (corrupted_df['doc_id'] == doc_id)].shape[
+                            if \
+                            corrupted_df[(corrupted_df['org_id'] == org_id) & (corrupted_df['doc_id'] == doc_id)].shape[
                                 0] > 0:
                                 logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
                                 continue
