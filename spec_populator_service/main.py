@@ -7,7 +7,8 @@ from functools import partial
 import os
 
 from milvus import upsert_vector_for_onprem, upsert_vector_for_choreo, delete_vector, \
-    upsert_bulk_vector_for_onprem, get_vector_count_for_org, delete_bulk_vector_for_onprem, delete_vector_for_choreo
+    upsert_bulk_vector_for_onprem, get_vector_count_for_org, delete_bulk_vector_for_onprem, delete_vector_for_choreo, \
+    upsert_bulk_vector_for_choreo
 from utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
     pre_process_asyncapi_def, API, ChoreoAPI
 
@@ -40,6 +41,32 @@ async def get_pre_processed_spec(api_details):
         name=api_details["api_name"],
         spec=record
     )
+    return api
+
+
+async def get_pre_processed_choreo_spec(api_details):
+    api_type = api_details["api_type"]
+    if api_type == "REST":
+        record = await pre_process_openapi(api_details["api_spec"])
+    elif api_type == "GRAPHQL":
+        logging.info("Cannot process GraphQL APIs")
+        return
+    elif api_type == "ASYNC":
+        logging.info("Cannot process GraphQL APIs")
+        return
+
+    record["apim_description"] = api_details["description"]
+    api = ChoreoAPI(
+        id=api_details['uuid'],
+        # The actual version is used instead of what is in the Spec,
+        # since we know this is the truth, and the spec version can be outdated
+        version=api_details["version"],
+        type=api_details["api_type"],
+        name=api_details["api_name"],
+        spec=record,
+        api_uuid=api_details["api_uuid"]
+    )
+
     return api
 
 
@@ -78,6 +105,43 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional
         )
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, partial(upsert_vector_for_choreo, embed, orgID, api))
+
+    return {"message": response}
+
+
+@app.post("/add_bulk_vector_choreo")
+async def add_bulk_vector_choreo(request: Dict[str, Any]):
+    api_details_list = request["apis"]
+
+    api_list = []
+
+    for api_details in api_details_list:
+        try:
+            api = await get_pre_processed_choreo_spec(api_details)
+            res = embed.embed_query(str(api.__dict__))
+            payload = {
+                "page_content": str(api.spec),
+                "metadata": {
+                    "id": api.id,
+                    "api_name": api.name,
+                    "api_version": api.version,
+                    "api_type": api.type,
+                    "api_uuid": api.api_uuid
+                },
+                "id": api.id,
+                "api_name": api.name,
+                "vector": res,
+                "api_type": api.type,
+                "org_id": api_details["org_id"],
+            }
+
+            api_list.append(payload)
+        except Exception as e:
+            logging.error(f"Error processing API: {api_details['uuid']}")
+            logging.error(e)
+            continue
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(None, partial(upsert_bulk_vector_for_choreo, api_list))
 
     return {"message": response}
 
@@ -145,7 +209,8 @@ async def bulk_remove_vector(orgID: str, keyID: str):
     if source == "apim":
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, partial(delete_bulk_vector_for_onprem, orgID, keyID))
-        return {"message" : response}
+        return {"message": response}
+
 
 @app.get("/health")
 def health():
