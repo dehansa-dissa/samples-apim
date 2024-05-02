@@ -41,6 +41,12 @@ logging.basicConfig(level=logging.INFO)
 
 milvus_entry_count_from_script = 0
 
+
+ALL_APIS_FILE = "all_apis.csv"
+REST_APIS_FILE = "rest_api_pushed.csv"
+CORRUPTED_DOCS_FILE = "corrupted_docs.csv"
+
+
 def prepare_data(document):
     global milvus_entry_count_from_script
     content = None
@@ -135,7 +141,7 @@ def create_record(document):
     except Exception as e:
         logging.error(f"Error processing API: {document['id']}")
         logging.error(e)
-        insert_data("corrupted_docs.csv", document["org_id"], document["id"])
+        insert_data(CORRUPTED_DOCS_FILE, document["org_id"], document["id"])
         return None
 
 
@@ -254,17 +260,17 @@ def populate_milvus():
 
     output_json_count = 0
 
-    csv_exists = check_file_exists("rest_api_pushed.csv")
+    csv_exists = check_file_exists(REST_APIS_FILE)
     if csv_exists:
-        data_df = pd.read_csv("rest_api_pushed.csv")
+        data_df = pd.read_csv(REST_APIS_FILE)
 
-    all_csv_exists = check_file_exists("all_apis.csv")
+    all_csv_exists = check_file_exists(ALL_APIS_FILE)
     if all_csv_exists:
-        data_df = pd.read_csv("all_apis.csv")
+        data_df = pd.read_csv(ALL_APIS_FILE)
 
-    corrupted_csv_exists = check_file_exists("corrupted_docs.csv")
+    corrupted_csv_exists = check_file_exists(CORRUPTED_DOCS_FILE)
     if corrupted_csv_exists:
-        corrupted_df = pd.read_csv("corrupted_docs.csv")
+        corrupted_df = pd.read_csv(CORRUPTED_DOCS_FILE)
 
     if not os.path.exists('corrupted_files'):
         os.makedirs('corrupted_files')
@@ -327,7 +333,7 @@ def populate_milvus():
                                 continue
 
                         if doc_type := document.get("serviceType"):
-                            insert_data("all_apis", org_id, doc_id)
+                            insert_data(ALL_APIS_FILE, org_id, doc_id)
                             if doc_type == "REST":
                                 rest_document_count += 1  # Increment the counter for each REST document
                                 milvus_data_raw = prepare_data(document)
@@ -339,7 +345,7 @@ def populate_milvus():
                                         logging.info("writing 1000 record to file")
                                         write_json_to_file(output_file_prefix+str(output_json_count)+".json", record_list)
                                         # upsert_bulk_vector_for_choreo(record_list)
-                                        # write_list_dict_to_csv("rest_api_pushed.csv", info_list)
+                                        write_list_dict_to_csv(REST_APIS_FILE, info_list)
                                         record_list = []
                                         info_list = []
                                         output_json_count += 1
