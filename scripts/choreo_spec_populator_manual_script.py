@@ -335,7 +335,7 @@ def populate_milvus():
                                     record_list.append(milvus_data_raw)
                                     info_list.append({"org_id": org_id, "doc_id": doc_id})
                                     logging.info("Record count: %s", len(record_list))
-                                    if len(record_list) == 500:
+                                    if len(record_list) == 1000:
                                         logging.info("writing 1000 record to file")
                                         write_json_to_file(output_file_prefix+str(output_json_count)+".json", record_list)
                                         # upsert_bulk_vector_for_choreo(record_list)
