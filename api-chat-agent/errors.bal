@@ -64,6 +64,9 @@ isolated function handleServerError(error 'error, Task task, *log:KeyValues keyV
         if cause is InvalidResourcePathError {
             message = cause.message();
             code = INVALID_RESOURCE_PATH;
+        } else if cause is agent:UnsupportedOpenApiVersion {
+            message = cause.message();
+            code = UNSUPPORTED_SPECIFICATION;
         } else {
             message = "The specification could not be parsed. Ensure you are using a valid specification.";
             code = INVALID_SPECIFICATION;
