@@ -1,22 +1,39 @@
+import json
 import logging
 import os
 import csv
 from time import sleep
 import pandas as pd
-import requests
 from pymongo.errors import OperationFailure
 from pymongo import MongoClient, ASCENDING
+from pymilvus import DataType, MilvusClient, Collection, connections
 import time
+
+from utils import pre_process_openapi, get_emb_model, ChoreoAPI
 
 MAX_RETRIES = 3
 
 # Set the following configs as per the environment
-# URL of the service
-SPEC_POPULATOR_URL = 'http://localhost:8000/add_vector/'
 MONGODB_HOST = ""
 MONGODB_USER = ""
 MONGODB_NAME = ""
 MONGODB_PASSWORD = ""
+
+# Set the following configs as per the environment
+MILVERSE_API_KEY = ""
+MILVERSE_URL = ""
+
+# Set the collection name
+# in dev it is "DevChoreoMarketplace"
+# in prod it is "ProdChoreoMarketplace"
+# in stage it is "StagingChoreoMarketplace"
+collection_name = ""
+
+# Set the output file prefix
+# in dev it is "dev_doc_"
+# in prod it is "prod_doc_"
+# in stage it is "stage_doc_"
+output_file_prefix = ""
 
 MONGODB_CONNECTION_URL = f"mongodb+srv://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONGODB_HOST}/?retryWrites=true&w=majority&connectTimeoutMS=360000"
 
@@ -24,75 +41,7 @@ logging.basicConfig(level=logging.INFO)
 
 milvus_entry_count_from_script = 0
 
-
-def upsert_vector_for_choreo(params, request_body, doc_id):
-    response = requests.post(SPEC_POPULATOR_URL + 'add_vector/' + doc_id, json=request_body, params=params)
-    sleep(1)
-    return response
-
-
-def upsert_bulk_vector_for_choreo(request_body):
-    response = requests.post(SPEC_POPULATOR_URL + 'add_bulk_vector_choreo', json=request_body)
-    return response
-
-
-def create_request_body(document):
-    content = None
-
-    doc_id = str(document.get("_id"))
-
-    org_id = document.get("organizationId")
-    api_name = document.get("name")
-    api_uuid = document.get("serviceId")
-    api_version = document.get("version")
-
-    # To Skip cases where there is no IDLs key in the document
-    # In the latest schema, IDLs should be a key in the document
-    if 'idls' not in document.keys():
-        logging.error("idls key not found in the document for org_id: %s and id: %s", org_id, doc_id)
-        return
-
-    idls = document.get('idls')
-
-    if len(idls.keys()) == 0:
-        logging.error("No IDLs found in the document for org_id: %s and id: %s", org_id, doc_id)
-        return
-
-    if 'content' in idls.keys():
-        content = idls.get('content')
-    else:
-        for idl_key in idls.keys():
-            content = idls.get(idl_key).get('content')
-            break
-
-    description = document.get('description')
-    if not description:
-        description = document.get('summary')
-
-    if type(content) is dict:
-        content = str(content)
-    else:
-        content = content
-
-    if content is None:
-        logging.error("No spec for org_id: %s and id: %s", org_id, doc_id)
-        return
-
-    api_detail = {
-        "api_name": api_name,
-        "api_type": "REST",
-        "api_spec": content,
-        "description": description,
-        "version": api_version,
-        "api_uuid": api_uuid,
-        "uuid": doc_id,
-        "org_id": org_id
-    }
-
-    return api_detail
-
-
-def push_rest_apis(document):
+def prepare_data(document):
     global milvus_entry_count_from_script
     content = None
 
@@ -103,10 +52,6 @@ def push_rest_apis(document):
     api_uuid = document.get("serviceId")
     api_version = document.get("version")
 
-    params = {
-        "orgID": org_id,
-    }
-
     # To Skip cases where there is no IDLs key in the document
     # In the latest schema, IDLs should be a key in the document
     if 'idls' not in document.keys():
@@ -138,7 +83,9 @@ def push_rest_apis(document):
         logging.error("No spec for org_id: %s and id: %s", org_id, doc_id)
         return
 
-    request_body = {
+    document = {
+        "id": doc_id,
+        "org_id": org_id,
         "api_name": api_name,
         "api_type": "REST",
         "api_spec": content,
@@ -147,63 +94,84 @@ def push_rest_apis(document):
         "api_uuid": api_uuid
     }
 
-    response = upsert_vector_for_choreo(params, request_body, doc_id)
-    logging.info("Response status code: %s", response.status_code)
-    if response.status_code == 500:
-        insert_data("corrupted_docs.csv", org_id, doc_id)
-        logging.info("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
-        with open(f'corrupted_files/{doc_id}.txt', 'w') as file:
-            file.write(content)
-    elif response.status_code == 200:
-        logging.info("Response: %s", response.json())
-        milvus_entry_count_from_script += 1
-        response_json = response.json()
-        count_from_milvus = response_json['message']['milvus_count']
-        if count_from_milvus + 1 < milvus_entry_count_from_script:
-            raise Exception("Entry count mismatch: Milvus count - {}, Script count - {}".format(count_from_milvus,
-                                                                                                milvus_entry_count_from_script))
-
-        logging.info("Milvus entry count from script: %s", milvus_entry_count_from_script)
-        insert_data("rest_api_pushed.csv", org_id, doc_id)
-        logging.info("Pushed REST API for org_id: %s and id: %s", org_id, doc_id)
-    else:
-        logging.error("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
-        logging.error("Response: %s", response.json())
+    return create_record(document)
 
 
-def push_bulk_rest_apis(api_detail_list):
+def create_record(document):
+    try:
+        record = pre_process_openapi(document["api_spec"])
+        record["apim_description"] = document["description"]
+
+        api = ChoreoAPI(
+            id=document["id"],
+            version=document["version"],
+            type=document["api_type"],
+            name=document["api_name"],
+            spec=record,
+            api_uuid=document["api_uuid"]
+        )
+
+        embed = get_emb_model()
+        res = embed.embed_query(str(api.__dict__))
+
+        milvus_record = {
+            "page_content": str(api.spec),
+            "metadata": {
+                "id": api.id,
+                "api_name": api.name,
+                "api_version": api.version,
+                "api_type": api.type,
+                "api_uuid": api.api_uuid
+            },
+            "id": api.id,
+            "api_name": api.name,
+            "vector": res,
+            "api_type": api.type,
+            "org_id": document["org_id"],
+        }
+
+        return milvus_record
+
+    except Exception as e:
+        logging.error(f"Error processing API: {document['id']}")
+        logging.error(e)
+        insert_data("corrupted_docs.csv", document["org_id"], document["id"])
+        return None
+
+
+def get_collection_raw_count(mc):
+    response = mc.query(
+        collection_name=collection_name,
+        output_fields=["count(*)"],
+    )
+    mc.get_collection_stats(collection_name=collection_name)
+    return response[0]["count(*)"]
+
+
+def upsert_bulk_vector_for_choreo(data):
     global milvus_entry_count_from_script
-
-    request_body = {
-        "apis": api_detail_list
-    }
-
-    response = upsert_bulk_vector_for_choreo(request_body)
-    logging.info("Response status code: %s", response.status_code)
-    if response.status_code == 500:
-        # insert_data("corrupted_docs.csv", org_id, doc_id)
-        # logging.info("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
-        logging.info("Failed to push REST APIs")
-        # with open(f'corrupted_files/{doc_id}.txt', 'w') as file:
-        #     file.write(content)
-    elif response.status_code == 200:
-        logging.info("Response: %s", response.json())
-        response_json = response.json()
-        milvus_entry_count_from_script += response_json['message']['milvus_response']['upsert_count']
-        count_from_milvus = response_json['message']['milvus_count']
-        if count_from_milvus < milvus_entry_count_from_script:
-            raise Exception("Entry count mismatch: Milvus count - {}, Script count - {}".format(count_from_milvus,
-                                                                                                milvus_entry_count_from_script))
-        logging.info("Milvus entry count from script: %s", milvus_entry_count_from_script)
-        for api_detail in api_detail_list:
-            org_id = api_detail.get("org_id")
-            doc_id = api_detail.get("uuid")
-            insert_data("rest_api_pushed.csv", org_id, doc_id)
-            logging.info("Pushed REST API for org_id: %s and id: %s", org_id, doc_id)
-    else:
-        # logging.error("Failed to push REST API for org_id: %s and id: %s", org_id, doc_id)
-        logging.error("Failed to push REST APIs")
-        logging.error("Response: %s", response.json())
+    connections.connect(uri=MILVERSE_URL, token=MILVERSE_API_KEY)
+    collection = Collection(name=collection_name)
+    entry_count_initial = collection.query(expr="", output_fields=["count(*)"])[0]["count(*)"]
+    logging.info("Entry count from script: %s", milvus_entry_count_from_script)
+    logging.info("Initial entry count: %s", entry_count_initial)
+    res = collection.upsert(data)
+    logging.info("Success count: %s", res.succ_count)
+    logging.info("Upsert count: %s", res.upsert_count)
+    sleep(10)
+    entry_count_final = collection.query(expr="", output_fields=["count(*)"])[0]["count(*)"]
+    logging.info("Final entry count: %s", entry_count_final)
+    milvus_entry_count_from_script += len(data)
+    if milvus_entry_count_from_script - entry_count_final > 100:
+        logging.error("Failed to insert all the records")
+        exit()
+    # tasks = utility.do_bulk_insert(
+    #     collection_name=collection_name,
+    #     is_row_based=True,
+    #     files=[file_name]
+    # )
+    connections.disconnect(alias="default")
+    connections.remove_connection(alias="default")
 
 
 def insert_data(file_name, org_id, doc_id):
@@ -218,18 +186,81 @@ def insert_data(file_name, org_id, doc_id):
         writer.writerow([org_id, doc_id])
 
 
+def write_list_dict_to_csv(file_name, data):
+    file_exists = os.path.isfile(file_name)
+    with open(file_name, mode='a') as file:
+        writer = csv.writer(file)
+
+        if not file_exists:
+            writer.writerow(['org_id', 'doc_id'])
+
+        for row in data:
+            writer.writerow(row.values())
+
+
 def check_file_exists(file_name):
     return os.path.isfile(file_name)
 
 
-if __name__ == '__main__':
+def create_collection(collection_name):
+    logging.info("Creating collection %s", collection_name)
+    mc = MilvusClient(uri=MILVERSE_URL, token=MILVERSE_API_KEY)
+    has = mc.has_collection(collection_name)
+    if not has:
+        schema = MilvusClient.create_schema(
+            auto_id=False,
+            enable_dynamic_field=False,
+        )
+        schema.add_field(field_name="id", datatype=DataType.VARCHAR, is_primary=True, max_length=65000)
+        schema.add_field(field_name="metadata", datatype=DataType.JSON, max_length=65000)
+        schema.add_field(field_name="api_type", datatype=DataType.VARCHAR, max_length=65000)
+        schema.add_field(field_name="api_name", datatype=DataType.VARCHAR, max_length=65000)
+        schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=1536)
+        schema.add_field(field_name="page_content", datatype=DataType.VARCHAR, max_length=65000)
+        schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=65000, is_partition_key=True)
+
+        index_params = mc.prepare_index_params()
+
+        index_params.add_index(
+            field_name="vector",
+            index_type="AUTOINDEX",
+            metric_type="L2"
+        )
+
+        mc.create_collection(
+            collection_name=collection_name,
+            metric_type="COSINE",
+            schema=schema,
+            index_params=index_params
+        )
+
+    mc.close()
+
+
+def write_json_to_file(file_name, data):
+    proper_dict = {"rows": data}
+    # final_json = json.dumps(proper_dict)
+    with open(file_name, "w") as file:
+        json.dump(proper_dict, file)
+
+    file.close()
+
+
+def populate_milvus():
+    create_collection(collection_name)
+    global milvus_entry_count_from_script
     document_count = 0
     rest_document_count = 0
-    api_detail_list = []
+
+    output_json_count = 0
 
     csv_exists = check_file_exists("rest_api_pushed.csv")
     if csv_exists:
         data_df = pd.read_csv("rest_api_pushed.csv")
+
+    all_csv_exists = check_file_exists("all_apis.csv")
+    if all_csv_exists:
+        data_df = pd.read_csv("all_apis.csv")
 
     corrupted_csv_exists = check_file_exists("corrupted_docs.csv")
     if corrupted_csv_exists:
@@ -242,6 +273,8 @@ if __name__ == '__main__':
     db = client[MONGODB_NAME]
     collection = db['resources']
     tries = 0
+    record_list = []
+    info_list = []
 
     for tries in range(MAX_RETRIES):
         try:
@@ -270,9 +303,10 @@ if __name__ == '__main__':
 
                         logging.info("Processing document %s", document_count)
 
+                        org_id = document.get("organizationId")
+                        doc_id = str(document.get("_id"))
+
                         if csv_exists:
-                            org_id = document.get("organizationId")
-                            doc_id = str(document.get("_id"))
                             if data_df[(data_df['org_id'] == org_id) & (data_df['doc_id'] == doc_id)].shape[0] > 0:
                                 logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
                                 milvus_entry_count_from_script += 1
@@ -280,8 +314,6 @@ if __name__ == '__main__':
                                 continue
 
                         if corrupted_csv_exists:
-                            org_id = document.get("organizationId")
-                            doc_id = str(document.get("_id"))
                             if \
                                     corrupted_df[
                                         (corrupted_df['org_id'] == org_id) & (corrupted_df['doc_id'] == doc_id)].shape[
@@ -289,18 +321,29 @@ if __name__ == '__main__':
                                 logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
                                 continue
 
+                        if all_csv_exists:
+                            if data_df[(data_df['org_id'] == org_id) & (data_df['doc_id'] == doc_id)].shape[0] > 0:
+                                logging.info("Already processes org_id: %s and id: %s", org_id, doc_id)
+                                continue
+
                         if doc_type := document.get("serviceType"):
+                            insert_data("all_apis", org_id, doc_id)
                             if doc_type == "REST":
                                 rest_document_count += 1  # Increment the counter for each REST document
-                                res = create_request_body(document)
-                                if res:
-                                    api_detail_list.append(res)
-                                    logging.info("Inserted document to list. List length %s", len(api_detail_list))
-                                if len(api_detail_list) == 50 or document_count == number_of_documents:
-                                    logging.info("Pushing APIs %s", len(api_detail_list))
-                                    push_bulk_rest_apis(api_detail_list)
-                                    api_detail_list = []
-                                # push_rest_apis(document)
+                                milvus_data_raw = prepare_data(document)
+                                if milvus_data_raw:
+                                    record_list.append(milvus_data_raw)
+                                    info_list.append({"org_id": org_id, "doc_id": doc_id})
+                                    logging.info("Record count: %s", len(record_list))
+                                    if len(record_list) == 1000:
+                                        logging.info("writing 1000 record to file")
+                                        write_json_to_file(output_file_prefix+str(output_json_count)+".json", record_list)
+                                        # upsert_bulk_vector_for_choreo(record_list)
+                                        # write_list_dict_to_csv("rest_api_pushed.csv", info_list)
+                                        record_list = []
+                                        info_list = []
+                                        output_json_count += 1
+                                        # break
                                 tries = 0
                             else:
                                 # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
@@ -314,11 +357,18 @@ if __name__ == '__main__':
                 session.commit_transaction()
                 # Break the loop after processing all the documents
                 break
+
         except OperationFailure as e:
             logging.exception("Error occurred while processing documents", exc_info=e)
             continue
     else:
         logging.error("Failed to commit transaction after %s retries", tries)
 
+    write_json_to_file(output_file_prefix+str(output_json_count)+".json", record_list)
     logging.info("Total document count - %s", document_count)  # Print the total number of documents
     logging.info("Rest document count - %s", rest_document_count)
+
+
+if __name__ == '__main__':
+    create_collection(collection_name)
+    populate_milvus()
