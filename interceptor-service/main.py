@@ -92,7 +92,7 @@ lua_script = """
     data["prompt_tokens"] = data["prompt_tokens"] + ARGV[1]
     data["completion_tokens"] = data["completion_tokens"] + ARGV[2]
     data["total_tokens"] = data["total_tokens"] + ARGV[3]
-    redis.call('SETEX', KEYS[1], 30*24*3600, cjson.encode(data))
+    redis.call('SET', KEYS[1], cjson.encode(data))
     return cjson.encode(data)
     """
 
