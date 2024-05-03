@@ -1,5 +1,8 @@
 from fastapi import FastAPI, Header, HTTPException
 from aiocache import cached, SimpleMemoryCache, caches
+import redis.asyncio as redis
+import asyncio
+from contextlib import asynccontextmanager
 import json
 import os
 from pydantic import BaseModel
@@ -13,14 +16,8 @@ api_chat_access_token = os.getenv("API_CHAT_ENDPOINT_ACCESS_TOKEN")
 introspect_endpoint = os.getenv("INTROSPECTION_ENDPOINT")
 marketplace_chat_access_token = os.getenv("MARKETPLACE_CHAT_ENDPOINT_TOKEN")
 api_publisher_endpoint_access_token = os.getenv("API_PUBLISHER_ENDPOINT_ACCESS_TOKEN")
-
-# api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
-# marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
-# api_publisher_endpoint = os.getenv("API_PUBLISHER_ENDPOINT", "http://localhost:8000")
-# api_chat_access_token = os.getenv("API_CHAT_ENDPOINT_ACCESS_TOKEN")
-# introspect_endpoint = os.getenv("INTROSPECTION_ENDPOINT", "https://apis.choreo.dev/onprem-key-mgt/1.0.0/orgs/keys/introspect")
-# marketplace_chat_access_token = os.getenv("MARKETPLACE_CHAT_ENDPOINT_TOKEN")
-# api_publisher_endpoint_access_token = os.getenv("API_PUBLISHER_ENDPOINT_ACCESS_TOKEN", "")
+redis_uri = os.getenv("REDIS_URI")
+openai_token_count_per_org = os.getenv("OPENAI_TOKEN_COUNT_PER_ORG")
 
 cache = SimpleMemoryCache()
 
@@ -68,7 +65,63 @@ caches.set_config({
     }
 })
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global lua_script_sha, redis_client
+    try:
+        pool = redis.ConnectionPool.from_url(redis_uri)
+        redis_client = redis.Redis(connection_pool=pool)
+        lua_script_sha = None
+        await test_connection()
+        lua_script_sha = await redis_client.script_load(lua_script)
+        yield
+    except Exception as e:
+        print(f"Error initializing Redis connection: {e}")
+        raise Exception("Error initializing Redis connection")
+    finally:
+        await pool.disconnect()
+
+
+lua_script = """
+    local json_value = redis.call('GET', KEYS[1])
+    if not json_value then
+        json_value = '{"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}'
+    end
+    local data = cjson.decode(json_value)
+    data["prompt_tokens"] = data["prompt_tokens"] + ARGV[1]
+    data["completion_tokens"] = data["completion_tokens"] + ARGV[2]
+    data["total_tokens"] = data["total_tokens"] + ARGV[3]
+    redis.call('SETEX', KEYS[1], 30*24*3600, cjson.encode(data))
+    return cjson.encode(data)
+    """
+
+
+app = FastAPI(
+    title="WSO2 APIM AI Interceptor",
+    description="Backend for WSO2 APIM AI Features",
+    version="0.1.0",
+    license_info={"name": "Apache 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
+    lifespan=lifespan
+)
+
+
+async def update_redis_cache(key, increment_value):
+    global lua_script_sha
+    result = await redis_client.evalsha(lua_script_sha, 1, key, *increment_value)
+    return
+
+
+async def test_connection():
+    try:
+        await redis_client.ping()
+        await redis_client.set('test', 'Hello world!')
+        res = await redis_client.get('test')
+        print(res)
+        await redis_client.delete('test')
+    except Exception as e:
+        raise Exception("Error testing Redis connection")
+
 
 @cached(ttl=60, key=lambda on_prem_key: f"introspection:{on_prem_key}")
 async def introspect(on_prem_key):
@@ -83,6 +136,16 @@ async def introspect(on_prem_key):
                     raise HTTPException(status_code=401, detail="Provided key is invalid or expired")
                 else:
                     raise HTTPException(status_code=response.status, detail=responseMessage)
+
+
+async def throttle(orgID):
+    cache_key = "org:" + orgID + ":token_count"
+    current_counts_json = await redis_client.get(cache_key)
+    if current_counts_json is not None:
+        current_counts = json.loads(current_counts_json)
+        total_count = int(current_counts["total_tokens"])
+        if total_count >= openai_token_count_per_org:
+            raise HTTPException(status_code=429, detail="Maximum token limit reached")
 
 
 @cached(ttl=60, key=lambda orgID: f"api_count:{orgID}")
@@ -138,7 +201,7 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), API_KEY: str 
 @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
 async def chat(req: dict, API_KEY: str = Header(None)):
     [orgID, handle, status] = await introspect(API_KEY)
-
+    await throttle(orgID)
     if status == "ACTIVE":
         history_string = req["history"]
         data_list = json.loads(history_string)
@@ -161,7 +224,11 @@ async def chat(req: dict, API_KEY: str = Header(None)):
             async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'keyID': handle},
                                     json=payload, headers=headers) as response:
                 if response.status == 200:
-                    return await response.json()
+                    response_json = await response.json()
+                    usage = response_json.pop('usage', None)
+                    cache_key = "org:" + orgID + ":token_count"
+                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                    return response_json
                 else:
                     raise HTTPException(status_code=response.status, detail=await response.text())
     else:
@@ -253,19 +320,3 @@ async def remove_bulk_apis(API_KEY: str = Header(None)):
     else:
         raise HTTPException(status_code=401, detail="Your key has expired")
 
-@app.delete("/ai/spec-populator/bulk-remove")
-async def remove_bulk_apis(API_KEY: str = Header(None)):
-    # print(API_KEY)
-    [orgID, handle, status] = await introspect(API_KEY)
-
-    if status == "ACTIVE":
-        async with aiohttp.ClientSession() as session:
-            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-            async with session.delete(api_publisher_endpoint + '/bulk_remove_vector',
-                                    params={'orgID': handle, 'keyID': handle}, headers=headers) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    raise HTTPException(status_code=response.status, detail=await response.text())
-    else:
-        raise HTTPException(status_code=401, detail="Your key has expired")
