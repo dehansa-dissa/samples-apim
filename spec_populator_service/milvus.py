@@ -4,14 +4,9 @@ from pymilvus import DataType, MilvusClient, Collection, connections
 import os
 from utils import API, ChoreoAPI
 
-# api_key = os.getenv('MILVERSE_API_KEY')
-# url = os.getenv('MILVERSE_URL')
-# collection_name = os.getenv("COLLECTION_NAME")
-# create_collection = os.getenv("CREATE_COLLECTION", True)
-
-api_key = os.getenv('MILVERSE_API_KEY', "b7b4984ffcad87680dbd6a40574a97f17a05e2d1550cb1d03c1600c83e401bc3c02ca5145c1f7961cb780c29551bc10a44c9ad21")
-url = os.getenv('MILVERSE_URL', "https://in03-8a348bef1d64bed.api.gcp-us-west1.zillizcloud.com")
-collection_name = os.getenv("COLLECTION_NAME", "apimm")
+api_key = os.getenv('MILVERSE_API_KEY')
+url = os.getenv('MILVERSE_URL')
+collection_name = os.getenv("COLLECTION_NAME")
 create_collection = os.getenv("CREATE_COLLECTION", True)
 
 
