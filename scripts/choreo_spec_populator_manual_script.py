@@ -253,7 +253,6 @@ def write_json_to_file(file_name, data):
 
 
 def populate_milvus():
-    create_collection(collection_name)
     global milvus_entry_count_from_script
     document_count = 0
     rest_document_count = 0
@@ -312,6 +311,9 @@ def populate_milvus():
                         org_id = document.get("organizationId")
                         doc_id = str(document.get("_id"))
 
+                        insert_data(ALL_APIS_FILE, org_id, doc_id)
+                        logging.info("Processing org_id: %s and id: %s", org_id, doc_id)
+
                         if csv_exists:
                             if data_df[(data_df['org_id'] == org_id) & (data_df['doc_id'] == doc_id)].shape[0] > 0:
                                 logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
@@ -333,7 +335,6 @@ def populate_milvus():
                                 continue
 
                         if doc_type := document.get("serviceType"):
-                            insert_data(ALL_APIS_FILE, org_id, doc_id)
                             if doc_type == "REST":
                                 rest_document_count += 1  # Increment the counter for each REST document
                                 milvus_data_raw = prepare_data(document)
@@ -359,6 +360,9 @@ def populate_milvus():
                         logging.exception("Error occurred while processing documents", exc_info=e)
                         tries += 1
                         break
+
+                    if document_count == (number_of_documents + 1):
+                        number_of_documents = collection.count_documents({}, session=session)
 
                 session.commit_transaction()
                 # Break the loop after processing all the documents
