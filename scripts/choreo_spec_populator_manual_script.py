@@ -26,7 +26,7 @@ MILVERSE_URL = ""
 # Set the collection name
 # in dev it is "DevChoreoMarketplace"
 # in prod it is "ProdChoreoMarketplace"
-# in stage it is "StagingChoreoMarketplace"
+# in stage it is "StagChoreoMarketplace"
 collection_name = ""
 
 # Set the output file prefix
@@ -285,7 +285,8 @@ def populate_milvus():
         try:
             with client.start_session() as session:
                 session.start_transaction()
-                cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime", ASCENDING)
+                cursor = collection.find({}, no_cursor_timeout=True, session=session, allow_disk_use=True).sort(
+                    "createdTime", ASCENDING)
 
                 refresh_timestamp = time.time()
 
@@ -297,7 +298,7 @@ def populate_milvus():
                         session.end_session()
                         session = client.start_session()
                         session.start_transaction()
-                        cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime",
+                        cursor = collection.find({}, no_cursor_timeout=True, session=session, allow_disk_use=True).sort("createdTime",
                                                                                                    ASCENDING)
                         number_of_documents = collection.count_documents({}, session=session)
                         refresh_timestamp = time.time()
