@@ -288,6 +288,7 @@ async def generate_response(
             #     'callbacks': [ConsoleCallbackHandler()]
             #     }
         )
+        chain_response = parse_json(chain_response.content, cb)
     return chain_response
 
 
@@ -390,15 +391,28 @@ async def process_sse_response(stage, token_content):
 
     return stage, token_content
 
-def parse_json(json_resp):
+def parse_json(json_resp, token_usage):
     try:
         json_object = json.loads(json_resp)
         #Handle the case where the LLM responds with the key name instead of apiName
         if "name" in json_object:
             json_object["apiName"] = json_object["name"]
             del json_object["name"]
+        json_object["usage"] = {
+            "prompt_tokens": token_usage.prompt_tokens,
+            "completion_tokens": token_usage.completion_tokens,
+            "total_tokens": token_usage.total_tokens
+        }
     except ValueError as e:
-        return {"response": json_resp, "apis": []}
+        return {
+            "response": json_resp,
+            "apis": [],
+            "usage": {
+                "prompt_tokens": token_usage.prompt_tokens,
+                "completion_tokens": token_usage.completion_tokens,
+                "total_tokens": token_usage.total_tokens
+            }
+        }
     return json_object
 
 def parse_choreo_json(json_resp, token_usage):
@@ -430,8 +444,7 @@ def create_str_markdown(response):
 async def marketplace_assistant(request: Query, keyID: str):
     response = await generate_response(tenant_domain=request.tenant_domain, message=request.query,
                                        history=request.history, partitionID=keyID)
-
-    return parse_json(response.content)
+    return response
 
 
 @api.post("/choreo-marketplace-assistant")
