@@ -334,4 +334,5 @@ if __name__ == '__main__':
     db = client[MONGODB_NAME]
     collection = db['resources']
     org_id_list = collection.distinct("organizationId")
+    write_list_to_csv(ORG_ID_FILE, org_id_list, "org_id")
     process_documents_in_batches(collection, org_id_list)
