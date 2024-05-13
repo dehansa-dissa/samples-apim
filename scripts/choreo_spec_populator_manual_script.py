@@ -8,10 +8,12 @@ from pymongo.errors import OperationFailure
 from pymongo import MongoClient, ASCENDING
 from pymilvus import DataType, MilvusClient, Collection, connections
 import time
+import pymongo
 
 from utils import pre_process_openapi, get_emb_model, ChoreoAPI
 
 MAX_RETRIES = 3
+DOCS_PER_TRANSACTION = 300
 
 # Set the following configs as per the environment
 MONGODB_HOST = ""
@@ -26,7 +28,7 @@ MILVERSE_URL = ""
 # Set the collection name
 # in dev it is "DevChoreoMarketplace"
 # in prod it is "ProdChoreoMarketplace"
-# in stage it is "StagingChoreoMarketplace"
+# in stage it is "StageChoreoMarketplace"
 collection_name = ""
 
 # Set the output file prefix
@@ -40,6 +42,12 @@ MONGODB_CONNECTION_URL = f"mongodb+srv://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONG
 logging.basicConfig(level=logging.INFO)
 
 milvus_entry_count_from_script = 0
+
+ALL_APIS_FILE = "all_apis.csv"
+REST_APIS_FILE = "rest_api_pushed.csv"
+CORRUPTED_DOCS_FILE = "corrupted_docs.csv"
+ORG_ID_FILE = "org_id.csv"
+
 
 def prepare_data(document):
     global milvus_entry_count_from_script
@@ -135,7 +143,7 @@ def create_record(document):
     except Exception as e:
         logging.error(f"Error processing API: {document['id']}")
         logging.error(e)
-        insert_data("corrupted_docs.csv", document["org_id"], document["id"])
+        insert_data(CORRUPTED_DOCS_FILE, document["org_id"], document["id"])
         return None
 
 
@@ -146,32 +154,6 @@ def get_collection_raw_count(mc):
     )
     mc.get_collection_stats(collection_name=collection_name)
     return response[0]["count(*)"]
-
-
-def upsert_bulk_vector_for_choreo(data):
-    global milvus_entry_count_from_script
-    connections.connect(uri=MILVERSE_URL, token=MILVERSE_API_KEY)
-    collection = Collection(name=collection_name)
-    entry_count_initial = collection.query(expr="", output_fields=["count(*)"])[0]["count(*)"]
-    logging.info("Entry count from script: %s", milvus_entry_count_from_script)
-    logging.info("Initial entry count: %s", entry_count_initial)
-    res = collection.upsert(data)
-    logging.info("Success count: %s", res.succ_count)
-    logging.info("Upsert count: %s", res.upsert_count)
-    sleep(10)
-    entry_count_final = collection.query(expr="", output_fields=["count(*)"])[0]["count(*)"]
-    logging.info("Final entry count: %s", entry_count_final)
-    milvus_entry_count_from_script += len(data)
-    if milvus_entry_count_from_script - entry_count_final > 100:
-        logging.error("Failed to insert all the records")
-        exit()
-    # tasks = utility.do_bulk_insert(
-    #     collection_name=collection_name,
-    #     is_row_based=True,
-    #     files=[file_name]
-    # )
-    connections.disconnect(alias="default")
-    connections.remove_connection(alias="default")
 
 
 def insert_data(file_name, org_id, doc_id):
@@ -246,129 +228,111 @@ def write_json_to_file(file_name, data):
     file.close()
 
 
-def populate_milvus():
-    create_collection(collection_name)
+def write_list_to_csv(file_name, data_list, column_name):
+    file_exists = os.path.isfile(file_name)
+    with open(file_name, mode='a') as file:
+        writer = csv.writer(file)
+
+        if not file_exists:
+            writer.writerow([column_name])
+
+        for item in data_list:
+            writer.writerow([item])
+
+
+def process_documents(documents, document_count, rest_document_count, record_list, info_list, output_json_count,
+                      session):
+    # doc_num = 1
+    for doc_num, document in enumerate(documents):
+        document_count += 1  # Increment the counter for each document
+        logging.info("Processing document %s", document_count)
+        logging.info("Organization's document number: %s", doc_num)
+
+        org_id = document.get("organizationId")
+        doc_id = str(document.get("_id"))
+
+        insert_data(ALL_APIS_FILE, org_id, doc_id)
+        logging.info("Processing org_id: %s and id: %s", org_id, doc_id)
+
+        if doc_type := document.get("serviceType"):
+            if doc_type == "REST":
+                rest_document_count += 1  # Increment the counter for each REST document
+                milvus_data_raw = prepare_data(document)
+                if milvus_data_raw:
+                    record_list.append(milvus_data_raw)
+                    info_list.append({"org_id": org_id, "doc_id": doc_id})
+                    logging.info("Record count: %s", len(record_list))
+                    if len(record_list) == 1000:
+                        logging.info("writing 1000 record to file")
+                        write_json_to_file(output_file_prefix + str(output_json_count) + ".json", record_list)
+                        # upsert_bulk_vector_for_choreo(record_list)
+                        write_list_dict_to_csv(REST_APIS_FILE, info_list)
+                        record_list = []
+                        info_list = []
+                        output_json_count += 1
+                        # break
+                tries = 0
+            else:
+                # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
+                logging.info("Document type is - %s", doc_type)
+
+        # logging.info(document)
+        doc_num += 1
+        pass
+    return document_count, rest_document_count, record_list, info_list, output_json_count
+
+
+def process_documents_in_batches(collection, org_id_list):
     global milvus_entry_count_from_script
     document_count = 0
     rest_document_count = 0
 
+    record_list, info_list, output_json_count = [], [], 0
+
     output_json_count = 0
+    start_time = time.time()
 
-    csv_exists = check_file_exists("rest_api_pushed.csv")
-    if csv_exists:
-        data_df = pd.read_csv("rest_api_pushed.csv")
-
-    all_csv_exists = check_file_exists("all_apis.csv")
-    if all_csv_exists:
-        data_df = pd.read_csv("all_apis.csv")
-
-    corrupted_csv_exists = check_file_exists("corrupted_docs.csv")
-    if corrupted_csv_exists:
-        corrupted_df = pd.read_csv("corrupted_docs.csv")
-
-    if not os.path.exists('corrupted_files'):
-        os.makedirs('corrupted_files')
-
-    client = MongoClient(MONGODB_CONNECTION_URL)
-    db = client[MONGODB_NAME]
-    collection = db['resources']
-    tries = 0
-    record_list = []
-    info_list = []
-
-    for tries in range(MAX_RETRIES):
-        try:
-            with client.start_session() as session:
-                session.start_transaction()
-                cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime", ASCENDING)
-
-                refresh_timestamp = time.time()
-
-                number_of_documents = collection.count_documents({}, session=session)
-                while document_count <= number_of_documents:
-                    logging.info("Total number of documents: %s", number_of_documents)
-                    if (time.time() - refresh_timestamp) > 300:  # 300 seconds = 5 minutes
-                        logging.info("Refreshing session")
-                        session.end_session()
-                        session = client.start_session()
+    for org_count, org_id_from_list in enumerate(org_id_list):
+        cursor = collection.find({"organizationId": org_id_from_list}, no_cursor_timeout=True).sort("createdTime",
+                                                                                                    ASCENDING)
+        number_documents_in_org = collection.count_documents({"organizationId": org_id_from_list})
+        number_of_documents = collection.count_documents({})
+        docs = list(cursor)
+        logging.info("Processing %s documents for organization %s", len(docs), org_id_from_list)
+        logging.info("Total number of documents: %s", number_of_documents)
+        logging.info("Total number of documents in org - %s: %s", org_id_from_list,
+                     number_documents_in_org)
+        logging.info("Processed org count: %s", org_count)
+        logging.info("Time elapsed: %s", time.time() - start_time)
+        for i in range(0, len(docs), DOCS_PER_TRANSACTION):
+            batch = docs[i:i + DOCS_PER_TRANSACTION]
+            for tries in range(MAX_RETRIES):
+                try:
+                    with client.start_session() as session:
                         session.start_transaction()
-                        cursor = collection.find({}, no_cursor_timeout=True, session=session).sort("createdTime",
-                                                                                                   ASCENDING)
-                        number_of_documents = collection.count_documents({}, session=session)
-                        refresh_timestamp = time.time()
-
-                    try:
-                        document = next(cursor)
-                        document_count += 1  # Increment the counter for each document
-
-                        logging.info("Processing document %s", document_count)
-
-                        org_id = document.get("organizationId")
-                        doc_id = str(document.get("_id"))
-
-                        if csv_exists:
-                            if data_df[(data_df['org_id'] == org_id) & (data_df['doc_id'] == doc_id)].shape[0] > 0:
-                                logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
-                                milvus_entry_count_from_script += 1
-                                logging.info("Milvus entry count from script: %s", milvus_entry_count_from_script)
-                                continue
-
-                        if corrupted_csv_exists:
-                            if \
-                                    corrupted_df[
-                                        (corrupted_df['org_id'] == org_id) & (corrupted_df['doc_id'] == doc_id)].shape[
-                                        0] > 0:
-                                logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
-                                continue
-
-                        if all_csv_exists:
-                            if data_df[(data_df['org_id'] == org_id) & (data_df['doc_id'] == doc_id)].shape[0] > 0:
-                                logging.info("Already processes org_id: %s and id: %s", org_id, doc_id)
-                                continue
-
-                        if doc_type := document.get("serviceType"):
-                            insert_data("all_apis", org_id, doc_id)
-                            if doc_type == "REST":
-                                rest_document_count += 1  # Increment the counter for each REST document
-                                milvus_data_raw = prepare_data(document)
-                                if milvus_data_raw:
-                                    record_list.append(milvus_data_raw)
-                                    info_list.append({"org_id": org_id, "doc_id": doc_id})
-                                    logging.info("Record count: %s", len(record_list))
-                                    if len(record_list) == 1000:
-                                        logging.info("writing 1000 record to file")
-                                        write_json_to_file(output_file_prefix+str(output_json_count)+".json", record_list)
-                                        # upsert_bulk_vector_for_choreo(record_list)
-                                        # write_list_dict_to_csv("rest_api_pushed.csv", info_list)
-                                        record_list = []
-                                        info_list = []
-                                        output_json_count += 1
-                                        # break
-                                tries = 0
-                            else:
-                                # logging.info("Skipping org_id: %s and id: %s", org_id, doc_id)
-                                logging.info("Document type is - %s", doc_type)
-                        # process document here
-                    except StopIteration as e:
-                        logging.exception("Error occurred while processing documents", exc_info=e)
-                        tries += 1
+                        document_count, rest_document_count, record_list, info_list, output_json_count = process_documents(
+                            batch, document_count, rest_document_count, record_list, info_list, output_json_count,
+                            session)
+                        session.commit_transaction()
                         break
+                except pymongo.errors.OperationFailure as e:
+                    if 'errorLabels' in e.details and 'TransientTransactionError' in e.details['errorLabels']:
+                        # This error means that the transaction was aborted and can be retried
+                        continue
+                    else:
+                        raise
 
-                session.commit_transaction()
-                # Break the loop after processing all the documents
-                break
-
-        except OperationFailure as e:
-            logging.exception("Error occurred while processing documents", exc_info=e)
-            continue
-    else:
-        logging.error("Failed to commit transaction after %s retries", tries)
-
-    write_json_to_file(output_file_prefix+str(output_json_count)+".json", record_list)
+    write_json_to_file(output_file_prefix + str(output_json_count) + ".json", record_list)
+    write_list_dict_to_csv(REST_APIS_FILE, info_list)
     logging.info("Total document count - %s", document_count)  # Print the total number of documents
     logging.info("Rest document count - %s", rest_document_count)
 
 
 if __name__ == '__main__':
     create_collection(collection_name)
-    populate_milvus()
+    client = MongoClient(MONGODB_CONNECTION_URL)
+    db = client[MONGODB_NAME]
+    collection = db['resources']
+    org_id_list = collection.distinct("organizationId")
+    write_list_to_csv(ORG_ID_FILE, org_id_list, "org_id")
+    process_documents_in_batches(collection, org_id_list)

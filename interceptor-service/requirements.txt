@@ -1,5 +1,6 @@
 aiocache==0.12.2
 aiohttp==3.8.5
-fastapi==0.110.1
+fastapi==0.111.0
 pydantic==1.10.8
+redis==5.0.4
 uvicorn==0.29.0

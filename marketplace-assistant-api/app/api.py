@@ -125,18 +125,29 @@ def get_retriever(tenant_domain, partition_id) -> MultiQueryRetriever:
         retriever = vectorstore.as_retriever(search_type="similarity",
                                              search_kwargs={"k": 5,
                                                             "expr": 'key_id == "' + partition_id + '" && tenant_domain == "' + tenant_domain + '"'})
+
+        llm = AzureChatOpenAI(
+            #     temperature=0.3,
+            model_name="gpt-35-turbo",
+            #     max_tokens=2048,
+            deployment_name=AZURE_CHAT_DEPLOYMENT,
+            api_version=AZURE_CHAT_VERSION,
+            azure_endpoint=AZURE_ENDPOINT,
+        )
+
     elif SOURCE_PLATFORM == CHOREO:
         retriever = vectorstore.as_retriever(search_type="similarity",
                                              search_kwargs={"k": 5, "expr": 'org_id == "' + partition_id + '"'})
 
-    llm = AzureChatOpenAI(
-        #     temperature=0.3,
-        model_name="gpt-35-turbo",
-        #     max_tokens=2048,
-        deployment_name=AZURE_CHAT_DEPLOYMENT,
-        api_version=AZURE_CHAT_VERSION,
-        azure_endpoint=AZURE_ENDPOINT,
-    )
+        llm = AzureChatOpenAI(
+            #     temperature=0.3,
+            # model_name="gpt-35-turbo",
+            #     max_tokens=2048,
+            deployment_name=AZURE_CHAT_DEPLOYMENT,
+            api_version=AZURE_CHAT_VERSION,
+            azure_endpoint=AZURE_ENDPOINT,
+        )
+
 
     QUERY_PROMPT = PromptTemplate(
         input_variables=["question"],
@@ -211,7 +222,7 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
             Context: {context}"""
         else:
             qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. Who only speak correct markdown text. Based on the provided API details, 
-            recommend all relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you are not aware of such an API politely.
+            recommend all relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, API politely inform about it.
             Understand the provided context and IGNORE the APIs that does not match the human question. DO NOT SHOW ANY URLS including REDIRECT URLS in the response. 
             Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
             Only recommend APIs that are specified in the context and avoid including made-up APIs.
@@ -288,6 +299,7 @@ async def generate_response(
             #     'callbacks': [ConsoleCallbackHandler()]
             #     }
         )
+        chain_response = parse_json(chain_response.content, cb)
     return chain_response
 
 
@@ -390,15 +402,28 @@ async def process_sse_response(stage, token_content):
 
     return stage, token_content
 
-def parse_json(json_resp):
+def parse_json(json_resp, token_usage):
     try:
         json_object = json.loads(json_resp)
         #Handle the case where the LLM responds with the key name instead of apiName
         if "name" in json_object:
             json_object["apiName"] = json_object["name"]
             del json_object["name"]
+        json_object["usage"] = {
+            "prompt_tokens": token_usage.prompt_tokens,
+            "completion_tokens": token_usage.completion_tokens,
+            "total_tokens": token_usage.total_tokens
+        }
     except ValueError as e:
-        return {"response": json_resp, "apis": []}
+        return {
+            "response": json_resp,
+            "apis": [],
+            "usage": {
+                "prompt_tokens": token_usage.prompt_tokens,
+                "completion_tokens": token_usage.completion_tokens,
+                "total_tokens": token_usage.total_tokens
+            }
+        }
     return json_object
 
 def parse_choreo_json(json_resp, token_usage):
@@ -430,8 +455,7 @@ def create_str_markdown(response):
 async def marketplace_assistant(request: Query, keyID: str):
     response = await generate_response(tenant_domain=request.tenant_domain, message=request.query,
                                        history=request.history, partitionID=keyID)
-
-    return parse_json(response.content)
+    return response
 
 
 @api.post("/choreo-marketplace-assistant")
