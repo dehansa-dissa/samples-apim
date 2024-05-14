@@ -268,9 +268,9 @@ async def generate_choreo_response(messages: list, org_id: str):
         assist_response = (rag_chain.invoke({
             "question": questions,
             "chat_history": chat_history},
-            config={
-                'callbacks': [ConsoleCallbackHandler()]
-                }
+            # config={
+            #     'callbacks': [ConsoleCallbackHandler()]
+            #     }
         ))
 
     assist_response_json = parse_choreo_json(assist_response.content, cb)
