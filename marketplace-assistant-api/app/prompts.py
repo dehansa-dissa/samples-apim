@@ -35,12 +35,9 @@ qa_system_prompt_apim = """You are a simple, and cheerful API Marketplace assist
             Given below are the actual API context you need to use to construct the response.
             Context: {context}"""
 
-# query_prompt_template = """You are an API Marketplace assistant. Your task is to generate three
-#         different versions of the given user question to retrieve relevant documents from a vector
-#         database. By generating multiple perspectives on the user question, your goal is to help
-#         the user overcome some of the limitations of the distance-based similarity search.
-#         Provide these alternative questions separated by newlines.
-#         Original question: {question}"""
-
-query_prompt_template = """You are an API Marketplace assistant that compare API. Your task is to generate individual 
-    questions to fetch relevant documents from a vector database. Original question: {question}"""
+query_prompt_template = """You are an API Marketplace assistant. Your task is to generate three
+        different versions of the given user question to retrieve relevant documents from a vector
+        database. By generating multiple perspectives on the user question, your goal is to help
+        the user overcome some of the limitations of the distance-based similarity search.
+        Provide these alternative questions separated by newlines.
+        Original question: {question}"""

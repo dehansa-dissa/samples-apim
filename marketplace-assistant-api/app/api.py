@@ -155,7 +155,18 @@ def format_docs(docs):
     if not docs:
         return ["No API information available!"]
     else:
-        return "\n\n".join(str({"api_details": doc.metadata, "api_spec": doc.page_content}) for doc in docs)
+        if SOURCE_PLATFORM == CHOREO:
+            doc_string = ""
+            for doc in docs:
+                metadata = doc.metadata
+                metadata.pop("api_uuid")
+                metadata.pop("id")
+                doc_string = "\n\n".join([doc_string, str({"api_details": doc.metadata, "api_spec": doc.page_content})])
+
+            return doc_string
+
+        else:
+            return "\n\n".join([str({"api_details": doc.metadata, "api_spec": doc.page_content}) for doc in docs])
 
 
 def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
