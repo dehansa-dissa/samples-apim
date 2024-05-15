@@ -205,10 +205,10 @@ async def get_api_count(orgID: str):
 
 
 @app.delete("/bulk_remove_vector")
-async def bulk_remove_vector(orgID: str, keyID: str):
+async def bulk_remove_vector(orgID: str, keyID: str, tenantDomain: str):
     if source == "apim":
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(delete_bulk_vector_for_onprem, orgID, keyID))
+        response = await loop.run_in_executor(None, partial(delete_bulk_vector_for_onprem, orgID, keyID, tenantDomain))
         return {"message": response}
 
 
