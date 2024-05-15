@@ -38,34 +38,16 @@ from langchain.chains import LLMChain
 from langchain_community.vectorstores import Milvus
 from langchain.retrievers.multi_query import MultiQueryRetriever
 
-CHOREO = "choreo"
-APIM = "apim"
-
-# streaming stage constants
-START_STREAM = "START_STREAM"
-FIND_LLM_RESPONSE = "FIND_LLM_RESPONSE"
-SEND_LLM_RESPONSE = "SEND_LLM_RESPONSE"
-END_LLM_RESPONSE = "END_LLM_RESPONSE"
-FIND_API = "FIND_API"
-SEND_API = "SEND_API"
-BUFFER_API = "BUFFER_API"
-FINISH_STREAM = "FINISH_STREAM"
+from app.constants import *
+from app.prompts import qa_system_prompt_choreo_stream, qa_system_prompt_choreo, qa_system_prompt_apim, \
+    query_prompt_template, context_q_system_prompt
 
 api = FastAPI(
     title="API Marketplace Chatbot",
     version="0.1.0",
 )
 
-ZILLIZ_CLOUD_URI = os.getenv('ZILLIZ_CLOUD_URI')
-ZILLIZ_CLOUD_API_KEY = os.getenv('ZILLIZ_CLOUD_API_KEY')
-AZURE_ENDPOINT = os.getenv('AZURE_ENDPOINT')
-AZURE_EMBEDDING_DEPLOYMENT = os.getenv('AZURE_EMBEDDING_DEPLOYMENT', "OpenAPIEmbeddings")
-AZURE_CHAT_DEPLOYMENT = os.getenv('AZURE_CHAT_DEPLOYMENT', "APIM-Deployment")
-AZURE_CHAT_VERSION = os.getenv('AZURE_CHAT_VERSION', "2023-12-01-preview")
-SOURCE_PLATFORM = os.getenv('SOURCE_PLATFORM')
-
 # TODO: implement debug logging switch
-
 collection_name = os.getenv("COLLECTION_NAME")
 
 
@@ -148,15 +130,9 @@ def get_retriever(tenant_domain, partition_id) -> MultiQueryRetriever:
             azure_endpoint=AZURE_ENDPOINT,
         )
 
-
     QUERY_PROMPT = PromptTemplate(
         input_variables=["question"],
-        template="""You are an API Marketplace assistant. Your task is to generate three 
-        different versions of the given user question to retrieve relevant documents from a vector 
-        database. By generating multiple perspectives on the user question, your goal is to help
-        the user overcome some of the limitations of the distance-based similarity search. 
-        Provide these alternative questions separated by newlines.
-        Original question: {question}""",
+        template=query_prompt_template,
     )
 
     class LineListOutputParser(BaseOutputParser[List[str]]):
@@ -194,11 +170,7 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
         azure_endpoint=AZURE_ENDPOINT,
     )
 
-    contextualize_q_system_prompt = """You are a helpful assistant. Based on the chat history, please rephrase the final user’s question into a standalone question. \
-    STRICT CONDITION: DO NOT ANSWER THE QUESTION!!, just reformulate it if needed and otherwise return it as is \
-    Please ignore the history if the latest question is not relevant to the history
-    Make sure to reference any relevant API names from the history in the new question
-    If the human question is not a valid english language text, return it as it is"""
+    contextualize_q_system_prompt = context_q_system_prompt
     contextualize_q_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", contextualize_q_system_prompt),
@@ -210,36 +182,11 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False):
     if SOURCE_PLATFORM == CHOREO:
         # Condition was added so if needed, we can add a separate prompt for streaming.
         if stream:
-            qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
-            recommend relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, just say that you don't know politely.
-            Understand the provided context and IGNORE the APIs that does not match the human question. 
-            Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
-            Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
-              {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
-                \"version\": \"2.0\"}}, {{\"apiId\": \"id2\", \"apiName\": \"SampleAPI2\", \"version\": \"4.0\"}}]}}.
-            Make sure to give an easily understandable explanation of the API or APIs selected in the \"response\" section. Leave the \"apis\" list empty in case you do not have any API recommendations included in the response.
-            Given below are the actual API context you need to use to construct the response. 
-            Context: {context}"""
+            qa_system_prompt = qa_system_prompt_choreo_stream
         else:
-            qa_system_prompt = """System: You are a simple, and cheerful API Marketplace assistant. Who only speak correct markdown text. Based on the provided API details, 
-            recommend all relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. If you can't find the API from the context, API politely inform about it.
-            Understand the provided context and IGNORE the APIs that does not match the human question. DO NOT SHOW ANY URLS including REDIRECT URLS in the response. 
-            Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
-            Only recommend APIs that are specified in the context and avoid including made-up APIs.
-            Given below are the actual API context you need to use to construct the response.
-            Context: {context}"""
+            qa_system_prompt = qa_system_prompt_choreo
     else:
-        qa_system_prompt = """You are a simple, and cheerful API Marketplace assistant. who only speaks using JSON. Based on the provided API details, 
-            recommend all relevant APIs. Ensure the recommendation is accurate and tailored to the user's needs. 
-            Strict Condition: If you can't find the API from the context, Just say that you are not aware of such an API politely. Please don't share false information!
-            Understand the provided context, which is are the only APIs you are aware of and IGNORE the APIs that does not match the human question. 
-            Please note that the context contains information about different types of APIs: REST, GraphQL, and Async.
-            Only recommend APIs that are specified in the context and avoid including made-up APIs. Provide a JSON response with the following format(here, names of APIs are made up to explain the json format):
-              {{\"response\": \"LLM output in natural language explaining the recommendation\", \"apis\": [{{\"apiId\": \"id1\", \"apiName\": \"SampleAPI1\",
-                \"version\": \"2.0\"}}, {{\"apiId\": \"id2\", \"apiName\": \"SampleAPI2\", \"version\": \"4.0\"}}]}}.
-            Make sure to give an easily understandable explanation of the API or APIs selected in the \"response\" section. Leave the \"apis\" list empty in case you do not have any API recommendations included in the response.
-            Given below are the actual API context you need to use to construct the response.
-            Context: {context}"""
+        qa_system_prompt = qa_system_prompt_apim
 
     qa_prompt = ChatPromptTemplate.from_messages(
         [
@@ -402,6 +349,7 @@ async def process_sse_response(stage, token_content):
 
     return stage, token_content
 
+
 def parse_json(json_resp, token_usage):
     try:
         json_object = json.loads(json_resp)
@@ -425,6 +373,7 @@ def parse_json(json_resp, token_usage):
             }
         }
     return json_object
+
 
 def parse_choreo_json(json_resp, token_usage):
     try:

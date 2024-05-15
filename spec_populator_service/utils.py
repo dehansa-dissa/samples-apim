@@ -43,8 +43,6 @@ class ChoreoAPI:
     spec: dict
     api_uuid: str
 
-
-# Having the api type for Choreo even,
 # because it might be needed in the future
 @dataclass
 class ReducedOpenAPISpec:
