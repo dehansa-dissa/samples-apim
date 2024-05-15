@@ -116,11 +116,11 @@ def upsert_bulk_vector_for_onprem(payload):
     response = mc.upsert(collection_name=collection_name, data=payload)
     return response
 
-def delete_bulk_vector_for_onprem(orgId, keyId):
+def delete_bulk_vector_for_onprem(orgId, keyId, tenantDomain):
     mc = MilvusClient(uri=url, token=api_key)
     res = mc.delete(
         collection_name=collection_name,
-        filter=f"key_id == '{keyId}'"
+        filter=f"key_id == '{keyId}' && tenant_domain == '{tenantDomain}'"
     )
     return res
 

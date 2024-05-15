@@ -306,14 +306,14 @@ async def upload_bulk_apis(req: dict, API_KEY: str = Header(None)):
         raise HTTPException(status_code=401, detail="Your key has expired")
 
 @app.delete("/ai/spec-populator/bulk-remove")
-async def remove_bulk_apis(API_KEY: str = Header(None)):
+async def remove_bulk_apis(API_KEY: str = Header(None), TENANT_DOMAIN: str = Header(None)):
     [orgID, handle, status] = await introspect(API_KEY)
 
     if status == "ACTIVE":
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             async with session.delete(api_publisher_endpoint + '/bulk_remove_vector',
-                                    params={'orgID': handle, 'keyID': handle}, headers=headers) as response:
+                                    params={'orgID': handle, 'keyID': handle, "tenantDomain": TENANT_DOMAIN}, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
