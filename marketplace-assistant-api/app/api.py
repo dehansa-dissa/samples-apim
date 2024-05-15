@@ -279,9 +279,9 @@ async def generate_choreo_response(messages: list, org_id: str):
         assist_response = (rag_chain.invoke({
             "question": questions,
             "chat_history": chat_history},
-            config={
-                'callbacks': [ConsoleCallbackHandler()]
-                }
+            # config={
+            #     'callbacks': [ConsoleCallbackHandler()]
+            #     }
         ))
 
     assist_response_json = parse_choreo_json(assist_response.content, cb)
@@ -440,9 +440,3 @@ async def marketplace_assistant_sse(
 def health():
     """Check the api is running"""
     return {"status": "Running"}
-
-
-if __name__ == '__main__':
-    import uvicorn
-
-    uvicorn.run(api, port=8000)
