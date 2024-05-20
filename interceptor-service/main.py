@@ -1,6 +1,10 @@
 from fastapi import FastAPI, Header, HTTPException
 from aiocache import cached, SimpleMemoryCache, caches
 import redis.asyncio as redis
+from redis.exceptions import (
+   ConnectionError,
+   TimeoutError
+)
 import asyncio
 from contextlib import asynccontextmanager
 import json
@@ -17,9 +21,19 @@ introspect_endpoint = os.getenv("INTROSPECTION_ENDPOINT")
 marketplace_chat_access_token = os.getenv("MARKETPLACE_CHAT_ENDPOINT_TOKEN")
 api_publisher_endpoint_access_token = os.getenv("API_PUBLISHER_ENDPOINT_ACCESS_TOKEN")
 redis_uri = os.getenv("REDIS_URI")
-openai_token_count_per_org = os.getenv("OPENAI_TOKEN_COUNT_PER_ORG")
+do_throttle = os.getenv("DO_THROTTLE", "true")
+
+def convert_to_int(s):
+    try:
+        return int(s)
+    except ValueError:
+        raise ValueError("Could not convert '{}' to an integer".format(s))
+
+openai_token_count_per_org = convert_to_int(os.getenv("OPENAI_TOKEN_COUNT_PER_ORG", "1000000"))
 
 cache = SimpleMemoryCache()
+
+expire_time = 30 * 24 * 60 * 60 # Number of seconds for 30 days
 
 class Message(BaseModel):
     role: str
@@ -70,8 +84,9 @@ caches.set_config({
 async def lifespan(app: FastAPI):
     global lua_script_sha, redis_client
     try:
-        pool = redis.ConnectionPool.from_url(redis_uri)
-        redis_client = redis.Redis(connection_pool=pool)
+        redis_client = redis.from_url(
+            redis_uri, retry_on_error=[ConnectionError, TimeoutError] # Delay between retry attempts (1 second)
+        )
         lua_script_sha = None
         await test_connection()
         lua_script_sha = await redis_client.script_load(lua_script)
@@ -80,19 +95,30 @@ async def lifespan(app: FastAPI):
         print(f"Error initializing Redis connection: {e}")
         raise Exception("Error initializing Redis connection")
     finally:
-        await pool.disconnect()
+        await redis_client.aclose()
 
 
 lua_script = """
     local json_value = redis.call('GET', KEYS[1])
-    if not json_value then
-        json_value = '{"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}'
+    local data
+    if json_value then
+        data = cjson.decode(json_value)
+    else
+        data = {
+            prompt_tokens = 0,
+            completion_tokens = 0,
+            total_tokens = 0
+        }
     end
-    local data = cjson.decode(json_value)
-    data["prompt_tokens"] = data["prompt_tokens"] + ARGV[1]
-    data["completion_tokens"] = data["completion_tokens"] + ARGV[2]
-    data["total_tokens"] = data["total_tokens"] + ARGV[3]
-    redis.call('SET', KEYS[1], cjson.encode(data))
+    data["prompt_tokens"] = data["prompt_tokens"] + ARGV[2]
+    data["completion_tokens"] = data["completion_tokens"] + ARGV[3]
+    data["total_tokens"] = data["total_tokens"] + ARGV[4]
+    
+    if not json_value then
+        redis.call('SET', KEYS[1], cjson.encode(data), 'EX', ARGV[1])
+    else
+        redis.call('SET', KEYS[1], cjson.encode(data), 'KEEPTTL')
+    end
     return cjson.encode(data)
     """
 
@@ -108,7 +134,7 @@ app = FastAPI(
 
 async def update_redis_cache(key, increment_value):
     global lua_script_sha
-    result = await redis_client.evalsha(lua_script_sha, 1, key, *increment_value)
+    result = await redis_client.evalsha(lua_script_sha, 1, key, expire_time, *increment_value)
     return
 
 
@@ -146,7 +172,6 @@ async def throttle(orgID):
         total_count = int(current_counts["total_tokens"])
         if total_count >= openai_token_count_per_org:
             raise HTTPException(status_code=429, detail="Maximum token limit reached")
-
 
 @cached(ttl=60, key=lambda orgID: f"api_count:{orgID}")
 async def fetch_api_count(orgID):
@@ -201,7 +226,8 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), API_KEY: str 
 @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
 async def chat(req: dict, API_KEY: str = Header(None)):
     [orgID, handle, status] = await introspect(API_KEY)
-    await throttle(orgID)
+    if do_throttle == "true":
+        await throttle(orgID)
     if status == "ACTIVE":
         history_string = req["history"]
         data_list = json.loads(history_string)
