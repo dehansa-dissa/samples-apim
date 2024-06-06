@@ -14,6 +14,7 @@ from utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
 
 embed = get_emb_model()
 source = os.getenv("SOURCE_PLATFORM", "apim")
+excluded_org_list = os.getenv("EXCLUDED_ORG_LIST", "").split(",")
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
@@ -80,6 +81,10 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional
         response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, keyID, api,
                                                             req["tenant_domain"]))
     elif source == "choreo":
+        if orgID in excluded_org_list:
+            logging.info("Organization has opted out of AI features, org-id: " + orgID)
+            return {"message": "Organization has opted out of AI features, org-id: " + orgID}
+
         # TODO: Implement for APIs other that REST
         api_type = req["api_type"]
         if api_type == "REST":
@@ -147,12 +152,13 @@ async def add_bulk_vector_choreo(request: Dict[str, Any]):
 
 
 @app.delete("/remove_vector/{uuid}")
-async def remove_vector(uuid: str, keyID: Optional[str] = None):
+async def remove_vector(uuid: str, keyID: Optional[str] = None, orgID: Optional[str] = None):
+
     loop = asyncio.get_event_loop()
     if source == "apim":
         response = await loop.run_in_executor(None, partial(delete_vector, [uuid], keyID))
     elif source == "choreo":
-        response = await loop.run_in_executor(None, partial(delete_vector_for_choreo, [uuid]))
+        response = await loop.run_in_executor(None, partial(delete_vector_for_choreo, uuid))
 
     return {"message": response}
 

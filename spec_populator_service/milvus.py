@@ -73,6 +73,9 @@ def delete_vector(uuid, record_id):
 
 def delete_vector_for_choreo(uuid):
     mc = MilvusClient(uri=url, token=api_key)
+    count = query_document(uuid, mc)
+    if count == 0:
+        return "Document not found, document id: %s" % uuid
     res = mc.delete(
         collection_name=collection_name,
         ids=uuid
