@@ -1,13 +1,13 @@
 import logging
 
 from fastapi import FastAPI, Request, Response
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pymilvus import DataType, MilvusClient
 from http import HTTPStatus
 import os
 from pydantic import BaseModel
 
-from milvus_proxy_service.utils import get_field_values, authenticate_org
+from utils import get_field_values, authenticate_org, extract_required_content
 
 api_key = os.getenv('MILVERSE_API_KEY')
 url = os.getenv('MILVERSE_URL')
@@ -49,6 +49,14 @@ class SearchReqBody(BaseModel):
     timeout: int
     anns_field: Optional[str]
     limit: int
+
+
+class DocSearchReqBody(BaseModel):
+    collection_name: str
+    k: int
+    reranker_enabled: bool
+    x_request_id: str
+    embeddings: List[List[float]]
 
 
 @app.post('/search')
@@ -110,6 +118,35 @@ def search(request: Request, response: Response, request_body: SearchReqBody):
     return results
 
 
+@app.post('/doc_search')
+def doc_search(request: Request, response: Response, request_body: DocSearchReqBody):
+
+    collection_name = request_body.collection_name
+    embeddings = request_body.embeddings
+    k = request_body.k
+
+    # Create a Milvus client
+    mc = MilvusClient(uri=url, token=api_key)
+
+    # Check if the collection exists
+    if not mc.has_collection(collection_name):
+        response.status_code = HTTPStatus.NOT_FOUND
+        return {"message": f"Collection {collection_name} doesn't exist"}
+
+    output_fields = ["text", "ChoreoMetadata", "pk"]
+    document_list = []
+    for embedding in embeddings:
+        results = mc.search(
+            collection_name=collection_name,
+            data=[embedding],
+            output_fields=output_fields,
+            limit=k
+        )
+        document_list.extend(extract_required_content(results[0]))
+
+    return document_list
+
+
 @app.post('/create_collection')
 def create_collection(request: Request, request_body: CreateColReqBody):
     mc = MilvusClient(uri=url, token=api_key)
@@ -168,7 +205,7 @@ def upsert_vector(request: Request, request_body: UpsertReqBody):
     collection_name = request_body.collection_name
     if not mc.has_collection(collection_name):
         return {"message": f"Collection {collection_name} doesn't exist, create collection first using "
-                                   f"/create_collection endpoint."}
+                           f"/create_collection endpoint."}
 
     response = mc.upsert(collection_name=collection_name, data=request_body.data)
 
