@@ -1,13 +1,13 @@
 import logging
 
 from fastapi import FastAPI, Request, Response
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pymilvus import DataType, MilvusClient
 from http import HTTPStatus
 import os
 from pydantic import BaseModel
 
-from milvus_proxy_service.utils import get_field_values, authenticate_org
+from utils import get_field_values, authenticate_org
 
 api_key = os.getenv('MILVERSE_API_KEY')
 url = os.getenv('MILVERSE_URL')
@@ -18,6 +18,8 @@ app = FastAPI()
 # TODO - Change the log level to INFO after initial testing
 loglevel = os.getenv('LOGLEVEL', 'DEBUG')
 logging.basicConfig(level=loglevel)
+
+X_JWT_ASSERTION = 'x-jwt-assertion'
 
 
 class FilterReqBody(BaseModel):
@@ -51,9 +53,18 @@ class SearchReqBody(BaseModel):
     limit: int
 
 
+class DocSearchReqBody(BaseModel):
+    data: list
+    collection_name: str
+    output_fields: list
+    timeout: int
+    anns_field: Optional[str]
+    limit: int
+
+
 @app.post('/search')
 def search(request: Request, response: Response, request_body: SearchReqBody):
-    access_token = request.headers.get('x-jwt-assertion')
+    access_token = request.headers.get('X_JWT_ASSERTION')
 
     logging.debug(f"Access token: {access_token}")
 
@@ -103,6 +114,38 @@ def search(request: Request, response: Response, request_body: SearchReqBody):
         anns_field=anns_field,
         limit=limit,
         filter=expr,
+        output_fields=output_fields,
+        timeout=timeout
+    )
+
+    return results
+
+
+@app.post('/doc_search')
+def doc_search(request: Request, response: Response, request_body: DocSearchReqBody):
+
+    # Extract the parameters from the request's JSON body
+    data = request_body.data
+    anns_field = request_body.anns_field
+    limit = request_body.limit
+    output_fields = request_body.output_fields
+    timeout = request_body.timeout
+    collection_name = request_body.collection_name
+
+    # Create a Milvus client
+    mc = MilvusClient(uri=url, token=api_key)
+
+    # Check if the collection exists
+    if not mc.has_collection(collection_name):
+        response.status_code = HTTPStatus.NOT_FOUND
+        return {"message": f"Collection {collection_name} doesn't exist"}
+
+    # Perform the search
+    results = mc.search(
+        collection_name=collection_name,
+        data=data,
+        anns_field=anns_field,
+        limit=limit,
         output_fields=output_fields,
         timeout=timeout
     )
@@ -168,7 +211,7 @@ def upsert_vector(request: Request, request_body: UpsertReqBody):
     collection_name = request_body.collection_name
     if not mc.has_collection(collection_name):
         return {"message": f"Collection {collection_name} doesn't exist, create collection first using "
-                                   f"/create_collection endpoint."}
+                           f"/create_collection endpoint."}
 
     response = mc.upsert(collection_name=collection_name, data=request_body.data)
 

@@ -1,0 +1,309 @@
+openapi: 3.0.0
+info:
+  title: FastAPI
+  version: 0.1.0
+paths:
+  /search:
+    post:
+      summary: Search
+      operationId: search_search_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchReqBody'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /doc_search:
+    post:
+      summary: Doc Search
+      operationId: doc_search_doc_search_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocSearchReqBody'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /create_collection:
+    post:
+      summary: Create Collection
+      operationId: create_collection_create_collection_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateColReqBody'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /upsert_vector:
+    post:
+      summary: Upsert Vector
+      operationId: upsert_vector_upsert_vector_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertReqBody'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /filter_data:
+    get:
+      summary: Filter Data
+      operationId: filter_data_filter_data_get
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilterReqBody'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /delete_vectors:
+    delete:
+      summary: Delete Vectors
+      operationId: delete_vectors_delete_vectors_delete
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteReqBody'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /health:
+    get:
+      summary: Health
+      description: Check the api is running
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+components:
+  schemas:
+    CreateColReqBody:
+      properties:
+        collection_name:
+          type: string
+          title: Collection Name
+        schema_fields:
+          items: {}
+          type: array
+          title: Schema Fields
+      type: object
+      required:
+        - collection_name
+        - schema_fields
+      title: CreateColReqBody
+    DeleteReqBody:
+      properties:
+        collection_name:
+          type: string
+          title: Collection Name
+        id:
+          items: {}
+          type: array
+          title: Id
+      type: object
+      required:
+        - collection_name
+        - id
+      title: DeleteReqBody
+    DocSearchReqBody:
+      properties:
+        data:
+          items: {}
+          type: array
+          title: Data
+        collection_name:
+          type: string
+          title: Collection Name
+        output_fields:
+          items: {}
+          type: array
+          title: Output Fields
+        timeout:
+          type: integer
+          title: Timeout
+        anns_field:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Anns Field
+        limit:
+          type: integer
+          title: Limit
+      type: object
+      required:
+        - data
+        - collection_name
+        - output_fields
+        - timeout
+        - anns_field
+        - limit
+      title: DocSearchReqBody
+    FilterReqBody:
+      properties:
+        collection_name:
+          type: string
+          title: Collection Name
+        filter_query:
+          type: string
+          title: Filter Query
+        output_fields:
+          items: {}
+          type: array
+          title: Output Fields
+      type: object
+      required:
+        - collection_name
+        - filter_query
+        - output_fields
+      title: FilterReqBody
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    SearchReqBody:
+      properties:
+        data:
+          items: {}
+          type: array
+          title: Data
+        collection_name:
+          type: string
+          title: Collection Name
+        expr:
+          type: string
+          title: Expr
+        output_fields:
+          items: {}
+          type: array
+          title: Output Fields
+        timeout:
+          type: integer
+          title: Timeout
+        anns_field:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Anns Field
+        limit:
+          type: integer
+          title: Limit
+      type: object
+      required:
+        - data
+        - collection_name
+        - expr
+        - output_fields
+        - timeout
+        - anns_field
+        - limit
+      title: SearchReqBody
+    UpsertReqBody:
+      properties:
+        collection_name:
+          type: string
+          title: Collection Name
+        data:
+          type: object
+          title: Data
+      type: object
+      required:
+        - collection_name
+        - data
+      title: UpsertReqBody
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
