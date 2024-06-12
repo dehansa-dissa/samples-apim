@@ -36,22 +36,3 @@ def authenticate_org(access_token, org_id):
         # The token is invalid
         logging.exception("Invalid token")
         return "Invalid token"
-
-
-def extract_required_content(results):
-    output = []
-    if type(results) is list:
-        for result in results:
-            entity = result.get('entity')
-            # create a dictionary with the required fields
-            test = {
-                "page_content": entity.get('text'),
-                "metadata": {
-                    "ChoreoMetadata": entity.get('ChoreoMetadata'),
-                    "pk": result.get('pk')
-                }
-            }
-            output.append(test)
-
-    return output
-

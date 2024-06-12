@@ -7,7 +7,7 @@ from http import HTTPStatus
 import os
 from pydantic import BaseModel
 
-from utils import get_field_values, authenticate_org, extract_required_content
+from utils import get_field_values, authenticate_org
 
 api_key = os.getenv('MILVERSE_API_KEY')
 url = os.getenv('MILVERSE_URL')
@@ -52,11 +52,12 @@ class SearchReqBody(BaseModel):
 
 
 class DocSearchReqBody(BaseModel):
+    data: list
     collection_name: str
-    k: int
-    reranker_enabled: bool
-    x_request_id: str
-    embeddings: List[List[float]]
+    output_fields: list
+    timeout: int
+    anns_field: Optional[str]
+    limit: int
 
 
 @app.post('/search')
@@ -121,9 +122,13 @@ def search(request: Request, response: Response, request_body: SearchReqBody):
 @app.post('/doc_search')
 def doc_search(request: Request, response: Response, request_body: DocSearchReqBody):
 
+    # Extract the parameters from the request's JSON body
+    data = request_body.data
+    anns_field = request_body.anns_field
+    limit = request_body.limit
+    output_fields = request_body.output_fields
+    timeout = request_body.timeout
     collection_name = request_body.collection_name
-    embeddings = request_body.embeddings
-    k = request_body.k
 
     # Create a Milvus client
     mc = MilvusClient(uri=url, token=api_key)
@@ -133,18 +138,17 @@ def doc_search(request: Request, response: Response, request_body: DocSearchReqB
         response.status_code = HTTPStatus.NOT_FOUND
         return {"message": f"Collection {collection_name} doesn't exist"}
 
-    output_fields = ["text", "ChoreoMetadata", "pk"]
-    document_list = []
-    for embedding in embeddings:
-        results = mc.search(
-            collection_name=collection_name,
-            data=[embedding],
-            output_fields=output_fields,
-            limit=k
-        )
-        document_list.extend(extract_required_content(results[0]))
+    # Perform the search
+    results = mc.search(
+        collection_name=collection_name,
+        data=data,
+        anns_field=anns_field,
+        limit=limit,
+        output_fields=output_fields,
+        timeout=timeout
+    )
 
-    return document_list
+    return results
 
 
 @app.post('/create_collection')
