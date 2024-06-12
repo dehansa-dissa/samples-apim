@@ -19,6 +19,8 @@ app = FastAPI()
 loglevel = os.getenv('LOGLEVEL', 'DEBUG')
 logging.basicConfig(level=loglevel)
 
+X_JWT_ASSERTION = 'x-jwt-assertion'
+
 
 class FilterReqBody(BaseModel):
     collection_name: str
@@ -62,7 +64,7 @@ class DocSearchReqBody(BaseModel):
 
 @app.post('/search')
 def search(request: Request, response: Response, request_body: SearchReqBody):
-    access_token = request.headers.get('x-jwt-assertion')
+    access_token = request.headers.get('X_JWT_ASSERTION')
 
     logging.debug(f"Access token: {access_token}")
 
