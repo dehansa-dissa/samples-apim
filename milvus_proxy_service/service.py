@@ -64,11 +64,11 @@ class DocSearchReqBody(BaseModel):
 
 @app.post('/search')
 def search(request: Request, response: Response, request_body: SearchReqBody):
-    access_token = request.headers.get('X_JWT_ASSERTION')
+    # access_token = request.headers.get('X_JWT_ASSERTION')
     logging.debug(request.headers)
 
-    logging.debug(f"Access token: {access_token}")
-
+    # logging.debug(f"Access token: {access_token}")
+    #
     # if not access_token:
     #     response.status_code = 401
     #     return {"message": "Missing Authorization header to fetch org_id"}
