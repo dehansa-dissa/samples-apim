@@ -7,7 +7,7 @@ from http import HTTPStatus
 import os
 from pydantic import BaseModel
 
-from utils import get_field_values, authenticate_org
+from milvus_proxy_service.utils import get_field_values, authenticate_org
 
 api_key = os.getenv('MILVERSE_API_KEY')
 url = os.getenv('MILVERSE_URL')
