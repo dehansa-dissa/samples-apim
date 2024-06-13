@@ -64,31 +64,32 @@ class DocSearchReqBody(BaseModel):
 
 @app.post('/search')
 def search(request: Request, response: Response, request_body: SearchReqBody):
-    access_token = request.headers.get('X_JWT_ASSERTION')
+    # access_token = request.headers.get('X_JWT_ASSERTION')
+    logging.debug(request.headers)
 
-    logging.debug(f"Access token: {access_token}")
-
-    if not access_token:
-        response.status_code = 401
-        return {"message": "Missing Authorization header to fetch org_id"}
-
-    # Get the org-id from the headers
-    org_id = request.headers.get('org-id')
-    if not org_id:
-        response.status_code = 401
-        return {"message": "Missing org-id header"}
-
-    authenticated = authenticate_org(access_token, org_id)
-
-    if authenticated == "Invalid org-id":
-        response.status_code = 401
-        return {"message": "Org Id is not matching with the token"}
-    elif authenticated == "Invalid token":
-        response.status_code = 401
-        return {"message": "Invalid token"}
-    if not authenticated:
-        response.status_code = 401
-        return {"message": "Unauthorized access"}
+    # logging.debug(f"Access token: {access_token}")
+    #
+    # if not access_token:
+    #     response.status_code = 401
+    #     return {"message": "Missing Authorization header to fetch org_id"}
+    #
+    # # Get the org-id from the headers
+    # org_id = request.headers.get('org-id')
+    # if not org_id:
+    #     response.status_code = 401
+    #     return {"message": "Missing org-id header"}
+    #
+    # authenticated = authenticate_org(access_token, org_id)
+    #
+    # if authenticated == "Invalid org-id":
+    #     response.status_code = 401
+    #     return {"message": "Org Id is not matching with the token"}
+    # elif authenticated == "Invalid token":
+    #     response.status_code = 401
+    #     return {"message": "Invalid token"}
+    # if not authenticated:
+    #     response.status_code = 401
+    #     return {"message": "Unauthorized access"}
 
     # Extract the parameters from the request's JSON body
     data = request_body.data
