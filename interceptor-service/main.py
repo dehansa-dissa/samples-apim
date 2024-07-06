@@ -12,6 +12,7 @@ import os
 from pydantic import BaseModel
 from fastapi import status
 import aiohttp
+from oauth2_client import OAuth2Client
 
 api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
 marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
@@ -22,6 +23,10 @@ marketplace_chat_access_token = os.getenv("MARKETPLACE_CHAT_ENDPOINT_TOKEN")
 api_publisher_endpoint_access_token = os.getenv("API_PUBLISHER_ENDPOINT_ACCESS_TOKEN")
 redis_uri = os.getenv("REDIS_URI")
 do_throttle = os.getenv("DO_THROTTLE", "true")
+
+client_id = os.getenv("onprem_client_id")
+client_secret = os.getenv("onprem_client_secret")
+token_url = os.getenv("onprem_token_url")
 
 def convert_to_int(s):
     try:
@@ -82,8 +87,9 @@ caches.set_config({
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global lua_script_sha, redis_client
+    global lua_script_sha, redis_client, oauth_client
     try:
+        oauth_client = OAuth2Client(client_id, client_secret, token_url)
         redis_client = redis.from_url(
             redis_uri, retry_on_error=[ConnectionError, TimeoutError] # Delay between retry attempts (1 second)
         )
@@ -151,13 +157,21 @@ async def test_connection():
 
 @cached(ttl=60, key=lambda on_prem_key: f"introspection:{on_prem_key}")
 async def introspect(on_prem_key):
+    token = await oauth_client.get_token()
+    print(f"Token: {token[-5:]}")
+    headers = {
+                'Authorization': f'Bearer {token}',
+            }
+
     async with aiohttp.ClientSession() as session:
-        async with session.post(introspect_endpoint, json={"key": on_prem_key}) as response:
+        async with session.post(introspect_endpoint, headers=headers, json={"key": on_prem_key}) as response:
             if response.status == 200:
+                print("Introspection success")
                 res_json = await response.json()
                 return [res_json["orgUuid"], res_json["handle"], res_json["status"]]
             else:
                 responseMessage = await response.text()
+                print(responseMessage)
                 if "invalid key" in responseMessage or "expired" in responseMessage:
                     raise HTTPException(status_code=401, detail="Provided key is invalid or expired")
                 else:
