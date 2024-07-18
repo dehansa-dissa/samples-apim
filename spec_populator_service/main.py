@@ -8,7 +8,7 @@ import os
 
 from milvus import upsert_vector_for_onprem, upsert_vector_for_choreo, delete_vector, \
     upsert_bulk_vector_for_onprem, get_vector_count_for_org, delete_bulk_vector_for_onprem, delete_vector_for_choreo, \
-    upsert_bulk_vector_for_choreo
+    upsert_bulk_vector_for_choreo, delete_org_wise_vectors_for_choreo
 from utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
     pre_process_asyncapi_def, API, ChoreoAPI
 
@@ -153,7 +153,6 @@ async def add_bulk_vector_choreo(request: Dict[str, Any]):
 
 @app.delete("/remove_vector/{uuid}")
 async def remove_vector(uuid: str, keyID: Optional[str] = None, orgID: Optional[str] = None):
-
     loop = asyncio.get_event_loop()
     if source == "apim":
         response = await loop.run_in_executor(None, partial(delete_vector, [uuid], keyID))
@@ -211,10 +210,13 @@ async def get_api_count(orgID: str):
 
 
 @app.delete("/bulk_remove_vector")
-async def bulk_remove_vector(orgID: str, keyID: str, tenantDomain: str):
+async def bulk_remove_vector(orgID: str, keyID: Optional[str] = None, tenantDomain: Optional[str] = None):
+    loop = asyncio.get_event_loop()
     if source == "apim":
-        loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, partial(delete_bulk_vector_for_onprem, orgID, keyID, tenantDomain))
+        return {"message": response}
+    elif source == "choreo":
+        response = await loop.run_in_executor(None, partial(delete_org_wise_vectors_for_choreo, orgID))
         return {"message": response}
 
 
