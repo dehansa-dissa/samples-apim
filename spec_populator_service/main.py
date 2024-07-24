@@ -205,8 +205,8 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
 async def get_api_count(orgID: str):
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(None, partial(get_vector_count_for_org, orgID))
-    print(response[0]["count(*)"])
-    return {"count": response[0]["count(*)"]}
+    print(response)
+    return {"count": response}
 
 
 @app.delete("/bulk_remove_vector")

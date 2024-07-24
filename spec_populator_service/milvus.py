@@ -9,6 +9,8 @@ url = os.getenv('MILVERSE_URL')
 collection_name = os.getenv("COLLECTION_NAME")
 create_collection = os.getenv("CREATE_COLLECTION", True)
 
+ORG_FILTER = '(org_id == "{org_id}")'
+
 
 def upsert_vector_for_onprem(embed, orgID, keyID, api: API, tenant):
     mc = MilvusClient(uri=url, token=api_key)
@@ -86,10 +88,9 @@ def delete_vector_for_choreo(uuid):
 
 def delete_org_wise_vectors_for_choreo(org_id):
     mc = MilvusClient(uri=url, token=api_key)
-    response = get_vector_count_for_org(org_id)
-    api_count = response[0]["count(*)"]
+    api_count = get_vector_count_for_org(org_id)
     logging.info("API count: %s for org_id - %s", api_count, org_id)
-    res = mc.delete(collection_name=collection_name, filter=f'(org_id == "{org_id}")')
+    res = mc.delete(collection_name=collection_name, filter=ORG_FILTER.format(org_id=org_id))
     logging.info("Deleted %s records for org_id - %s", res.get("delete_count"), org_id)
     mc.close()
     return res
@@ -254,15 +255,17 @@ def upsert_bulk_vector_for_choreo(payload):
     mc.close()
     return {"milvus_response": response, "milvus_count": count_after}
 
+
 def get_vector_count_for_org(org_id):
     mc = MilvusClient(uri=url, token=api_key)
     res = mc.query(
         collection_name=collection_name,
-        filter=f'(org_id == "{org_id}")',
+        # filter=f'(org_id == "{org_id}")',
+        filter=ORG_FILTER.format(org_id=org_id),
         output_fields=["count(*)"],
     )
     mc.close()
-    return res
+    return res[0]["count(*)"]
 
 
 def query_document(uuid, mc):
