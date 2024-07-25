@@ -132,7 +132,7 @@ async def add_bulk_vector_choreo(request: Dict[str, Any]):
     for api_details in api_details_list:
         try:
             api = await get_pre_processed_choreo_spec(api_details)
-            res = embed.embed_query(str(api.__dict__))
+            embedding_response = embed.embed_query(str(api.__dict__))
             payload = {
                 "page_content": str(api.spec),
                 "metadata": {
@@ -144,7 +144,7 @@ async def add_bulk_vector_choreo(request: Dict[str, Any]):
                 },
                 "id": api.id,
                 "api_name": api.name,
-                "vector": res,
+                "vector": embedding_response,
                 "api_type": api.type,
                 "org_id": api_details["org_id"],
             }
@@ -189,7 +189,7 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
         for api_details in api_details_list:
             api = await get_pre_processed_spec(api_details)
 
-            res = embed.embed_query(str(api.__dict__))
+            embedding_response = embed.embed_query(str(api.__dict__))
             payload = {
                 "page_content": str(api.spec),
                 "metadata": {
@@ -199,7 +199,7 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
                     "api_type": api.type
                 },
                 "id": keyID + api.id,
-                "vector": res,
+                "vector": embedding_response,
                 "api_type": api.type,
                 "org_id": orgID,
                 "key_id": keyID,
