@@ -12,8 +12,7 @@ create_collection = os.getenv("CREATE_COLLECTION", True)
 ORG_FILTER = '(org_id == "{org_id}")'
 
 
-def upsert_vector_for_onprem(embed, orgID, keyID, api: API, tenant):
-    mc = MilvusClient(uri=url, token=api_key)
+def upsert_vector_for_onprem(mc, embed, orgID, keyID, api: API, tenant):
     if create_collection:
         has = mc.has_collection(collection_name)
         if not has:
@@ -63,8 +62,7 @@ def upsert_vector_for_onprem(embed, orgID, keyID, api: API, tenant):
     return response
 
 
-def delete_vector(uuid, record_id):
-    mc = MilvusClient(uri=url, token=api_key)
+def delete_vector(mc, uuid, record_id):
     uuid = [record_id + id for id in uuid]
     res = mc.delete(
         collection_name=collection_name,
@@ -73,8 +71,7 @@ def delete_vector(uuid, record_id):
     return res
 
 
-def delete_vector_for_choreo(uuid):
-    mc = MilvusClient(uri=url, token=api_key)
+def delete_vector_for_choreo(mc, uuid):
     count = query_document(uuid, mc)
     if count == 0:
         return "Document not found, document id: %s" % uuid
@@ -82,22 +79,18 @@ def delete_vector_for_choreo(uuid):
         collection_name=collection_name,
         ids=uuid
     )
-    mc.close()
     return res
 
 
-def delete_org_wise_vectors_for_choreo(org_id):
-    mc = MilvusClient(uri=url, token=api_key)
-    api_count = get_vector_count_for_org(org_id)
+def delete_org_wise_vectors_for_choreo(mc, org_id):
+    api_count = get_vector_count_for_org(mc, org_id)
     logging.info("API count: %s for org_id - %s", api_count, org_id)
     res = mc.delete(collection_name=collection_name, filter=ORG_FILTER.format(org_id=org_id))
     logging.info("Deleted %s records for org_id - %s", res.get("delete_count"), org_id)
-    mc.close()
     return res
 
 
-def upsert_bulk_vector_for_onprem(payload):
-    mc = MilvusClient(uri=url, token=api_key)
+def upsert_bulk_vector_for_onprem(mc, payload):
     if create_collection:
         has = mc.has_collection(collection_name)
         if not has:
@@ -131,8 +124,7 @@ def upsert_bulk_vector_for_onprem(payload):
     response = mc.upsert(collection_name=collection_name, data=payload)
     return response
 
-def delete_bulk_vector_for_onprem(orgId, keyId, tenantDomain):
-    mc = MilvusClient(uri=url, token=api_key)
+def delete_bulk_vector_for_onprem(mc, orgId, keyId, tenantDomain):
     res = mc.delete(
         collection_name=collection_name,
         filter=f"key_id == '{keyId}' && tenant_domain == '{tenantDomain}'"
@@ -140,8 +132,7 @@ def delete_bulk_vector_for_onprem(orgId, keyId, tenantDomain):
     return res
 
 
-def upsert_vector_for_choreo(embed, orgID, api: ChoreoAPI):
-    mc = MilvusClient(uri=url, token=api_key)
+def upsert_vector_for_choreo(mc, embed, orgID, api: ChoreoAPI):
     if create_collection:
         has = mc.has_collection(collection_name)
         if not has:
@@ -202,12 +193,10 @@ def upsert_vector_for_choreo(embed, orgID, api: ChoreoAPI):
     logging.info("Count before: %s, Count after: %s", count, count_after)
     if document_exist == 0 and count_after == count:
         logging.error("Failed to upsert document with id: %s", api.id)
-    mc.close()
     return {"milvus_response": response, "milvus_count": count_after}
 
 
-def upsert_bulk_vector_for_choreo(payload):
-    mc = MilvusClient(uri=url, token=api_key)
+def upsert_bulk_vector_for_choreo(mc, payload):
     connections.connect(uri=url, token=api_key)
     if create_collection:
         has = mc.has_collection(collection_name)
@@ -252,19 +241,15 @@ def upsert_bulk_vector_for_choreo(payload):
     if count >= count_after:
         logging.error("Failed to upsert documents")
         count_after = -1
-    mc.close()
     return {"milvus_response": response, "milvus_count": count_after}
 
 
-def get_vector_count_for_org(org_id):
-    mc = MilvusClient(uri=url, token=api_key)
+def get_vector_count_for_org(mc, org_id):
     res = mc.query(
         collection_name=collection_name,
-        # filter=f'(org_id == "{org_id}")',
         filter=ORG_FILTER.format(org_id=org_id),
         output_fields=["count(*)"],
     )
-    mc.close()
     return res[0]["count(*)"]
 
 

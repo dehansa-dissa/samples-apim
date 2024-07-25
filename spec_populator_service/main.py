@@ -6,6 +6,8 @@ import asyncio
 from functools import partial
 import os
 
+from pymilvus import MilvusClient
+
 from milvus import upsert_vector_for_onprem, upsert_vector_for_choreo, delete_vector, \
     upsert_bulk_vector_for_onprem, get_vector_count_for_org, delete_bulk_vector_for_onprem, delete_vector_for_choreo, \
     upsert_bulk_vector_for_choreo, delete_org_wise_vectors_for_choreo
@@ -14,6 +16,9 @@ from utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
 
 embed = get_emb_model()
 source = os.getenv("SOURCE_PLATFORM", "apim")
+api_key = os.getenv('MILVERSE_API_KEY')
+url = os.getenv('MILVERSE_URL')
+
 excluded_org_list = os.getenv("EXCLUDED_ORG_LIST", "").split(",")
 logging.basicConfig(level=logging.INFO)
 
@@ -73,45 +78,49 @@ async def get_pre_processed_choreo_spec(api_details):
 
 @app.post("/add_vector/{uuid}")
 async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional[str] = None):
-    # TODO: Handle 400 error if request info not sufficient (eg: no KeyID)
-    if source == "apim":
-        api = await get_pre_processed_spec(req)
+    mc = MilvusClient(uri=url, token=api_key)
+    try:
+        # TODO: Handle 400 error if request info not sufficient (eg: no KeyID)
+        if source == "apim":
+            api = await get_pre_processed_spec(req)
 
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, embed, orgID, keyID, api,
-                                                            req["tenant_domain"]))
-    elif source == "choreo":
-        if orgID in excluded_org_list:
-            logging.info("Organization has opted out of AI features, org-id: " + orgID)
-            return {"message": "Organization has opted out of AI features, org-id: " + orgID}
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, mc, embed, orgID, keyID, api,
+                                                                req["tenant_domain"]))
+        elif source == "choreo":
+            if orgID in excluded_org_list:
+                logging.info("Organization has opted out of AI features, org-id: " + orgID)
+                return {"message": "Organization has opted out of AI features, org-id: " + orgID}
 
-        # TODO: Implement for APIs other that REST
-        api_type = req["api_type"]
-        if api_type == "REST":
-            record = await pre_process_openapi(req["api_spec"])
-        elif api_type == "GRAPHQL":
-            logging.info("Cannot process GraphQL APIs")
-            return {"message": "Cannot process GraphQL APIs"}
-        elif api_type == "ASYNC":
-            logging.info("Cannot process GraphQL APIs")
-            return {"message": "Cannot process Async APIs"}
+            # TODO: Implement for APIs other that REST
+            api_type = req["api_type"]
+            if api_type == "REST":
+                record = await pre_process_openapi(req["api_spec"])
+            elif api_type == "GRAPHQL":
+                logging.info("Cannot process GraphQL APIs")
+                return {"message": "Cannot process GraphQL APIs"}
+            elif api_type == "ASYNC":
+                logging.info("Cannot process GraphQL APIs")
+                return {"message": "Cannot process Async APIs"}
 
-        # record = await pre_process_openapi(req["api_spec"])
-        record["apim_description"] = req["description"]
-        api = ChoreoAPI(
-            id=uuid,
-            # The actual version is used instead of what is in the Spec,
-            # since we know this is the truth, and the spec version can be outdated
-            version=req["version"],
-            type=req["api_type"],
-            name=req["api_name"],
-            spec=record,
-            api_uuid=req["api_uuid"]
-        )
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(upsert_vector_for_choreo, embed, orgID, api))
+            # record = await pre_process_openapi(req["api_spec"])
+            record["apim_description"] = req["description"]
+            api = ChoreoAPI(
+                id=uuid,
+                # The actual version is used instead of what is in the Spec,
+                # since we know this is the truth, and the spec version can be outdated
+                version=req["version"],
+                type=req["api_type"],
+                name=req["api_name"],
+                spec=record,
+                api_uuid=req["api_uuid"]
+            )
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, partial(upsert_vector_for_choreo, mc, embed, orgID, api))
 
-    return {"message": response}
+        return {"message": response}
+    finally:
+        mc.close()
 
 
 @app.post("/add_bulk_vector_choreo")
@@ -145,21 +154,28 @@ async def add_bulk_vector_choreo(request: Dict[str, Any]):
             logging.error(f"Error processing API: {api_details['uuid']}")
             logging.error(e)
             continue
-    loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(None, partial(upsert_bulk_vector_for_choreo, api_list))
-
-    return {"message": response}
+    mc = MilvusClient(uri=url, token=api_key)
+    try:
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, partial(upsert_bulk_vector_for_choreo, mc, api_list))
+        return {"message": response}
+    finally:
+        mc.close()
 
 
 @app.delete("/remove_vector/{uuid}")
 async def remove_vector(uuid: str, keyID: Optional[str] = None, orgID: Optional[str] = None):
-    loop = asyncio.get_event_loop()
-    if source == "apim":
-        response = await loop.run_in_executor(None, partial(delete_vector, [uuid], keyID))
-    elif source == "choreo":
-        response = await loop.run_in_executor(None, partial(delete_vector_for_choreo, uuid))
+    mc = MilvusClient(uri=url, token=api_key)
+    try:
+        loop = asyncio.get_event_loop()
+        if source == "apim":
+            response = await loop.run_in_executor(None, partial(delete_vector, mc, [uuid], keyID))
+        elif source == "choreo":
+            response = await loop.run_in_executor(None, partial(delete_vector_for_choreo, mc, uuid))
 
-    return {"message": response}
+        return {"message": response}
+    finally:
+        mc.close()
 
 
 @app.post("/bulk_add_vector")
@@ -190,34 +206,41 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
                 "tenant_domain": api_details["tenant_domain"]
             }
             api_list.append(payload)
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(upsert_bulk_vector_for_onprem, api_list))
 
-        # elif source == "choreo":
-        #     record = await pre_process_openapi(api_details["api_spec"])
-        #     loop = asyncio.get_event_loop()
-        #     response = await loop.run_in_executor(None,partial(upsert_vector_for_choreo, embed, record, orgID, api_details["uuid"]))
-
-        return {"message": response}
+        mc = MilvusClient(uri=url, token=api_key)
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, partial(upsert_bulk_vector_for_onprem, mc, api_list))
+            return {"message": response}
+        finally:
+            mc.close()
 
 
 @app.get("/api_count")
 async def get_api_count(orgID: str):
-    loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(None, partial(get_vector_count_for_org, orgID))
-    print(response)
-    return {"count": response}
+    mc = MilvusClient(uri=url, token=api_key)
+    try:
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, partial(get_vector_count_for_org, mc, orgID))
+        print(response)
+        return {"count": response}
+    finally:
+        mc.close()
 
 
 @app.delete("/bulk_remove_vector")
 async def bulk_remove_vector(orgID: str, keyID: Optional[str] = None, tenantDomain: Optional[str] = None):
-    loop = asyncio.get_event_loop()
-    if source == "apim":
-        response = await loop.run_in_executor(None, partial(delete_bulk_vector_for_onprem, orgID, keyID, tenantDomain))
+    mc = MilvusClient(uri=url, token=api_key)
+    try:
+        loop = asyncio.get_event_loop()
+        if source == "apim":
+            response = await loop.run_in_executor(None, partial(delete_bulk_vector_for_onprem, mc, orgID, keyID,
+                                                                tenantDomain))
+        elif source == "choreo":
+            response = await loop.run_in_executor(None, partial(delete_org_wise_vectors_for_choreo, mc, orgID))
         return {"message": response}
-    elif source == "choreo":
-        response = await loop.run_in_executor(None, partial(delete_org_wise_vectors_for_choreo, orgID))
-        return {"message": response}
+    finally:
+        mc.close()
 
 
 @app.get("/health")
