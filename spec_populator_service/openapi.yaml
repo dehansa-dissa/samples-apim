@@ -8,30 +8,54 @@ paths:
       summary: Add Vector
       operationId: add_vector_add_vector__uuid__post
       parameters:
-        - required: true
+        - name: uuid
+          in: path
+          required: true
           schema:
             type: string
             title: Uuid
-          name: uuid
-          in: path
-        - required: true
+        - name: orgID
+          in: query
+          required: true
           schema:
             type: string
             title: Orgid
-          name: orgID
+        - name: keyID
           in: query
-        - required: false
+          required: false
           schema:
-            type: string
+            anyOf:
+              - type: string
             title: Keyid
-          name: keyID
-          in: query
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               title: Req
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /add_bulk_vector_choreo:
+    post:
+      summary: Add Bulk Vector Choreo
+      operationId: add_bulk_vector_choreo_add_bulk_vector_choreo_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Request
         required: true
       responses:
         '200':
@@ -50,18 +74,26 @@ paths:
       summary: Remove Vector
       operationId: remove_vector_remove_vector__uuid__delete
       parameters:
-        - required: true
+        - name: uuid
+          in: path
+          required: true
           schema:
             type: string
             title: Uuid
-          name: uuid
-          in: path
-        - required: false
-          schema:
-            type: string
-            title: Keyid
-          name: keyID
+        - name: keyID
           in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+            title: Keyid
+        - name: orgID
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+            title: Orgid
       responses:
         '200':
           description: Successful Response
@@ -79,25 +111,25 @@ paths:
       summary: Bulk Add Vector
       operationId: bulk_add_vector_bulk_add_vector_post
       parameters:
-        - required: true
+        - name: orgID
+          in: query
+          required: true
           schema:
             type: string
             title: Orgid
-          name: orgID
+        - name: keyID
           in: query
-        - required: true
+          required: true
           schema:
             type: string
             title: Keyid
-          name: keyID
-          in: query
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               title: Req
-        required: true
       responses:
         '200':
           description: Successful Response
@@ -115,12 +147,12 @@ paths:
       summary: Get Api Count
       operationId: get_api_count_api_count_get
       parameters:
-        - required: true
+        - name: orgID
+          in: query
+          required: true
           schema:
             type: string
             title: Orgid
-          name: orgID
-          in: query
       responses:
         '200':
           description: Successful Response
@@ -138,18 +170,28 @@ paths:
       summary: Bulk Remove Vector
       operationId: bulk_remove_vector_bulk_remove_vector_delete
       parameters:
-        - required: true
+        - name: orgID
+          in: query
+          required: true
           schema:
             type: string
             title: Orgid
-          name: orgID
+        - name: keyID
           in: query
-        - required: true
+          required: false
           schema:
-            type: string
+            anyOf:
+              - type: string
+            default: ''
             title: Keyid
-          name: keyID
+        - name: tenantDomain
           in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+            default: ''
+            title: Tenantdomain
       responses:
         '200':
           description: Successful Response
