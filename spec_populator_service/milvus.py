@@ -3,11 +3,10 @@ import logging
 from pymilvus import DataType, MilvusClient, Collection, connections
 import os
 from utils import API, ChoreoAPI
+import constants as const
 
-api_key = os.getenv('MILVERSE_API_KEY')
-url = os.getenv('MILVERSE_URL')
-collection_name = os.getenv("COLLECTION_NAME")
-create_collection = os.getenv("CREATE_COLLECTION", True)
+collection_name = os.getenv(const.COLLECTION_NAME)
+create_collection = os.getenv(const.CREATE_COLLECTION, True)
 
 ORG_FILTER = '(org_id == "{org_id}")'
 
@@ -197,7 +196,6 @@ def upsert_vector_for_choreo(mc, embed, orgID, api: ChoreoAPI):
 
 
 def upsert_bulk_vector_for_choreo(mc, payload):
-    connections.connect(uri=url, token=api_key)
     if create_collection:
         has = mc.has_collection(collection_name)
         if not has:
