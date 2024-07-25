@@ -42,7 +42,7 @@ def upsert_vector_for_onprem(mc, embed, orgID, keyID, api: API, tenant):
                 schema=schema,
                 index_params=index_params
             )
-    res = embed.embed_query(str(api.__dict__))
+    embedding_response = embed.embed_query(str(api.__dict__))
     payload = {
         "page_content": str(api.spec),
         "metadata": {
@@ -52,7 +52,7 @@ def upsert_vector_for_onprem(mc, embed, orgID, keyID, api: API, tenant):
             "api_type": api.type
         },
         "id": keyID + api.id,
-        "vector": res,
+        "vector": embedding_response,
         "api_type": api.type,
         "org_id": orgID,
         "key_id": keyID,
@@ -64,30 +64,30 @@ def upsert_vector_for_onprem(mc, embed, orgID, keyID, api: API, tenant):
 
 def delete_vector(mc, uuid, record_id):
     uuid = [record_id + id for id in uuid]
-    res = mc.delete(
+    response = mc.delete(
         collection_name=collection_name,
         ids=uuid
     )
-    return res
+    return response
 
 
 def delete_vector_for_choreo(mc, uuid):
     count = query_document(uuid, mc)
     if count == 0:
         return "Document not found, document id: %s" % uuid
-    res = mc.delete(
+    response = mc.delete(
         collection_name=collection_name,
         ids=uuid
     )
-    return res
+    return response
 
 
 def delete_org_wise_vectors_for_choreo(mc, org_id):
     api_count = get_vector_count_for_org(mc, org_id)
     logging.info("API count: %s for org_id - %s", api_count, org_id)
-    res = mc.delete(collection_name=collection_name, filter=ORG_FILTER.format(org_id=org_id))
-    logging.info("Deleted %s records for org_id - %s", res.get("delete_count"), org_id)
-    return res
+    response = mc.delete(collection_name=collection_name, filter=ORG_FILTER.format(org_id=org_id))
+    logging.info("Deleted %s records for org_id - %s", response.get("delete_count"), org_id)
+    return response
 
 
 def upsert_bulk_vector_for_onprem(mc, payload):
@@ -125,11 +125,11 @@ def upsert_bulk_vector_for_onprem(mc, payload):
     return response
 
 def delete_bulk_vector_for_onprem(mc, orgId, keyId, tenantDomain):
-    res = mc.delete(
+    response = mc.delete(
         collection_name=collection_name,
         filter=f"key_id == '{keyId}' && tenant_domain == '{tenantDomain}'"
     )
-    return res
+    return response
 
 
 def upsert_vector_for_choreo(mc, embed, orgID, api: ChoreoAPI):
@@ -163,7 +163,7 @@ def upsert_vector_for_choreo(mc, embed, orgID, api: ChoreoAPI):
                 index_params=index_params
             )
 
-    res = embed.embed_query(str(api.__dict__))
+    embedding_response = embed.embed_query(str(api.__dict__))
     payload = {
         "page_content": str(api.spec),
         "metadata": {
@@ -175,7 +175,7 @@ def upsert_vector_for_choreo(mc, embed, orgID, api: ChoreoAPI):
         },
         "id": api.id,
         "api_name": api.name,
-        "vector": res,
+        "vector": embedding_response,
         "api_type": api.type,
         "org_id": orgID,
     }
@@ -245,12 +245,12 @@ def upsert_bulk_vector_for_choreo(mc, payload):
 
 
 def get_vector_count_for_org(mc, org_id):
-    res = mc.query(
+    response = mc.query(
         collection_name=collection_name,
         filter=ORG_FILTER.format(org_id=org_id),
         output_fields=["count(*)"],
     )
-    return res[0]["count(*)"]
+    return response[0]["count(*)"]
 
 
 def query_document(uuid, mc):
