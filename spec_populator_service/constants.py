@@ -47,3 +47,7 @@ UUID = "uuid"
 DESCRIPTION = "description"
 
 MESSAGE = "message"
+
+# This list is added to exclude the info level http logs from FastAPI
+EXCLUDED_ENDPOINTS = ["/add_vector/{uuid}", "/add_bulk_vector_choreo", "/remove_vector/{uuid}", "/bulk_add_vector"
+                      "/api_count", "/bulk_remove_vector", "/health"]

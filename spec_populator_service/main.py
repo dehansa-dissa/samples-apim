@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional
 import asyncio
 from functools import partial
 import os
+from log_filters import EndpointFilter
 
 from pymilvus import MilvusClient
 
@@ -22,9 +23,16 @@ api_key = os.getenv(const.MILVERSE_API_KEY)
 url = os.getenv(const.MILVERSE_URL)
 
 excluded_org_list = os.getenv(const.EXCLUDED_ORG_LIST, "").split(",")
-logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
+
+# Setting log levels
+loglevel = os.getenv('LOGLEVEL', 'INFO')
+logging.basicConfig(level=loglevel)
+for logger_name in logging.root.manager.loggerDict:
+    logging.getLogger(logger_name).setLevel(loglevel)
+
+logging.getLogger("uvicorn.access").addFilter(EndpointFilter(const.EXCLUDED_ENDPOINTS))
 
 
 async def get_pre_processed_spec(api_details):
