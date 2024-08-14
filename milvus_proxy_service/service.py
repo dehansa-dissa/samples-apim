@@ -18,7 +18,7 @@ url = os.getenv(const.MILVUS_URL)
 app = FastAPI()
 
 # Setting log levels
-log_level = os.getenv('LOGLEVEL', logging.INFO)
+log_level = os.getenv('LOG_LEVEL', logging.INFO)
 logging.basicConfig(level=log_level)
 for logger_name in logging.root.manager.loggerDict:
     logging.getLogger(logger_name).setLevel(log_level)
