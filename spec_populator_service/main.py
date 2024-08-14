@@ -27,8 +27,8 @@ excluded_org_list = os.getenv(const.EXCLUDED_ORG_LIST, "").split(",")
 app = FastAPI()
 
 # Setting log levels
-loglevel = os.getenv('LOGLEVEL', 'INFO')
-logging.basicConfig(level=loglevel)
+log_level = os.getenv('LOGLEVEL', logging.INFO)
+logging.basicConfig(level=log_level)
 for logger_name in logging.root.manager.loggerDict:
     logging.getLogger(logger_name).setLevel(loglevel)
 
