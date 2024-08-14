@@ -265,7 +265,7 @@ async def chat(req: dict, API_KEY: str = Header(None)):
 
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
-            print("Calling marketplace API...")
+            print("Calling marketplace API with endpoint", marketplace_chat_endpoint, ", token:", marketplace_chat_access_token)
             print("handle:", handle)
             print("payload:", payload)
             print("headers:", headers)
