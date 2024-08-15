@@ -7,17 +7,23 @@ from http import HTTPStatus
 import os
 from pydantic import BaseModel
 
+from milvus_proxy_service.log_filters import EndpointFilter
 from milvus_proxy_service.utils import get_field_values, authenticate_org
+import milvus_proxy_service.constants as const
 
-api_key = os.getenv('MILVERSE_API_KEY')
-url = os.getenv('MILVERSE_URL')
+api_key = os.getenv(const.MILVUS_API_KEY)
+url = os.getenv(const.MILVUS_URL)
 
 # A proxy service to create a collection using flask and milvus
 app = FastAPI()
 
-# TODO - Change the log level to INFO after initial testing
-loglevel = os.getenv('LOGLEVEL', 'DEBUG')
-logging.basicConfig(level=loglevel)
+# Setting log levels
+log_level = os.getenv('LOG_LEVEL', logging.INFO)
+logging.basicConfig(level=log_level)
+for logger_name in logging.root.manager.loggerDict:
+    logging.getLogger(logger_name).setLevel(log_level)
+
+logging.getLogger("uvicorn.access").addFilter(EndpointFilter(const.EXCLUDED_ENDPOINTS))
 
 X_JWT_ASSERTION = 'x-jwt-assertion'
 
