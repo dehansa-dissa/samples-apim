@@ -274,6 +274,7 @@ async def chat(req: dict, API_KEY: str = Header(None)):
                 print("Marketplace response status:", response.status)
                 if response.status == 200:
                     response_json = await response.json()
+                    print(response_json)
                     if 'usage' in response_json:
                         usage = response_json.pop('usage', None)
                         cache_key = "org:" + orgID + ":token_count"
