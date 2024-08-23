@@ -22,6 +22,7 @@ class ApiChatAgent {
     agent:Executor agentExecutor;
     TestExecutionStep[] executionHistory;
     string testCaseId;
+    agent:ExecutionProgress progress;
 
     isolated function init(string query, agent:HttpApiSpecification apiSpec, TestExecutionStep[] executionHistory, string token, int iteration, string testCaseId) returns error? {
         self.testCaseId = testCaseId;
@@ -34,12 +35,13 @@ class ApiChatAgent {
         agent:HttpServiceToolKit toolKit = check createToolkit(serviceUrl, apiSpec.tools, token);
         agent:FunctionCallAgent agent = check new (model, toolKit);
         self.agent = agent;
-        self.agentExecutor = new (self.agent, {
+        self.progress = {
             query,
             history: from TestExecutionStep step in executionHistory
                 select {llmResponse: step.llmResponse, observation: step.observation},
             context: getApiChatContext()
-        });
+        };
+        self.agentExecutor = new (self.agent, self.progress);
         self.tools = agent:getTools(self.agent);
         log:printDebug("Agent created successfully.", id = testCaseId, url = apiSpec.serviceUrl);
         self.apiSpec = apiSpec;
@@ -109,7 +111,7 @@ class ApiChatAgent {
         }
     }
 
-    isolated function chat(boolean isTestAll = false) returns NextAction|string|error {
+    isolated function chat(TokenCounts tokenCounts, boolean isTestAll = false) returns NextAction|string|error {
         // execute the agent
         retry<RetryManager> (APICHAT_RETRY_COUNT) {
             int iteration = self.iteration;
@@ -121,7 +123,7 @@ class ApiChatAgent {
                     log:printDebug(string `Task is completed in ${iteration == 1 ? iteration : iteration - 1} iteration(s).`, id = self.testCaseId);
                     return string `All ${resourceCount} resources were invoked.`;
                 }
-                llmResponse = self.getNextTool();
+                llmResponse = self.getNextTool(tokenCounts);
             } else {
                 llmResponse = self.agentExecutor.reason();
             }
@@ -134,6 +136,9 @@ class ApiChatAgent {
             if llmResponse is string {
                 log:printDebug(string `Task is completed in ${iteration == 1 ? iteration : iteration - 1} iteration(s).`);
                 string answer = llmResponse.toString();
+                int completion_tokens = getTokenCount(answer);
+                tokenCounts.completion_tokens += completion_tokens;
+                tokenCounts.total_tokens += completion_tokens;
                 return answer.length() > 1 ? answer.trim() : "Execution is completed.";
             }
 
@@ -152,7 +157,7 @@ class ApiChatAgent {
         }
     }
 
-    isolated function getNextTool() returns agent:FunctionCall|agent:LlmError {
+    isolated function getNextTool(TokenCounts tokenCounts = {prompt_tokens: 0, completion_tokens: 0, total_tokens: 0}) returns agent:FunctionCall|agent:LlmError {
         agent:AgentTool tool = self.tools[self.iteration - 1];
         string|agent:FunctionCall|agent:LlmError functionCall = model.functionCall(
             [{"role": agent:USER, "content": string `call ${tool.name} function with appropriate data`}],
@@ -166,6 +171,28 @@ class ApiChatAgent {
         if functionCall is string {
             return error agent:LlmInvalidGenerationError("Error due to invalid generation by the agent.");
         }
+
+        string command = string `call ${tool.name} function with appropriate data`;
+        (map<json>|string)? context = self.progress.context;
+        string contextString = "";
+        if context is string {
+            contextString = context;
+        }
+        else if context is map<json> {
+            contextString = context.toString();
+        }
+        string prompt = string `${command} ${tool.description} ${tool.variables.toString()} ${tool.name} ${self.progress.query} ${contextString} ${self.progress.history.toString()}`;
+        int promptTokens = getTokenCount(prompt);
+        int responseTokens = 0;
+
+        if functionCall is agent:FunctionCall {
+            responseTokens = getTokenCount(functionCall.toString());
+        }
+
+        tokenCounts.prompt_tokens += promptTokens;
+        tokenCounts.completion_tokens += responseTokens;
+        tokenCounts.total_tokens += promptTokens + responseTokens;
+
         return functionCall;
     }
 

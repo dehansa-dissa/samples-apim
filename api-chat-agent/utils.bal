@@ -11,8 +11,10 @@ import ballerina/lang.regexp;
 import ballerina/lang.runtime;
 import ballerina/log;
 import wso2/ai.agent;
+import ballerina/io;
+import ballerina/os;
 
-isolated function enrichSpecification(string trackingId, map<json> openApi) returns record {|map<json> openApiSpec; SampleQuery[] queries;|}|error {
+function enrichSpecification(string trackingId, map<json> openApi, TokenCounts tokenCounts) returns record {|map<json> openApiSpec; SampleQuery[] queries;|}|error {
     agent:OpenApiSpec openApiSpec;
     agent:Paths? paths;
     final ApiResource[] & readonly resources;
@@ -33,10 +35,10 @@ isolated function enrichSpecification(string trackingId, map<json> openApi) retu
 
     fork {
         worker descriptionCreator returns ApiResourceDescriptor[]|error {
-            return generateDescriptions(trackingId, resources, schemas);
+            return generateDescriptions(trackingId, resources, tokenCounts, schemas);
         }
         worker queryCreator returns GeneratedQuerySet|error {
-            return generateSampleQuery(trackingId, resources, schemas);
+            return generateSampleQuery(trackingId, resources, tokenCounts, schemas);
         }
     }
 
@@ -67,7 +69,7 @@ isolated function enrichSpecification(string trackingId, map<json> openApi) retu
 
     GeneratedQuerySet generatedQuery;
     if queryResult is error {
-        generatedQuery = check generateSampleQuery(trackingId, resourceDescriptions);
+        generatedQuery = check generateSampleQuery(trackingId, resourceDescriptions, tokenCounts);
     } else {
         generatedQuery = queryResult;
     }
@@ -96,6 +98,37 @@ isolated function enrichSpecification(string trackingId, map<json> openApi) retu
     };
 }
 
+isolated function getTokenCount(string text) returns int {
+    os:Process|os:Error result = os:exec({value: "python3", arguments: ["token_counter.py", text]});
+    if result is os:Process {
+        byte[]|error output = result.output(io:stdout);
+        if output is error {
+            return 0;
+        }
+        else if output is byte[] {
+            string|error stringOutput = string:fromBytes(output);
+
+            if stringOutput is string {
+                int|error intOutput = int:fromString(stringOutput);
+
+                if intOutput is error {
+                    return 0;
+                }
+                else {
+                    return intOutput;
+                }
+            }
+            else{
+                return 0;
+            }
+            
+        }
+    }
+    else {
+        return 0;
+    }
+}
+
 isolated function generateTextWithLlm(string prompt) returns string|LlmTokenLimitExceededError|agent:LlmError {
     agent:ChatMessage[] messages = [
         {
@@ -114,8 +147,18 @@ isolated function generateTextWithChatLlm(agent:ChatMessage[] messages) returns 
     return generatedText;
 }
 
-isolated function generateDescriptions(string trackingId, ApiResource[] resources, map<agent:Schema|agent:Reference>? schemas) returns ApiResourceDescriptor[]|LlmTokenLimitExceededError|agent:LlmError {
-    string strEnrichedResourceSpecs = check generateTextWithLlm(generateEnrichmentPrompt(resources, schemas));
+isolated function generateDescriptions(string trackingId, ApiResource[] resources, TokenCounts tokenCounts, map<agent:Schema|agent:Reference>? schemas) returns ApiResourceDescriptor[]|LlmTokenLimitExceededError|agent:LlmError {
+    string prompt = generateEnrichmentPrompt(resources, schemas);
+    string strEnrichedResourceSpecs = check generateTextWithLlm(prompt);
+
+    int prompt_tokens = getTokenCount(prompt);
+    int completion_tokens = getTokenCount(strEnrichedResourceSpecs);
+    int total_tokens = prompt_tokens + completion_tokens;
+
+    tokenCounts.prompt_tokens += prompt_tokens;
+    tokenCounts.completion_tokens += completion_tokens;
+    tokenCounts.total_tokens += total_tokens;
+
     log:printDebug("Description generation was successful.", id = trackingId, enrichedApiSpec = strEnrichedResourceSpecs);
     ApiResourceDescriptor[]|error enrichedResourceSpecs = strEnrichedResourceSpecs.fromJsonStringWithType();
     if enrichedResourceSpecs is error {
@@ -124,8 +167,18 @@ isolated function generateDescriptions(string trackingId, ApiResource[] resource
     return enrichedResourceSpecs;
 }
 
-isolated function generateSampleQuery(string trackingId, ApiResource[]|ApiResourceDescriptor[] resources, map<agent:Schema|agent:Reference>? schemas = ()) returns GeneratedQuerySet|LlmTokenLimitExceededError|agent:LlmError {
-    string strGeneratedQueries = check generateTextWithLlm(generateQueryGenerationPrompt(resources, schemas));
+isolated function generateSampleQuery(string trackingId, ApiResource[]|ApiResourceDescriptor[] resources, TokenCounts tokenCounts, map<agent:Schema|agent:Reference>? schemas = ()) returns GeneratedQuerySet|LlmTokenLimitExceededError|agent:LlmError {
+    string prompt = generateQueryGenerationPrompt(resources, schemas);
+    string strGeneratedQueries = check generateTextWithLlm(prompt);
+
+    int prompt_tokens = getTokenCount(prompt);
+    int completion_tokens = getTokenCount(strGeneratedQueries);
+    int total_tokens = prompt_tokens + completion_tokens;
+
+    tokenCounts.prompt_tokens += prompt_tokens;
+    tokenCounts.completion_tokens += completion_tokens;
+    tokenCounts.total_tokens += total_tokens;
+
     log:printDebug("Query generation was successful", id = trackingId, query = strGeneratedQueries);
     GeneratedQuerySet|error queries = strGeneratedQueries.fromJsonStringWithType();
     if queries is error {

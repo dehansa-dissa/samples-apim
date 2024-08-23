@@ -62,6 +62,14 @@ type TestCompletionResponse record {|
     string result;
 |};
 
+type TestCompletionOnPremResponse record {|
+    # completion status
+    COMPLETED taskStatus = COMPLETED;
+    # completion result
+    string result;
+    TokenCounts usage;
+|};
+
 # Response returned when the token is expired
 type TokenRefreshResponse record {|
     # status indicating the token is expired
@@ -87,10 +95,27 @@ type TestExecutionOnPremResponse record {|
     IN_PROGRESS|TERMINATED taskStatus;
     # result of the test
     ApiResourceDefinition 'resource;
+    # Token usage
+    TokenCounts usage;
+|};
+
+type TokenCounts record {|
+    int prompt_tokens;
+    int completion_tokens;
+    int total_tokens;
 |};
 
 # Response for api enrichment
 type TestPreparationResponse record {|
+    # api specification
+    agent:HttpApiSpecification apiSpec;
+    # list of sample queries
+    SampleQuery[] queries;
+    # token usage
+    TokenCounts usage;
+|};
+
+type CacheSchema record {|
     # api specification
     agent:HttpApiSpecification apiSpec;
     # list of sample queries
@@ -103,17 +128,26 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
     #
     # + payload - Test preparation request payload
     # + return - Test preparation response with API specification and sample queries
-    isolated resource function post prepare(@http:Header string apiChatRequestId, TestPreparationRequest payload) returns TestPreparationResponse|InternalServerError|ErrorInfo {
+    resource function post prepare(@http:Header string apiChatRequestId, TestPreparationRequest payload) returns TestPreparationResponse|InternalServerError|ErrorInfo {
+        TokenCounts tokenCounts = {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0
+        };
         string trackingId = apiChatRequestId;
         // check for the cached api specification
         string hashedSpec = getHashedString(payload.openapi.toString());
-        TestPreparationResponse|error? cachedSpec = retrieveCachedApiSpec(trackingId, hashedSpec);
-        if cachedSpec is TestPreparationResponse {
-            return cachedSpec;
+        CacheSchema|error? cachedSpec = retrieveCachedApiSpec(trackingId, hashedSpec);
+        if cachedSpec is CacheSchema {
+            return {
+                apiSpec: cachedSpec.apiSpec,
+                queries: cachedSpec.queries,
+                usage: tokenCounts
+            };
         }
 
         // generate the enriched specification and sample queries
-        record {|map<json> openApiSpec; SampleQuery[] queries;|}|error enrichedResult = enrichSpecification(trackingId, payload.openapi);
+        record {|map<json> openApiSpec; SampleQuery[] queries;|}|error enrichedResult = enrichSpecification(trackingId, payload.openapi, tokenCounts);
         if enrichedResult is error {
             return handleServerError(enrichedResult, ENRICHMENT, {"id": trackingId});
         }
@@ -125,11 +159,17 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
         }
         TestPreparationResponse response = {
             apiSpec,
+            queries: enrichedResult.queries,
+            usage: tokenCounts
+        };
+
+        CacheSchema cacheData = {
+            apiSpec,
             queries: enrichedResult.queries
         };
 
         // start caching the api spec
-        _ = start updateApiSpecCache(trackingId, hashedSpec, response.cloneReadOnly());
+        _ = start updateApiSpecCache(trackingId, hashedSpec, cacheData.cloneReadOnly());
         return response;
     };
 
@@ -244,7 +284,12 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
     #
     # + payload - Test initialization request or test execution request
     # + return - Test result
-    isolated resource function post chat(@http:Header string apiChatRequestId, TestInitializationRequest|TestExecutionResultRequest payload) returns TestExecutionOnPremResponse|TestCompletionResponse|InternalServerError|ErrorInfo|http:BadRequest {
+    isolated resource function post chat(@http:Header string apiChatRequestId, TestInitializationRequest|TestExecutionResultRequest payload) returns TestExecutionOnPremResponse|TestCompletionOnPremResponse|InternalServerError|ErrorInfo|http:BadRequest {
+        TokenCounts tokenCounts = {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0
+        };
         string testCaseId = apiChatRequestId;
         string command;
         int iteration = 1;
@@ -295,9 +340,9 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
         }
         // execute the next step using the agent
         if isTestAll {
-            nextAction = apiChatAgent.chat(true);
+            nextAction = apiChatAgent.chat(tokenCounts, true);
         } else {
-            nextAction = apiChatAgent.chat();
+            nextAction = apiChatAgent.chat(tokenCounts);
         }
 
         if nextAction is error {
@@ -309,7 +354,8 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
                 _ = start clearTestCaseCache(testCaseId);
             }
             return {
-                result: nextAction
+                result: nextAction,
+                usage: tokenCounts
             };
         }
 
@@ -320,7 +366,8 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
             _ = start clearTestCaseCache(testCaseId);
             return {
                 taskStatus: TERMINATED,
-                'resource: nextAction.'resource
+                'resource: nextAction.'resource,
+                usage: tokenCounts
             };
         }
 
@@ -335,7 +382,8 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
 
         return {
             taskStatus: IN_PROGRESS,
-            'resource: nextAction.'resource
+            'resource: nextAction.'resource,
+            usage: tokenCounts
         };
     }
 
