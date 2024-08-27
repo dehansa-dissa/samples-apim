@@ -21,7 +21,7 @@ final redis:Client redis = check new ({
     }
 });
 
-isolated function retrieveCachedApiSpec(string trackingId, string apiSpecHash) returns TestPreparationResponse|error? {
+isolated function retrieveCachedApiSpec(string trackingId, string apiSpecHash) returns CacheSchema|error? {
     string? cachedSpec;
     retry<RetryManager> (CACHE_RETRY_COUNT) {
         cachedSpec = check redis->get(string `${API_SPEC_NAMESPACE}:${apiSpecHash}`);
@@ -32,7 +32,7 @@ isolated function retrieveCachedApiSpec(string trackingId, string apiSpecHash) r
     return check cachedSpec.fromJsonStringWithType();
 }
 
-isolated function updateApiSpecCache(string trackingId, string apiSpecHash, TestPreparationResponse apiSpec) {
+isolated function updateApiSpecCache(string trackingId, string apiSpecHash, CacheSchema apiSpec) {
     retry<RetryManager> (CACHE_RETRY_COUNT) {
         _ = check redis->setEx(string `${API_SPEC_NAMESPACE}:${apiSpecHash}`, apiSpec.toJsonString(), REDIS_OPENAPI_KEY_EXPIRATION_TIME);
     } on fail error e {
