@@ -99,10 +99,13 @@ function enrichSpecification(string trackingId, map<json> openApi, TokenCounts t
 }
 
 isolated function getTokenCount(string text) returns int {
+    io:println("Started counting tokens");
     os:Process|os:Error result = os:exec({value: "python3", arguments: ["token_counter.py", text]});
     if result is os:Process {
         byte[]|error output = result.output(io:stdout);
         if output is error {
+            io:println("Error in getting the output");
+            io:println(output);
             return 0;
         }
         else if output is byte[] {
@@ -112,6 +115,8 @@ isolated function getTokenCount(string text) returns int {
                 int|error intOutput = int:fromString(stringOutput);
 
                 if intOutput is error {
+                    io:println("Error in converting the output to int");
+                    io:println(intOutput);
                     return 0;
                 }
                 else {
@@ -119,12 +124,16 @@ isolated function getTokenCount(string text) returns int {
                 }
             }
             else{
+                io:println("Error in converting the output to string");
+                io:println(stringOutput);
                 return 0;
             }
             
         }
     }
     else {
+        io:println("Error in executing the python script");
+        io:println(result);
         return 0;
     }
 }

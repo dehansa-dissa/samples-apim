@@ -222,6 +222,7 @@ async def prepare(req: dict, apiChatRequestId: str = Header(None), API_KEY: str 
                         usage = response_json.pop('usage', None)
                         cache_key = "org:" + orgID + ":token_count"
                         asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                        print(usage)
                     return response_json
                 else:
                     raise HTTPException(status_code=response.status, detail=await response.text())
@@ -242,6 +243,7 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), API_KEY: str 
                         usage = response_json.pop('usage', None)
                         cache_key = "org:" + orgID + ":token_count"
                         asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                        print(usage)
                     return response_json
                 else:
                     raise HTTPException(status_code=response.status, detail=await response.text())
