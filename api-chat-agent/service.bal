@@ -129,6 +129,9 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
     # + payload - Test preparation request payload
     # + return - Test preparation response with API specification and sample queries
     resource function post prepare(@http:Header string apiChatRequestId, TestPreparationRequest payload) returns TestPreparationResponse|InternalServerError|ErrorInfo {
+        
+        io:println("Prepare called");
+        
         TokenCounts tokenCounts = {
             prompt_tokens: 0,
             completion_tokens: 0,
@@ -179,6 +182,9 @@ isolated service / on new http:Listener(9090, {requestLimits: {maxHeaderSize: SE
     # + payload - Test initialization request or test execution request
     # + return - Test result
     isolated resource function post execute(@http:Header string token, @http:Header string apiChatRequestId, TestInitializationRequest|TestExecutionRequest payload) returns TestExecutionResponse|TestCompletionResponse|TokenRefreshResponse|InternalServerError|ErrorInfo|http:BadRequest {
+        
+        io:println("Execute called");
+        
         string testCaseId = apiChatRequestId;
         string command;
         int iteration = 1;
