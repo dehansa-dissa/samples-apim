@@ -21,6 +21,8 @@ const AZURE_OPENAI_API_VERSION = "2023-07-01-preview";
 configurable string redisHost = ?;
 configurable string redisPassword = ?;
 
+configurable string interceptorServiceUrl = ?;
+
 final string openAIToken = readKey(azureOpenAIToken);
 final string:RegExp testAllPattern = check regexp:fromString("^(test|invoke) all\\s*(?:resources?|endpoints?|paths?)?\\.?$");
 
