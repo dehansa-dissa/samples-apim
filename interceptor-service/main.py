@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, Body, HTTPException
 from aiocache import cached, SimpleMemoryCache, caches
 import redis.asyncio as redis
 from redis.exceptions import (
@@ -208,6 +208,11 @@ async def fetch_api_count_for_upload(orgID):
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
+@app.post("/ai/api-chat/count-tokens", status_code=status.HTTP_201_CREATED)
+async def count_tokens(text: str = Body(..., media_type="text/plain")):
+    encoding = tiktoken.encoding_for_model("gpt-35-turbo")
+    token_count = len(encoding.encode(text))
+    return {"count": token_count}
 
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
 async def prepare(req: dict, apiChatRequestId: str = Header(None), API_KEY: str = Header(None)):

@@ -11,8 +11,7 @@ import ballerina/lang.regexp;
 import ballerina/lang.runtime;
 import ballerina/log;
 import wso2/ai.agent;
-import ballerina/io;
-import ballerina/os;
+import ballerina/http;
 
 function enrichSpecification(string trackingId, map<json> openApi, TokenCounts tokenCounts) returns record {|map<json> openApiSpec; SampleQuery[] queries;|}|error {
     agent:OpenApiSpec openApiSpec;
@@ -99,43 +98,38 @@ function enrichSpecification(string trackingId, map<json> openApi, TokenCounts t
 }
 
 isolated function getTokenCount(string text) returns int {
-    io:println("Started counting tokens");
-    os:Process|os:Error result = os:exec({value: "python3", arguments: ["token_counter.py", text]});
-    if result is os:Process {
-        byte[]|error output = result.output(io:stdout);
-        if output is error {
-            io:println("Error in getting the output");
-            io:println(output);
-            return 0;
-        }
-        else if output is byte[] {
-            string|error stringOutput = string:fromBytes(output);
 
-            if stringOutput is string {
-                int|error intOutput = int:fromString(stringOutput);
+    http:Client|error interceptor = new (interceptorServiceUrl);
 
-                if intOutput is error {
-                    io:println("Error in converting the output to int");
-                    io:println(intOutput);
-                    return 0;
-                }
-                else {
-                    return intOutput;
-                }
-            }
-            else{
-                io:println("Error in converting the output to string");
-                io:println(stringOutput);
-                return 0;
-            }
-            
-        }
-    }
-    else {
-        io:println("Error in executing the python script");
-        io:println(result);
+    if interceptor is error {
         return 0;
     }
+
+    http:Response|error response = interceptor->post("/ai/api-chat/count-tokens", {"text" : text}, {"Content-Type": "text/plain"});
+
+    if response is error {
+        return 0;
+    }
+
+    json|error payload = response.getJsonPayload();
+
+    if payload is error {
+        return 0;
+    }
+
+    json|error tokenCount = payload.count;
+
+    if tokenCount is error {
+        return 0;
+    }
+
+    int|error count = int:fromString(tokenCount.toString());
+
+    if count is error {
+        return 0;
+    }
+
+    return count;
 }
 
 isolated function generateTextWithLlm(string prompt) returns string|LlmTokenLimitExceededError|agent:LlmError {
