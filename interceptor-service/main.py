@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from fastapi import status
 import aiohttp
 from oauth2_client import OAuth2Client
+import tiktoken
 
 api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
 marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
