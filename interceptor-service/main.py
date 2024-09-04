@@ -181,9 +181,7 @@ async def introspect(on_prem_key):
 
 async def throttle(orgID):
     cache_key = "org:" + orgID + ":token_count"
-    print("cache key:", cache_key)
     current_counts_json = await redis_client.get(cache_key)
-    print("existing cache data before throttling:", current_counts_json)
     if current_counts_json is not None:
         current_counts = json.loads(current_counts_json)
         total_count = int(current_counts["total_tokens"])
@@ -228,7 +226,6 @@ async def prepare(req: dict, apiChatRequestId: str = Header(None), API_KEY: str 
                         usage = response_json.pop('usage', None)
                         cache_key = "org:" + orgID + ":token_count"
                         asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-                        print(usage)
                     return response_json
                 else:
                     raise HTTPException(status_code=response.status, detail=await response.text())
@@ -239,6 +236,8 @@ async def prepare(req: dict, apiChatRequestId: str = Header(None), API_KEY: str 
 @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
 async def execute(req: dict, apiChatRequestId: str = Header(None), API_KEY: str = Header(None)):
     [orgID, handle, status] = await introspect(API_KEY)
+    if do_throttle == "true":
+        await throttle(orgID)
     if status == "ACTIVE":
         async with aiohttp.ClientSession() as session:
             headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
@@ -249,7 +248,6 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), API_KEY: str 
                         usage = response_json.pop('usage', None)
                         cache_key = "org:" + orgID + ":token_count"
                         asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-                        print(usage)
                     return response_json
                 else:
                     raise HTTPException(status_code=response.status, detail=await response.text())
@@ -259,10 +257,8 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), API_KEY: str 
 
 @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
 async def chat(req: dict, API_KEY: str = Header(None)):
-    print("/ai/marketplace-assistant/chat called.")
     [orgID, handle, status] = await introspect(API_KEY)
     if do_throttle == "true":
-        print("Engaging throttling")
         await throttle(orgID)
     if status == "ACTIVE":
         history_string = req["history"]
@@ -283,25 +279,16 @@ async def chat(req: dict, API_KEY: str = Header(None)):
 
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
-            print("Calling marketplace API with endpoint", marketplace_chat_endpoint, ", token:", marketplace_chat_access_token)
-            print("handle:", handle)
-            print("payload:", payload)
-            print("headers:", headers)
             async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'keyID': handle},
                                     json=payload, headers=headers) as response:
-                print("Marketplace response status:", response.status)
                 if response.status == 200:
                     response_json = await response.json()
-                    print(response_json)
                     if 'usage' in response_json:
                         usage = response_json.pop('usage', None)
                         cache_key = "org:" + orgID + ":token_count"
-                        print("updating redis cache with key:", cache_key, ", usage:", usage)
                         asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-                        print("redis cache updating function called.")
                     return response_json
                 else:
-                    print("error:", await response.text())
                     raise HTTPException(status_code=response.status, detail=await response.text())
     else:
         raise HTTPException(status_code=401, detail="Your key has expired")
