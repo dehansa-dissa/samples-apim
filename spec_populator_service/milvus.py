@@ -27,6 +27,7 @@ def upsert_vector_for_onprem(mc, embed, orgID, keyID, api: API, tenant):
             schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=512)
             schema.add_field(field_name="key_id", datatype=DataType.VARCHAR, max_length=512, is_partition_key=True)
             schema.add_field(field_name="tenant_domain", datatype=DataType.VARCHAR, max_length=512)
+            schema.add_field(field_name="visibility_roles", datatype=DataType.ARRAY, element_type=DataType.VARCHAR, max_length=100, max_capacity=100)
 
             index_params = mc.prepare_index_params()
 
@@ -55,7 +56,8 @@ def upsert_vector_for_onprem(mc, embed, orgID, keyID, api: API, tenant):
         "api_type": api.type,
         "org_id": orgID,
         "key_id": keyID,
-        "tenant_domain": tenant
+        "tenant_domain": tenant,
+        "visibility_roles": visibilityRoles
     }
     response = mc.upsert(collection_name=collection_name, data=payload)
     return response
@@ -105,6 +107,7 @@ def upsert_bulk_vector_for_onprem(mc, payload):
             schema.add_field(field_name="org_id", datatype=DataType.VARCHAR, max_length=512)
             schema.add_field(field_name="key_id", datatype=DataType.VARCHAR, max_length=512, is_partition_key=True)
             schema.add_field(field_name="tenant_domain", datatype=DataType.VARCHAR, max_length=512)
+            schema.add_field(field_name="visibility_roles", datatype=DataType.ARRAY, element_type=DataType.VARCHAR, max_length=100, max_capacity=100)
 
             index_params = mc.prepare_index_params()
 

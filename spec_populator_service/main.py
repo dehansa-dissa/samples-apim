@@ -92,8 +92,14 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional
             api = await get_pre_processed_spec(req)
 
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, mc, embed, orgID, keyID, api,
-                                                                req["tenant_domain"]))
+
+            if "visibility_roles" in req:
+                response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, mc, embed, orgID, keyID, api,
+                                                                    req["tenant_domain"],req["visibility_roles"].split(",")))
+            else:
+                response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, mc, embed, orgID, keyID, api,
+                                                                req["tenant_domain"]), [''])
+
         elif source == const.CHOREO:
             if orgID in excluded_org_list:
                 logging.info("Organization has opted out of AI features, org-id: " + orgID)
@@ -216,8 +222,13 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
                 "api_type": api.type,
                 "org_id": orgID,
                 "key_id": keyID,
-                "tenant_domain": api_details["tenant_domain"]
+                "tenant_domain": api_details["tenant_domain"],
+                "visibility_roles": '' 
             }
+            
+            if "visibility_roles" in api_details:
+                payload["visibility_roles"] = api_details["visibility_roles"].split(",")
+
             api_list.append(payload)
 
         mc = MilvusClient(uri=url, token=api_key)
