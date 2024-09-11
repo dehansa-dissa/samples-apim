@@ -57,6 +57,7 @@ class Query(BaseModel):
     query: str
     history: list
     tenant_domain: Optional[str] = None
+    user_roles: str
 
 
 class ChoreoQuery(BaseModel):
@@ -209,15 +210,21 @@ def get_choreo_vectorstore(auth_token, org_id) -> Milvus:
     return vectorstore
 
 
-def get_retriever(tenant_domain, partition_id, auth_token=None) -> MultiQueryRetriever:
+def get_retriever(tenant_domain, partition_id, auth_token=None, user_roles ='') -> MultiQueryRetriever:
     vectorstore = None
     # TODO: Try adding a Self Query retriever
     # Incorporate score based filtering mechanism once Milverse introduces it
     if SOURCE_PLATFORM == APIM:
         vectorstore = get_vectorstore()
-        retriever = vectorstore.as_retriever(search_type="similarity",
+
+        if user_roles == '':
+            retriever = vectorstore.as_retriever(search_type="similarity",
                                              search_kwargs={"k": 5,
-                                                            "expr": 'key_id == "' + partition_id + '" && tenant_domain == "' + tenant_domain + '"'})
+                                                            "expr": 'key_id == "' + partition_id + '" && tenant_domain == "' + tenant_domain + '" && visibility_roles[0] == ""'})
+        else:
+            retriever = vectorstore.as_retriever(search_type="similarity",
+                                             search_kwargs={"k": 5,
+                                                            "expr": 'key_id == "' + partition_id + '" && tenant_domain == "' + tenant_domain + '" && ((visibility_roles[0] == "") || (array_contains_any(visibility_roles,'+user_roles+')))'})
 
         llm = AzureChatOpenAI(
             #     temperature=0.3,
@@ -279,7 +286,7 @@ def format_docs(docs):
             return "\n\n".join([str({"api_details": doc.metadata, "api_spec": doc.page_content}) for doc in docs])
 
 
-def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False, auth_token=None):
+def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False, auth_token=None, user_roles = ''):
     llm = AzureChatOpenAI(
         temperature=0.3,
         model_name="gpt-35-turbo",
@@ -306,7 +313,7 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False, auth_
         else:
             qa_system_prompt = qa_system_prompt_choreo
     else:
-        retriever = get_retriever(tenant_domain, partition_id)
+        retriever = get_retriever(tenant_domain, partition_id, False, user_roles)
         qa_system_prompt = qa_system_prompt_apim
 
     qa_prompt = ChatPromptTemplate.from_messages(
@@ -350,10 +357,10 @@ async def prepare_history(history: list):
 
 
 async def generate_response(
-        tenant_domain: str, message: str, history: list, partitionID: str
+        user_roles: str, tenant_domain: str, message: str, history: list, partitionID: str
 ):
     results = await asyncio.gather(
-        in_thread(prepare_rag_chain, tenant_domain, partitionID),
+        in_thread(prepare_rag_chain, tenant_domain, partitionID, False, None, user_roles),
         prepare_history(history),
     )
     rag_chain = results[0]
@@ -523,7 +530,7 @@ def create_str_markdown(response):
 
 @api.post("/marketplace-assistant")
 async def marketplace_assistant(request: Query, keyID: str):
-    response = await generate_response(tenant_domain=request.tenant_domain, message=request.query,
+    response = await generate_response(user_roles=request.user_roles, tenant_domain=request.tenant_domain, message=request.query,
                                        history=request.history, partitionID=keyID)
     return response
 

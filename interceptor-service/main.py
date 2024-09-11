@@ -274,8 +274,12 @@ async def chat(req: dict, API_KEY: str = Header(None)):
         payload = {
             "query": req['query'],
             "history": objects_list,
-            "tenant_domain": req['tenant_domain']
+            "tenant_domain": req['tenant_domain'],
+            "user_roles" : ''
         }
+
+        if 'user_roles' in req:
+            payload['user_roles'] = req['user_roles']
 
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
