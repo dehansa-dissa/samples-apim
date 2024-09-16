@@ -11,7 +11,7 @@ create_collection = os.getenv(const.CREATE_COLLECTION, True)
 ORG_FILTER = '(org_id == "{org_id}")'
 
 
-def upsert_vector_for_onprem(mc, embed, orgID, keyID, api: API, tenant):
+def upsert_vector_for_onprem(mc, embed, orgID, keyID, api: API, tenant, visibilityRoles):
     if create_collection:
         has = mc.has_collection(collection_name)
         if not has:
