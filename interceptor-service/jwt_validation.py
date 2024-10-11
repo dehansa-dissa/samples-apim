@@ -30,3 +30,4 @@ async def validate_backend_jwt(token: str):
         raise Exception(f"JWT validation failed: {str(e)}")
     except Exception as e:
         raise Exception(f"Error in token validation: {str(e)}")
+    
