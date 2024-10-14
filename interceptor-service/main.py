@@ -158,19 +158,23 @@ async def test_connection():
     except Exception as e:
         raise Exception("Error testing Redis connection")
 
+@cached(ttl=900, key=lambda x_jwt_assertion: f"jwt_org_info:{x_jwt_assertion}")
+async def decode_jwt(x_jwt_assertion: str):
+    payload = jwt.decode(x_jwt_assertion, options={"verify_signature": False})
+    
+    org_id = payload.get("org_id")
+    aud = payload.get("aud")
+
+    if org_id is None or aud is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Organization details not found in token"
+        )
+    return org_id, aud
+
 async def get_org_info_from_token(x_jwt_assertion: str = Header(None)):
     try:
-        payload = jwt.decode(x_jwt_assertion, options={"verify_signature": False})
-        
-        org_id = payload.get("org_id")
-        aud = payload.get("aud")
-
-        if org_id is None or aud is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Organization details not found in token"
-            )
-        return org_id, aud
+        return await decode_jwt(x_jwt_assertion)
 
     except PyJWTError:
         raise HTTPException(
