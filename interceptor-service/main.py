@@ -1,4 +1,6 @@
-from fastapi import FastAPI, Header, Body, HTTPException
+from fastapi import FastAPI, Header, Body, HTTPException, status
+import jwt
+from jwt import PyJWTError
 from aiocache import cached, SimpleMemoryCache, caches
 import redis.asyncio as redis
 from redis.exceptions import (
@@ -14,6 +16,7 @@ from fastapi import status
 import aiohttp
 from oauth2_client import OAuth2Client
 import tiktoken
+from jwt_validation import validate_backend_jwt
 
 api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
 marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
@@ -155,29 +158,29 @@ async def test_connection():
     except Exception as e:
         raise Exception("Error testing Redis connection")
 
+@cached(ttl=900, key=lambda x_jwt_assertion: f"jwt_org_info:{x_jwt_assertion}")
+async def decode_jwt(x_jwt_assertion: str):
+    payload = jwt.decode(x_jwt_assertion, options={"verify_signature": False})
+    
+    org_id = payload.get("org_id")
+    aud = payload.get("aud")
 
-@cached(ttl=60, key=lambda on_prem_key: f"introspection:{on_prem_key}")
-async def introspect(on_prem_key):
-    token = await oauth_client.get_token()
-    print(f"Token: {token[-5:]}")
-    headers = {
-                'Authorization': f'Bearer {token}',
-            }
+    if org_id is None or aud is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Organization details not found in token"
+        )
+    return org_id, aud
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(introspect_endpoint, headers=headers, json={"key": on_prem_key}) as response:
-            if response.status == 200:
-                print("Introspection success")
-                res_json = await response.json()
-                return [res_json["orgUuid"], res_json["handle"], res_json["status"]]
-            else:
-                responseMessage = await response.text()
-                print(responseMessage)
-                if "invalid key" in responseMessage or "expired" in responseMessage:
-                    raise HTTPException(status_code=401, detail="Provided key is invalid or expired")
-                else:
-                    raise HTTPException(status_code=response.status, detail=responseMessage)
+async def get_org_info_from_token(x_jwt_assertion: str = Header(None)):
+    try:
+        return await decode_jwt(x_jwt_assertion)
 
+    except PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
 
 async def throttle(orgID):
     cache_key = "org:" + orgID + ":token_count"
@@ -214,172 +217,184 @@ async def count_tokens(text: str = Body(..., media_type="text/plain")):
     return {"count": token_count}
 
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
-async def prepare(req: dict, apiChatRequestId: str = Header(None), API_KEY: str = Header(None)):
-    [orgID, handle, status] = await introspect(API_KEY)
-    if status == "ACTIVE":
-        async with aiohttp.ClientSession() as session:
-            headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
-            async with session.post(api_chat_endpoint + "/prepare", headers=headers, json=req) as response:
-                if response.status == 201:
-                    response_json = await response.json()
-                    if 'usage' in response_json:
-                        usage = response_json.pop('usage', None)
-                        cache_key = "org:" + orgID + ":token_count"
-                        asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-                    return response_json
-                else:
-                    raise HTTPException(status_code=response.status, detail=await response.text())
-    else:
-        raise HTTPException(status_code=401, detail="Your key has expired")
+async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    async with aiohttp.ClientSession() as session:
+        headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
+        async with session.post(api_chat_endpoint + "/prepare", headers=headers, json=req) as response:
+            if response.status == 201:
+                response_json = await response.json()
+                if 'usage' in response_json:
+                    usage = response_json.pop('usage', None)
+                    cache_key = "org:" + orgID + ":token_count"
+                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                return response_json
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
 
 @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
-async def execute(req: dict, apiChatRequestId: str = Header(None), API_KEY: str = Header(None)):
-    [orgID, handle, status] = await introspect(API_KEY)
+async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     if do_throttle == "true":
         await throttle(orgID)
-    if status == "ACTIVE":
-        async with aiohttp.ClientSession() as session:
-            headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
-            async with session.post(api_chat_endpoint + "/chat", headers=headers, json=req) as response:
-                if response.status == 201:
-                    response_json = await response.json()
-                    if 'usage' in response_json:
-                        usage = response_json.pop('usage', None)
-                        cache_key = "org:" + orgID + ":token_count"
-                        asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-                    return response_json
-                else:
-                    raise HTTPException(status_code=response.status, detail=await response.text())
-    else:
-        raise HTTPException(status_code=401, detail="Your key has expired")
-
+    async with aiohttp.ClientSession() as session:
+        headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
+        async with session.post(api_chat_endpoint + "/chat", headers=headers, json=req) as response:
+            if response.status == 201:
+                response_json = await response.json()
+                if 'usage' in response_json:
+                    usage = response_json.pop('usage', None)
+                    cache_key = "org:" + orgID + ":token_count"
+                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                return response_json
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
 @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
-async def chat(req: dict, API_KEY: str = Header(None)):
-    [orgID, handle, status] = await introspect(API_KEY)
+async def chat(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     if do_throttle == "true":
         await throttle(orgID)
-    if status == "ACTIVE":
-        history_string = req["history"]
-        data_list = json.loads(history_string)
-        objects_list = []
+    history_string = req["history"]
+    data_list = json.loads(history_string)
+    objects_list = []
 
-        for item in data_list:
-            role = item['role']
-            content = item['content']
-            obj = {"role": role, "content": content}
-            objects_list.append(obj)
+    for item in data_list:
+        role = item['role']
+        content = item['content']
+        obj = {"role": role, "content": content}
+        objects_list.append(obj)
 
-        payload = {
+    payload = {
             "query": req['query'],
             "history": objects_list,
             "tenant_domain": req['tenant_domain'],
             "user_roles" : ''
         }
 
-        if 'user_roles' in req:
-            payload['user_roles'] = req['user_roles']
+    if 'user_roles' in req:
+        payload['user_roles'] = req['user_roles']
 
-        async with aiohttp.ClientSession() as session:
-            headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
-            async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'keyID': handle},
-                                    json=payload, headers=headers) as response:
-                if response.status == 200:
-                    response_json = await response.json()
-                    if 'usage' in response_json:
-                        usage = response_json.pop('usage', None)
-                        cache_key = "org:" + orgID + ":token_count"
-                        asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-                    return response_json
-                else:
-                    raise HTTPException(status_code=response.status, detail=await response.text())
-    else:
-        raise HTTPException(status_code=401, detail="Your key has expired")
+    async with aiohttp.ClientSession() as session:
+        headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
+        async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'keyID': handle[0]},
+                                json=payload, headers=headers) as response:
+            if response.status == 200:
+                response_json = await response.json()
+                if 'usage' in response_json:
+                    usage = response_json.pop('usage', None)
+                    cache_key = "org:" + orgID + ":token_count"
+                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                return response_json
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
 
 @app.post("/ai/spec-populator/publish-api", status_code=status.HTTP_201_CREATED)
-async def publish_api(req: dict, API_KEY: str = Header(None)):
-    [orgID, handle, status] = await introspect(API_KEY)
+async def publish_api(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
-    if status == "ACTIVE":
-        count = await fetch_api_count(orgID)
-        if count <= 1000:
-            async with aiohttp.ClientSession() as session:
-                headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-                async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req,
-                                        params={'orgID': orgID, 'keyID': handle}, headers=headers) as response:
-                    if response.status == 200:
-                        return await response.json()
-                    else:
-                        raise HTTPException(status_code=response.status, detail=await response.text())
-        else:
-            raise HTTPException(status_code=429, detail="You have reached your api limit")
+    count = await fetch_api_count(orgID)
+    if count <= 1000:
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+            async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req,
+                                    params={'orgID': orgID, 'keyID': handle[0]}, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
     else:
-        raise HTTPException(status_code=401, detail="Your key has expired")
+        raise HTTPException(status_code=429, detail="You have reached your api limit")
 
 
 @app.delete("/ai/spec-populator/remove-api/{uuid}")
-async def remove_api(uuid: str, API_KEY: str = Header(None)):
-    [orgID, handle, status] = await introspect(API_KEY)
-
-    if status == "ACTIVE":
-        async with aiohttp.ClientSession() as session:
-            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-            async with session.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'keyID': handle},
-                                      headers=headers) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    raise HTTPException(status_code=response.status, detail=await response.text())
-    else:
-        raise HTTPException(status_code=401, detail="Your key has expired")
-
+async def remove_api(uuid: str, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    async with aiohttp.ClientSession() as session:
+        headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+        async with session.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'keyID': handle[0]},
+                                    headers=headers) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
 @app.get("/ai/spec-populator/api-count")
-async def api_count(API_KEY: str = Header(None)):
-    [orgID, handle, status] = await introspect(API_KEY)
-    if status == "ACTIVE":
-        count = await fetch_api_count(orgID)
-        return {"count": count, "limit": 1000}
-    else:
-        raise HTTPException(status_code=401, detail="Your key has expired")
+async def api_count(x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    count = await fetch_api_count(orgID)
+    return {"count": count, "limit": 1000}
 
 
 @app.post("/ai/spec-populator/bulk-upload")
-async def upload_bulk_apis(req: dict, API_KEY: str = Header(None)):
-    [orgID, handle, status] = await introspect(API_KEY)
+async def upload_bulk_apis(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
-    if status == "ACTIVE":
-        count = await fetch_api_count_for_upload(orgID)
-        if count < 1000:
-            req["apis"] = req["apis"][:1000-count]
-            async with aiohttp.ClientSession() as session:
-                headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-                async with session.post(api_publisher_endpoint + '/bulk_add_vector', json=req,
-                                        params={'orgID': handle, 'keyID': handle}, headers=headers) as response:
-                    if response.status == 200:
-                        return await response.json()
-                    else:
-                        raise HTTPException(status_code=response.status, detail=await response.text())
-        else:
-            raise HTTPException(status_code=429, detail="You have reached your api limit")
-    else:
-        raise HTTPException(status_code=401, detail="Your key has expired")
-
-@app.delete("/ai/spec-populator/bulk-remove")
-async def remove_bulk_apis(API_KEY: str = Header(None), TENANT_DOMAIN: str = Header(None)):
-    [orgID, handle, status] = await introspect(API_KEY)
-
-    if status == "ACTIVE":
+    count = await fetch_api_count_for_upload(orgID)
+    if count < 1000:
+        req["apis"] = req["apis"][:1000-count]
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-            async with session.delete(api_publisher_endpoint + '/bulk_remove_vector',
-                                    params={'orgID': handle, 'keyID': handle, "tenantDomain": TENANT_DOMAIN}, headers=headers) as response:
+            async with session.post(api_publisher_endpoint + '/bulk_add_vector', json=req,
+                                    params={'orgID': handle[0], 'keyID': handle[0]}, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
                     raise HTTPException(status_code=response.status, detail=await response.text())
     else:
-        raise HTTPException(status_code=401, detail="Your key has expired")
+        raise HTTPException(status_code=429, detail="You have reached your api limit")
 
+@app.delete("/ai/spec-populator/bulk-remove")
+async def remove_bulk_apis(x_jwt_assertion: str = Header(None), TENANT_DOMAIN: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+
+    async with aiohttp.ClientSession() as session:
+        headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+        async with session.delete(api_publisher_endpoint + '/bulk_remove_vector',
+                                params={'orgID': handle[0], 'keyID': handle[0], "tenantDomain": TENANT_DOMAIN}, headers=headers) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
