@@ -11,6 +11,54 @@ Please respond with only one word: 'payload' or 'swagger' or 'not classified'.
 
 
 
+prompt_template_to_suggest_api_type = """
+    Analyze the following user input: "{user_input}" and identify the most suitable API type for the use case.
+    IMPORTANT: If the input already specifies an API type, return a response to ask the user to confirm it. 
+    IMPORTANT: Otherwise, in less than 10 words, suggest the most appropriate type based on the functionality the user is describing with the justification and ask user if they could proceed with that API type.
+
+    Choose from one of the following API types: 
+    - REST API
+    - GraphQL API
+    - WebSocket
+    - WebSub (Webhook)
+    - Server-Sent Events (SSE)
+    
+    To choose the best API type, it is important to match the API is characteristics with the specific needs of your use case:
+
+    - REST APIs are ideal for CRUD operations, managing resources, and stateless communication. They work well in web-based apps like e-commerce or content management systems where simple HTTP methods are sufficient.
+
+    - GraphQL excels when clients need flexibility in data querying, allowing them to request specific fields and avoid over-fetching or under-fetching. It's great for social media platforms or dashboards aggregating data from multiple sources.
+
+    - WebSocket is designed for real-time, bidirectional communication with low latency. It's perfect for scenarios like chat apps, multiplayer gaming, or live financial updates, where both the client and server need to exchange data frequently.
+
+    - WebSub (Webhook) fits event-driven architectures where asynchronous notifications are required. It is commonly used in payment systems or GitHub integrations, notifying third-party services when events occur.
+
+    - Server-Sent Events (SSE) provide real-time, one-way communication from server to client, making them ideal for continuous updates like live sports scores or stock tickers, where the client does not need to send data back.
+
+"""
+
+
+
+prompt_template_to_check_confirmation = """
+    Analyze the following user input: "{user_input}" and determine whether the user has:
+    1. Confirmed the suggested API type with an affirmation response, or
+    2. Selected a different API type from the following options:
+       - REST API
+       - GraphQL API
+       - WebSocket
+       - WebSub (Webhook)
+       - Server-Sent Events (SSE)
+    
+     
+    IF the user has confirmed the suggested API type, refer to the MOST RECENT PREVIOUS INTERACTIONS: {history} respond with ONE WORD answer with the appropriate type of API ("REST", "GraphQL", "WebSocket", "WebSub", "SSE")
+    IF the user has chosen a different API type, respond with ONE WORD answer with the appropriate type of API ("REST", "GraphQL", "WebSocket", "WebSub", "SSE")
+
+    Respond with ONE WORD answer with the appropriate type of API ("REST", "GraphQL", "WebSocket", "WebSub", "SSE").
+"""
+
+
+
+
 # missing_values_prompt_template = """ 
 #     Please read and analyze the user's input: {question}. Your task is to identify if any of the following properties are missing from it: {allproperties}.
 
@@ -32,7 +80,11 @@ missing_values_prompt_template = """
 
     STRICT INSTRUCTION: ONLY check for the properties {allproperties}. Do NOT look for any other properties.
 
-    If any of these properties are missing, you must ask the user to provide the necessary values in a VERY concise manner. 
+    STRICT INSTRUCTION: Your task is to ask the user to provide the values of the properties that are missing. 
+    STRICT INSTRUCTION: You MUST display each property name followed by a short description. DO NOT use any symbols apart from the hyphen (-). USE the below structure to display the properties.
+    STRUCTURE: 
+    - name: The name or main purpose of the API.
+    - version: The specific version of the API.
 
     For clarification:
     - "name" refers to the name or main purpose.
@@ -40,6 +92,65 @@ missing_values_prompt_template = """
     - "paths" refer to the endpoints.
 
 """
+
+# STRICT INSTRUCTION: Your task is to ask the user to provide the values of the properties which are missing. You MUST display each property on a seperate line. DO NOT use /n
+    
+
+
+
+
+# prompt_template_to_generate_spec = """
+#     You are an assistant that generates responses for {api_type} APIs based on the user's input: "{final_input}" and the conversation history: "{history}".
+#     Please create the necessary API specification, filling in any missing details using best practices for the selected API type.
+
+#     STRICT CONDITION: DO NOT specify the language(yaml) when providing the answer.
+#     IMPORTANT: You MUST include the modification statements: {modification_statements} when generating the response.
+#     STRICT CONDITION: DO NOT specify the extracted modification statements
+
+#     Guidelines:
+#     - Do not mention the format (e.g., YAML or JSON) in your response.
+#     - Depending on the API type, provide one of the following:
+#         - OpenAPI 3.0 specification for a REST API.
+#         - Schema Definition for a GraphQL API.
+#         - AsyncAPI Definition for a WebSocket API.
+#         - AsyncAPI Definition for a WebSub (Webhook) API.
+#         - AsyncAPI Definition for a Server-Sent Events (SSE) API.
+    
+#     Please ensure to only return the specification or definition as the response.
+# """
+
+prompt_template_to_generate_spec = """
+    You are an assistant that generates responses for {api_type} APIs based on the user's input: "{final_input}" and the conversation history: "{history}".
+    Please create the necessary API specification, filling in any missing details using best practices for the selected API type.
+
+    STRICT CONDITION: DO NOT specify the language(yaml) when providing the answer.
+    IMPORTANT: You MUST include the modification statements: {modification_statements} when generating the response.
+    STRICT CONDITION: DO NOT specify the extracted modification statements
+
+    Guidelines:
+    - Do not mention the format (e.g., YAML or JSON) in your response.
+    - Depending on the API type, provide one of the following:
+        - OpenAPI 3.0 specification for a REST API.
+        - Schema Definition for a GraphQL API.
+        - AsyncAPI Definition for a WebSocket API.
+        - AsyncAPI Definition for a WebSub (Webhook) API.
+        - AsyncAPI Definition for a Server-Sent Events (SSE) API.
+    
+    Please ensure to only return the specification or definition as the response.
+
+    Next, review the generated answer and identify the HTTP Methods and its paths mentioned in it and return them seperated by commas.
+
+    Your goal is to return 2 values:
+    1. The specification
+    2. The HTTP Methods with the paths
+
+    Return your response in the following format:
+    generated spec: <generated_spec>
+    resources: <paths>
+
+"""
+
+
 
 
 
@@ -84,7 +195,7 @@ identify_modifications_prompt = PromptTemplate(
 
 
 
-with open('api-design-assistant/swaggerYaml.txt', 'r') as file:
+with open('Modified_API-Create-With-AI-Code/swaggerYaml.txt', 'r') as file:
     swagger_file = file.read()
 
 # Prompt to generate a swagger file
@@ -197,7 +308,7 @@ chatbot_prompt_template_summarize_openAPI = PromptTemplate(
 
 
 
-with open('api-design-assistant/suggestionJSONformat.txt', 'r') as file:
+with open('Modified_API-Create-With-AI-Code/suggestionJSONformat.txt', 'r') as file:
     payload_file = file.read().replace("{", "{{").replace("}", "}}")
 
 
@@ -230,7 +341,7 @@ chatbot_prompt_template_generate_suggestions = PromptTemplate(
 
 
 
-with open('api-design-assistant/payloadExample.txt', 'r') as file:
+with open('Modified_API-Create-With-AI-Code/payloadExample.txt', 'r') as file:
     payload_file = file.read().replace("{", "{{").replace("}", "}}")
 
 chatbot_template_apiUsecase = payload_file + """           
@@ -244,6 +355,8 @@ STRICT CONDITION: DO NOT make up new properties. You MUST only use the propertie
 STRICT CONDITION: If in the history of Previous Interactions it states to SET ACCESS CONTROL, then you MUST update accessControl's value to "RESTRICTED"
 
 EXTREMELY STRICT CONDITION: You MUST include all the modifications provided in the ENTIRE history of Previous Interactions. If needed, intelligently assume missing details based on common API practices for the use case.
+
+EXTREMELY STRICT CONDITION: chnage the value of the "type" property to "HTTP" for REST APIs, "GRAPHQL" for GraphQL APIs, "WS" for WebSocket APIs, "WEBSUB" for Websub/ Webhook APIs and "SSE" for Server-Sent Events (SSE) APIs.
 
 EXTREMELY STRICT CONDITIONS:
     - "accessControlRoles" MUST be ["admin"] if access control is enabled in the Previous Interactions
