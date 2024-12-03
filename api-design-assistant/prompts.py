@@ -195,7 +195,7 @@ identify_modifications_prompt = PromptTemplate(
 
 
 
-with open('Modified_API-Create-With-AI-Code/swaggerYaml.txt', 'r') as file:
+with open('api-design-assistant/swaggerYaml.txt', 'r') as file:
     swagger_file = file.read()
 
 # Prompt to generate a swagger file
@@ -308,7 +308,7 @@ chatbot_prompt_template_summarize_openAPI = PromptTemplate(
 
 
 
-with open('Modified_API-Create-With-AI-Code/suggestionJSONformat.txt', 'r') as file:
+with open('api-design-assistant/suggestionJSONformat.txt', 'r') as file:
     payload_file = file.read().replace("{", "{{").replace("}", "}}")
 
 
@@ -341,7 +341,7 @@ chatbot_prompt_template_generate_suggestions = PromptTemplate(
 
 
 
-with open('Modified_API-Create-With-AI-Code/payloadExample.txt', 'r') as file:
+with open('api-design-assistant/payloadExample.txt', 'r') as file:
     payload_file = file.read().replace("{", "{{").replace("}", "}}")
 
 chatbot_template_apiUsecase = payload_file + """           
