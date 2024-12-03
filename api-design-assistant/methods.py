@@ -8,9 +8,7 @@ from prompts import (
     identify_modifications_prompt,
     chatbot_prompt_template_summarize_openAPI,
     chatbot_prompt_template_generate_suggestions,
-    chatbot_prompt_template_apiUsecase,
-    chatbot_prompt_template_swagger,
-    chatbot_prompt_template_modify_swagger
+    chatbot_prompt_template_apiUsecase
 )
 from api_utils import publish_api
 from config import llm, memory, token, required_properties
