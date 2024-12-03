@@ -114,10 +114,10 @@ identify_modifications_prompt = PromptTemplate(
 
 # reads example openapi spec for context
 with open('api-design-assistant/openapispec.txt', 'r') as file:
-    swagger_file = file.read()
+    openapispec_file = file.read()
 
-# Prompt to generate a summary of the swagger file
-prompt_template_summarize_openAPI = swagger_file + """  
+# Prompt to generate a summary of the openapi spec file
+prompt_template_summarize_openAPI = openapispec_file + """  
     You are an intelligent assistant whose task is to generate an accurate summarization of this OpenAPI specification - {openAPI}
     STRICT CONDITION: You must carefully read the OpenAPI specification and intelligently summarize it and provide the following information:
         - all the paths (GET, POST, PUT, DELETE, PATCH)
@@ -204,8 +204,8 @@ chatbot_prompt_template_apiUsecase = PromptTemplate(
     template=chatbot_template_apiUsecase
 )
 
-# Prompt to generate a swagger file
-chatbot_template_swagger = swagger_file + """  
+# Prompt to generate an openapi spec file
+chatbot_template_openapispec = openapispec_file + """  
     You are an intelligent assistant whose task is to generate an accurate OpenAPI 3.0 specification for an API based on the input provided by the user: {question}. You must carefully interpret the user's use case: {question}, and intelligently create the OpenAPI specification by filling in missing details based on common practices for the use case.
 
     STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
@@ -235,13 +235,13 @@ chatbot_template_swagger = swagger_file + """
     5. Do not include any URLs (including redirect URLs) or external references in your response.
 
 """
-chatbot_prompt_template_swagger = PromptTemplate(
+chatbot_prompt_template_openapispec = PromptTemplate(
     input_variables=["question"], 
-    template=chatbot_template_swagger
+    template=chatbot_template_openapispec
 )
 
-# Prompt to gmodify the swagger file
-modify_swagger_template = swagger_file + """
+# Prompt to gmodify the openapi spec file
+modify_openapispec_template = openapispec_file + """
     You are an intelligent assistant whose task is to generate an accurate OpenAPI 3.0 specification for an API based on the modifications provided by the user: {modification_statements} and the Previous Interactions. You must carefully interpret the user's use case and intelligently create the OpenAPI specification by filling in missing details based on common practices for the use case.
 
     STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
@@ -276,7 +276,7 @@ modify_swagger_template = swagger_file + """
 
     Answer:
 """
-chatbot_prompt_template_modify_swagger = PromptTemplate(
+chatbot_prompt_template_modify_openapispec = PromptTemplate(
     input_variables=["history", "modification_statements"], 
-    template=modify_swagger_template
+    template=modify_openapispec_template
 )
