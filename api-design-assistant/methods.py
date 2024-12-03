@@ -16,202 +16,27 @@ from api_utils import publish_api
 from config import llm, memory, token, required_properties
 
 app = Flask(__name__)
-CORS(app) 
+CORS(app)
 
 # In-memory storage for task progress and state management
 task_states = {}
 
-# Helper function to update task state
+# Updates task state
 def update_task_state(task_id, state, message=""):
     task_states[task_id] = {"state": state, "message": message}
 
-def save_payload(filename, content):
-    try:
-        with open(filename, 'w') as yaml_file:
-            yaml_file.write(content)
-    except IOError as e:
-        print(f"Failed to save payload: {e}")
 
-
-def display_payload(content):
-    for line in content.split('\n'):
-        print(line)
-
-
-
-def process_llm_response():
-    history_str = memory.buffer
-    prompt_with_history = chatbot_prompt_template_apiUsecase.format(history=history_str)
-    
-    response = llm.invoke(prompt_with_history)
-    answer_text = response.content
-    print("generated payload - " + answer_text)
-    # memory.save_context({"input": ""}, {"output": answer_text})    # temporary - pls comment later
-    save_payload('generated_payload.json', answer_text)
-
-    return answer_text
-
-
-# summarize openAPI spec to be added to memory
-def summarize_openAPI(openAPI):
-    prompt_with_history = chatbot_prompt_template_summarize_openAPI.format(openAPI=openAPI)
-
-    response = llm.invoke(prompt_with_history)
-    summary = response.content
-    memory.save_context({"input": f"Human prompt: {summary}"}, {"output": ""})
-
-    return summary
-
-
-
-# Method to validate user input
+# Validates user input
 def validate_user_input(data):
     if not data:
         return {"error": "User input is required"}, 400
-    
-    # user_input = data.get('text', '')
     user_input = data.get('user_input', '')
     if not user_input:
         return {"error": "Text field is required"}, 400
-
-    return None, 200  # No errors
-
+    return None, 200
 
 
-def check_for_modifications(user_input):
-    prompt_to_check_for_modifications = identify_modifications_prompt.format(user_input=user_input)
-    response = llm.invoke(prompt_to_check_for_modifications)
-
-    modification_status = response.content.lower()
-    # modification_status = response.content.strip()
-    
-    modification_statements = None
-
-    if modification_status == "no modifications":
-        modification_statements = None
-    else:
-        modification_statements = modification_status
-
-    return modification_statements
-
-
-
-def generate_suggestions(user_input):
-    history_str = memory.buffer
-    prompt = chatbot_prompt_template_generate_suggestions.format(user_input=user_input, history=history_str)
-    response = llm.invoke(prompt)
-
-    suggestions = response.content.strip().lower()
-    return suggestions
-
-
-@app.route('/generate', methods=['POST'])
-def generate():
-    data = request.get_json()
-    
-    # user_input = data.get('text', '').strip()  # user input
-    user_input = data.get('user_input')
-    task_id = data.get('task_id', '')
-    
-    error_response, status_code = validate_user_input(data)    # validate input
-    if error_response:
-        return error_response, status_code
-
-    if not task_id:
-        return {"error": "Task ID is required"}, 400
-    
-    memory.save_context({"input": f"Human prompt: {user_input}"}, {"output": ""})               # save user input in memory
-
-    # Step 1: Check or suggest API type
-    if task_id not in task_states or task_states[task_id]['state'] == "START":
-        api_suggestion = suggest_api_type(user_input)  # LLM prompt to suggest API type
-        update_task_state(task_id, "AWAITING_CONFIRMATION", api_suggestion)
-
-        isSuggestions = False
-
-        return {
-            "backendResponse": api_suggestion,
-            "isSuggestions":isSuggestions,
-            "state": "AWAITING_CONFIRMATION"
-        }, 200
-
-    # Step 2: Confirm or select API type
-    elif task_states[task_id]['state'] == "AWAITING_CONFIRMATION":
-        confirmed_api_type = check_confirmation(user_input)  # Check if user confirms or selects a different API type
-        task_states[task_id]['api_type'] = confirmed_api_type  # Store selected API type
-        memory.save_context({"input": f"Create this type of API: {confirmed_api_type}"}, {"output": ""})    
-        update_task_state(task_id, "CHECKING_MISSING_PROPERTIES", confirmed_api_type)
-
-    # Step 3: Check for missing properties
-    # elif task_states[task_id]['state'] == "CHECKING_MISSING_PROPERTIES":
-        api_type = task_states[task_id].get('message')
-        missing_values_prompt = generate_missing_values_prompt(api_type)
-        update_task_state(task_id, "AWAITING_MISSING_PROPERTIES", missing_values_prompt)
-
-        isSuggestions = False
-
-        return {
-            "backendResponse": missing_values_prompt,
-            "isSuggestions":isSuggestions,
-            "state": "AWAITING_MISSING_PROPERTIES"
-        }, 200
-    
-    # Step 4: Generate OpenAPI spec
-    elif task_states[task_id]['state'] == "AWAITING_MISSING_PROPERTIES":
-        api_type = task_states[task_id].get('api_type')
-        final_input = user_input  # User provides missing details here
-
-
-        modification_check_result = check_for_modifications(final_input)
-
-        # openapispec = generate_spec(api_type, final_input, modification_check_result) 
-        openapispec,paths = generate_spec(api_type, final_input, modification_check_result) 
-
-        update_task_state(task_id, "COMPLETE")
-        memory.save_context({"input": ""}, {"output": openapispec})
-        print(memory.buffer)
-
-        suggestions = generate_suggestions(user_input)
-        isSuggestions = True
-
-        return {
-            "backendResponse": suggestions,
-            "isSuggestions":isSuggestions,
-            "code": openapispec,
-            "paths":paths,
-            "state": "COMPLETE"
-        }, 200
-
-    # Step 4: Generate OpenAPI spec
-    elif task_states[task_id]['state'] == "COMPLETE":
-        api_type = task_states[task_id].get('api_type')
-        final_input = user_input  # User provides missing details here
-
-        modification_check_result = check_for_modifications(final_input)
-
-        openapispec,paths = generate_spec(api_type, final_input, modification_check_result) 
-
-        print("after modification: " + openapispec)
-
-        # update_task_state(task_id, "COMPLETE")
-        memory.save_context({"input": ""}, {"output": openapispec})
-        print(memory.buffer)
-
-        suggestions = generate_suggestions(user_input)
-        isSuggestions = True
-
-        return {
-            "backendResponse": suggestions,
-            "isSuggestions":isSuggestions,
-            "code": openapispec,
-            "paths":paths,
-            "state": "COMPLETE"
-        }, 200
-    
-    return {"error": "Invalid state or input"}, 400
-
-
-# function to invoke the LLM to suggest a type of API for the given use case or confirm usage of API type
+# Invokes LLM to suggest a type of API for the given use case or confirm usage of API type
 def suggest_api_type(user_input):
     prompt_to_suggest_api_type = prompt_template_to_suggest_api_type.format(user_input=user_input)
     response = llm.invoke(prompt_to_suggest_api_type)
@@ -219,23 +44,18 @@ def suggest_api_type(user_input):
     return api_type
 
 
-
-# function to invoke the LLM if the user has confirmed api type or provided an alternative API type
+# Invokes LLM if the user has confirmed api type or provided an alternative API type
 def check_confirmation(user_input):
     history_str = memory.buffer
-
     prompt_to_check_confirmation = prompt_template_to_check_confirmation.format(user_input=user_input, history=history_str)
     response = llm.invoke(prompt_to_check_confirmation)
-
     api_type = response.content
     return api_type
 
 
-
-# function to invoke the LLM to ask the user for the missing properties
+# Invokes LLM to ask the user for the missing properties
 def generate_missing_values_prompt(api_type):
     history_str = memory.buffer
-
     properties = required_properties.get(api_type, [])
 
     # If the api_type is not found, fallback to a default list
@@ -243,20 +63,17 @@ def generate_missing_values_prompt(api_type):
         properties = ["name", "version"]
 
     properties_str = ", ".join(properties)
-
     missing_values_prompt = missing_values_prompt_template.format(api_type=api_type, history=history_str, allproperties=properties_str)
     response = llm.invoke(missing_values_prompt)
     missing_values = response.content.strip()
-
     print(missing_values)
-
     return missing_values
 
 
+# Invokes LLM to generate the spec according to API type and provided information
 def generate_spec(api_type, final_input, modification_statements=None):
     history_str = memory.buffer
     
-    # Always include modification_statements, using None if not provided
     prompt_with_history = prompt_template_to_generate_spec.format(
         api_type=api_type, 
         final_input=final_input, 
@@ -315,24 +132,178 @@ def generate_spec(api_type, final_input, modification_statements=None):
     return generated_spec, resources
 
 
+# Invokes LLM to summarize spec to be added to memory
+def summarize_openAPI(openAPI):
+    prompt_with_history = chatbot_prompt_template_summarize_openAPI.format(openAPI=openAPI)
+    response = llm.invoke(prompt_with_history)
+    summary = response.content
+    memory.save_context({"input": f"Human prompt: {summary}"}, {"output": ""})
+    return summary
+
+
+# Invokes LLM to generate suggestions for more modifications
+def generate_suggestions(user_input):
+    history_str = memory.buffer
+    prompt = chatbot_prompt_template_generate_suggestions.format(user_input=user_input, history=history_str)
+    response = llm.invoke(prompt)
+    suggestions = response.content.strip().lower()
+    return suggestions
+
+
+# Invokes LLM to check user's query for any modification statements
+def check_for_modifications(user_input):
+    prompt_to_check_for_modifications = identify_modifications_prompt.format(user_input=user_input)
+    response = llm.invoke(prompt_to_check_for_modifications)
+    modification_status = response.content.lower()
+    
+    modification_statements = None
+    if modification_status == "no modifications":
+        modification_statements = None
+    else:
+        modification_statements = modification_status
+
+    return modification_statements
+
+
+# Invokes LLM to generates the payload for API creation based on user's query
+def process_llm_response():
+    history_str = memory.buffer
+    prompt_with_history = chatbot_prompt_template_apiUsecase.format(history=history_str)
+    response = llm.invoke(prompt_with_history)
+    answer_text = response.content
+
+    print("generated payload - " + answer_text)
+    save_payload('generated_payload.json', answer_text)
+    return answer_text
+
+
+# Saves payload as a file
+def save_payload(filename, content):
+    try:
+        with open(filename, 'w') as yaml_file:
+            yaml_file.write(content)
+    except IOError as e:
+        print(f"Failed to save payload: {e}")
+
+
+# Displays payload in the console
+def display_payload(content):
+    for line in content.split('\n'):
+        print(line)
+
+
+# Method to send the payload to the API call
 def try_publish_api(generated_payload, retries=1):
     result = publish_api(generated_payload, token)
 
     # If there's an error in creating the API, retry the process
     if "error" in result and retries > 0:
         print(f"Error occurred: {result['error']}. Retrying...")
-        # Generate a new payload by calling process_llm_response again
         new_generated_payload = process_llm_response()
         return try_publish_api(new_generated_payload, retries - 1)
     
     return result
 
 
+# Endpoint which calls relevant methods based on the states
+@app.route('/generate', methods=['POST'])
+def generate():
+    data = request.get_json()
+    user_input = data.get('user_input')
+    task_id = data.get('task_id', '')
+    
+    error_response, status_code = validate_user_input(data)
+    if error_response:
+        return error_response, status_code
+
+    if not task_id:
+        return {"error": "Task ID is required"}, 400
+    
+    memory.save_context({"input": f"Human prompt: {user_input}"}, {"output": ""})
+
+    # Step 1: Check or suggest API type
+    if task_id not in task_states or task_states[task_id]['state'] == "START":
+        api_suggestion = suggest_api_type(user_input)
+        update_task_state(task_id, "AWAITING_CONFIRMATION", api_suggestion)
+        isSuggestions = False
+
+        return {
+            "backendResponse": api_suggestion,
+            "isSuggestions":isSuggestions,
+            "state": "AWAITING_CONFIRMATION"
+        }, 200
+
+    # Step 2: Confirm or select API type
+    elif task_states[task_id]['state'] == "AWAITING_CONFIRMATION":
+        confirmed_api_type = check_confirmation(user_input) 
+        task_states[task_id]['api_type'] = confirmed_api_type
+        memory.save_context({"input": f"Create this type of API: {confirmed_api_type}"}, {"output": ""})    
+        update_task_state(task_id, "CHECKING_MISSING_PROPERTIES", confirmed_api_type)
+
+        # Step 3: Check for missing properties
+        api_type = task_states[task_id].get('message')
+        missing_values_prompt = generate_missing_values_prompt(api_type)
+        update_task_state(task_id, "AWAITING_MISSING_PROPERTIES", missing_values_prompt)
+        isSuggestions = False
+
+        return {
+            "backendResponse": missing_values_prompt,
+            "isSuggestions":isSuggestions,
+            "state": "AWAITING_MISSING_PROPERTIES"
+        }, 200
+    
+    # Step 4: Generate OpenAPI spec
+    elif task_states[task_id]['state'] == "AWAITING_MISSING_PROPERTIES":
+        api_type = task_states[task_id].get('api_type')
+        final_input = user_input
+
+        modification_check_result = check_for_modifications(final_input)
+        openapispec,paths = generate_spec(api_type, final_input, modification_check_result) 
+
+        update_task_state(task_id, "COMPLETE")
+        memory.save_context({"input": ""}, {"output": openapispec})
+        print(memory.buffer)
+
+        suggestions = generate_suggestions(user_input)
+        isSuggestions = True
+
+        return {
+            "backendResponse": suggestions,
+            "isSuggestions":isSuggestions,
+            "code": openapispec,
+            "paths":paths,
+            "state": "COMPLETE"
+        }, 200
+
+    # Step 4: Generate OpenAPI spec
+    elif task_states[task_id]['state'] == "COMPLETE":
+        api_type = task_states[task_id].get('api_type')
+        final_input = user_input
+
+        modification_check_result = check_for_modifications(final_input)
+        openapispec,paths = generate_spec(api_type, final_input, modification_check_result) 
+        print("after modification: " + openapispec)
+
+        memory.save_context({"input": ""}, {"output": openapispec})
+        print(memory.buffer)
+        suggestions = generate_suggestions(user_input)
+        isSuggestions = True
+
+        return {
+            "backendResponse": suggestions,
+            "isSuggestions":isSuggestions,
+            "code": openapispec,
+            "paths":paths,
+            "state": "COMPLETE"
+        }, 200
+    
+    return {"error": "Invalid state or input"}, 400
+
+# Endpoint which creates the API in the Publisher Portal
 @app.route('/createapiinportal', methods=['POST'])
 def createapiinportal():
     generated_payload = process_llm_response() 
     result = try_publish_api(generated_payload)
-
     return jsonify(result)
 
 
