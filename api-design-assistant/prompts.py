@@ -113,7 +113,7 @@ identify_modifications_prompt = PromptTemplate(
 
 
 # reads example openapi spec for context
-with open('api-design-assistant/swaggerYaml.txt', 'r') as file:
+with open('api-design-assistant/openapispec.txt', 'r') as file:
     swagger_file = file.read()
 
 # Prompt to generate a summary of the swagger file
