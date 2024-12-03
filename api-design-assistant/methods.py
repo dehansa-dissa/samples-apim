@@ -1,28 +1,19 @@
-from flask import Flask, request, Response, jsonify
-import json
+from flask import Flask, request, jsonify
 from flask_cors import CORS
-import re
 from prompts import (
-    chatbot_prompt_template_swagger,
-    chatbot_prompt_template_apiUsecase,
-    chatbot_prompt_template_apiPubPortal,
-    classification_prompt_template,
-    chatbot_prompt_template_modify_swagger,
-    identify_modifications_prompt,
-    missing_values_prompt_template,
-    chatbot_prompt_template_create_api_confirmation,
-    chatbot_prompt_template_generate_suggestions,
-    chatbot_prompt_template_summarize_openAPI,
     prompt_template_to_suggest_api_type,
     prompt_template_to_check_confirmation,
-    prompt_template_to_generate_spec
+    missing_values_prompt_template,
+    prompt_template_to_generate_spec,
+    identify_modifications_prompt,
+    chatbot_prompt_template_summarize_openAPI,
+    chatbot_prompt_template_generate_suggestions,
+    chatbot_prompt_template_apiUsecase,
+    chatbot_prompt_template_swagger,
+    chatbot_prompt_template_modify_swagger
 )
-from api_utils import (
-    modify_api,
-    fetch_api_details,
-    publish_api
-)
-from config import llm, memory, token, required_API_properties, modify_synonyms, required_properties
+from api_utils import publish_api
+from config import llm, memory, token, required_properties
 
 app = Flask(__name__)
 CORS(app) 
@@ -45,7 +36,7 @@ def save_payload(filename, content):
 def display_payload(content):
     for line in content.split('\n'):
         print(line)
-        
+
 
 
 def process_llm_response():
