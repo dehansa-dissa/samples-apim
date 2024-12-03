@@ -8,7 +8,6 @@ from prompts import (
     chatbot_prompt_template_apiPubPortal,
     classification_prompt_template,
     chatbot_prompt_template_modify_swagger,
-    # identify_modifications_prompt_template,
     identify_modifications_prompt,
     missing_values_prompt_template,
     chatbot_prompt_template_create_api_confirmation,
@@ -28,21 +27,12 @@ from config import llm, memory, token, required_API_properties, modify_synonyms,
 app = Flask(__name__)
 CORS(app) 
 
-# task_state = {}
-swagger_payload = "" 
+# In-memory storage for task progress and state management
+task_states = {}
 
-# Generate new payload for API with modifications
-def generate_payload(api_id, api_details, modification_statements):
-    api_details_str = "\n".join(f"{key}: {value}" for key, value in api_details.items())
-    prompt_with_details = chatbot_prompt_template_apiPubPortal.format(api_details=api_details_str, modification_statements=modification_statements)
-    
-    response = llm.invoke(prompt_with_details)
-    generated_payload = response.content
-
-    save_payload('modifiedPayloadPortal.json', generated_payload)
-    modify_api_question(api_id, generated_payload)
-
-
+# Helper function to update task state
+def update_task_state(task_id, state, message=""):
+    task_states[task_id] = {"state": state, "message": message}
 
 def save_payload(filename, content):
     try:
@@ -55,53 +45,7 @@ def save_payload(filename, content):
 def display_payload(content):
     for line in content.split('\n'):
         print(line)
-
-
-# Prompts the user if they would like to create a new API
-def modify_api_question(api_id, generated_payload):
-    publish_decision = input("Do you want to publish the API to the portal? (yes/no): ").strip().lower()
-    
-    if publish_decision == "yes":
-        modify_api(api_id, generated_payload, token)
-    else:
-        user_input = input("Enter your API use case or type a synonym of 'modify' to include modifications to the code: ")
-
-
-# Handle user input to decide on modification type
-def handle_modification_type(initial_question):
-    action = input("Would you like to modify the existing code or an API on the publisher portal? (code/api): ").strip().lower()
-    
-    if action == "api":
-        api_id = input("Please enter the ID of the API on the publisher portal: ").strip()
-        api_details = fetch_api_details(api_id, token)
-
-        if api_details:
-            modification_statements = input("Please enter the modification statements: ")
-            generate_payload(api_id, api_details, modification_statements)
-        return None
-    else:
-        print("\nModifying the prompt with memory...\n")
-        history_str = memory.buffer
-
-        try:
-            return f"{history_str}\n\n{initial_question.split(' ', 1)[1].strip()}"
-        except IndexError:
-            return f"{history_str}"
-
-
-# Handle missing properties in the question
-def handle_missing_properties(question, properties, task_type):
-    properties_str = ", ".join(properties)
-
-    missing_values_prompt = missing_values_prompt_template.format(question=question, allproperties=properties_str)
-    response = llm.invoke(missing_values_prompt)
-
-    # response = llm.invoke(prompt)
-    response_text = response.content.strip()
-
-    # boolean flag - Check if any properties are missing
-    isMissingProps = "All properties are present." not in response_text
-    return response_text, isMissingProps
+        
 
 
 def process_llm_response():
@@ -117,17 +61,6 @@ def process_llm_response():
     return answer_text
 
 
-
-# Publish decision handler
-def handle_publish_decision(answer_text):
-    publish_decision = input("Do you want to publish the API to the portal? (yes/no): ").strip().lower()
-    
-    if publish_decision == "yes":
-        publish_api(answer_text, token)
-    else:
-        user_input = input("Enter your API use case or type a synonym of 'modify' to include modifications to the code: ")
-
-
 # summarize openAPI spec to be added to memory
 def summarize_openAPI(openAPI):
     prompt_with_history = chatbot_prompt_template_summarize_openAPI.format(openAPI=openAPI)
@@ -138,56 +71,6 @@ def summarize_openAPI(openAPI):
 
     return summary
 
-
-# Generate or modify a Swagger definition based on memory and user input
-def modify_or_generate_swagger(question, modification_statements=None):
-    history_str = memory.buffer
-    if modification_statements:
-        prompt_with_history = chatbot_prompt_template_modify_swagger.format(history=history_str, modification_statements=modification_statements)
-    else:
-        prompt_with_history = chatbot_prompt_template_swagger.format(question=question)
-
-    response = llm.invoke(prompt_with_history)
-    answer_text = response.content
-
-    summarize_openAPI(answer_text)
-
-    # memory.save_context({"input": ""}, {"output": answer_text})
-    save_payload('modified_swagger.json', answer_text)
-
-    return answer_text
-
-
-# Function to generate a Payload
-def generate_API(question):
-    initial_question = question.strip()
-    modified_question = None
-
-    if any(initial_question.lower().startswith(synonym) for synonym in modify_synonyms):
-        modified_question = handle_modification_type(initial_question)
-        if modified_question is None:
-            return {"error": "API modification was required."}
-
-    question = handle_missing_properties(modified_question or initial_question, required_API_properties)
-    answer_text = process_llm_response(question)
-
-    return answer_text
-
-
-def swagger_or_payload(task_type,question):
-    if task_type == "not classified":
-        task_type = ask_user_for_task_type()
-
-    if task_type == "swagger":
-        response = modify_or_generate_swagger(question)
-            
-    elif task_type == "payload":
-        response = process_llm_response(question)
-
-    else:
-        return ({"error": "Unable to classify the request. Please try again."}), 400
-
-    return response
 
 
 # Method to validate user input
@@ -201,54 +84,6 @@ def validate_user_input(data):
         return {"error": "Text field is required"}, 400
 
     return None, 200  # No errors
-
-
-
-# Method to check for missing properties
-def find_missing_properties(task_type, user_input):
-    if task_type == "swagger":
-        response = handle_missing_properties(user_input, required_properties)
-
-    elif task_type == "payload":
-        response = handle_missing_properties(user_input, required_API_properties)
-    else:
-        response = "None"
-        
-    return response
-
-
-# Function to classify the user's input using the LLM
-def classify_user_input(user_input):
-    classification_prompt = classification_prompt_template.format(user_input=user_input)
-    response = llm.invoke(classification_prompt)
-    
-    task_type = response.content.strip().lower()
-    return task_type
-
-
-# Function to ask the user if they want to generate Swagger or API if it's unclear
-def ask_user_for_task_type():
-    while True:
-        task_type = input("Do you want to generate a Swagger file or an API? (swagger/payload): ").strip().lower()
-        if task_type in ["swagger", "payload"]:
-            return task_type
-        else:
-            return ({"error": "Invalid input. Please enter 'swagger' or 'payload'."}), 400
-
-
-
-# Function to generate a Swagger file
-def generate_swagger_file(question):
-    prompt_for_swagger = chatbot_prompt_template_swagger.format(question=question)
-    response = llm.invoke(prompt_for_swagger)
-    
-    swagger_content = response.content
-
-    save_payload('generated_swagger.json', swagger_content)
-
-    return {
-        "swagger_definition": swagger_content
-    }
 
 
 
@@ -277,18 +112,6 @@ def generate_suggestions(user_input):
 
     suggestions = response.content.strip().lower()
     return suggestions
-
-
-
-
-
-# In-memory storage for task progress and state management
-task_states = {}
-
-# Helper function to update task state
-def update_task_state(task_id, state, message=""):
-    task_states[task_id] = {"state": state, "message": message}
-
 
 
 @app.route('/generate', methods=['POST'])
