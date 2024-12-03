@@ -7,8 +7,6 @@ from langchain.memory import ConversationBufferMemory
 load_dotenv()
 memory = ConversationBufferMemory()
 
-# AZURE_CHAT_DEPLOYMENT=apim-4o-mini | APIM-Deployment
-
 deployment_name = os.getenv("AZURE_CHAT_DEPLOYMENT")
 openai.api_type = "azure"
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -23,17 +21,6 @@ llm = AzureChatOpenAI(
 )
 
 token = os.getenv("YOUR_API_TOKEN")
-
-required_API_properties = [
-    "name", "context", "version", "sandbox endpoint", "production endpoint"
-]
-
-# required_properties = [
-#     "name",
-#     "version",
-#     "paths"
-# ]
-
 
 required_properties = {
     "REST": [
@@ -86,9 +73,3 @@ required_properties = {
         "heartbeat_mechanism"     # Keep connection alive
     ]
 }
-
-modify_synonyms = [
-    "modify", "edit", "update", "change", "correct", 
-    "improve", "revise", "polish", "rewrite", "reword", 
-    "rework", "redraft", "rephrase"
-]
