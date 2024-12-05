@@ -97,11 +97,9 @@ prompt_template_to_generate_spec = """
 
     Your goal is to return 2 values:
     1. The specification
-    2. The HTTP Methods with the paths
+    2. The HTTP Methods with the paths/resources
 
-    Return your response in the following format:
-    generated spec: <generated_spec>
-    resources: <paths>
+    You MUST return your response in JSON format with the key 'generated_spec' and 'resources'
 
 """
 

@@ -11,6 +11,7 @@
 """
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import json
 from prompts import (
     prompt_template_to_suggest_api_type,
     prompt_template_to_check_confirmation,
@@ -38,10 +39,7 @@ def update_task_state(task_id, state, message=""):
 # Validates user input
 def validate_user_input(data):
     if not data:
-        return {"error": "User input is required"}, 400
-    user_input = data.get('user_input', '')
-    if not user_input:
-        return {"error": "Text field is required"}, 400
+        return {"error": "Hi there, please enter your query!"}, 400
     return None, 200
 
 
@@ -92,54 +90,36 @@ def generate_spec(api_type, final_input, modification_statements=None):
     
     response = llm.invoke(prompt_with_history)
     answer_text = response.content.strip()
-    
-    # Initialize variables
-    generated_spec = None
-    resources = None
-    
-    # Split the response into lines
-    lines = answer_text.split('\n')
-    
-    # Find the resources
-    for line in lines:
-        if line.lower().startswith('resources:'):
-            # Extract resources, removing the 'resources:' prefix and splitting by comma
-            resources = [resource.strip() for resource in line.split(':', 1)[1].split(',')]
-            break
-    
-    # If no resources found by parsing, try extracting from the spec
-    if not resources:
-        try:
-            # Attempt to extract resources from paths in the spec
-            import yaml
-            spec_dict = yaml.safe_load(answer_text)
-            resources = list(spec_dict.get('paths', {}).keys())
-        except Exception as e:
-            print(f"Error extracting resources: {e}")
-            resources = None
-    
-    # Extract the generated spec (everything between 'openapi:' start and 'resources:' line)
-    spec_lines = []
-    in_spec = False
-    for line in lines:
-        if line.lower().startswith('openapi:'):
-            in_spec = True
-        
-        if in_spec:
-            if line.lower().startswith('resources:'):
-                break
-            spec_lines.append(line)
-    
-    # Join the spec lines
-    generated_spec = '\n'.join(spec_lines).strip()
-    
-    # Optional: print and summarize (keep existing functionality)
-    if generated_spec:
-        print("generated_spec "+generated_spec)
-        summarize_openAPI(generated_spec)
-    
-    return generated_spec, resources
 
+    # Parse the JSON response while preserving newlines
+    try:
+        # If the response is a string, parse it
+        if isinstance(answer_text, str):
+            # Use json.loads with ensure_ascii=False to preserve special characters
+            response_dict = json.loads(answer_text, strict=False)
+        # If it's already a dict, use it directly
+        elif isinstance(answer_text, dict):
+            response_dict = answer_text
+        else:
+            raise ValueError("Unexpected response type")
+        
+        # Extract generated_spec and paths
+        generated_spec = response_dict.get('generated_spec', {})
+        paths = response_dict.get('resources', '')
+        
+        # Ensure generated_spec is a dict and paths is a string
+        if not isinstance(generated_spec, dict):
+            generated_spec = {}
+        
+        if not isinstance(paths, str):
+            paths = str(paths)
+        
+        return generated_spec, paths
+    
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"Error parsing response: {e}")
+        return {}, ''
+    
 
 # Invokes LLM to summarize spec to be added to memory
 def summarize_openAPI(openAPI):
@@ -269,6 +249,14 @@ def generate():
         modification_check_result = check_for_modifications(final_input)
         openapispec,paths = generate_spec(api_type, final_input, modification_check_result) 
 
+        # Ensure openapispec is a string representation with preserved newlines
+        if isinstance(openapispec, dict):
+            openapispec = json.dumps(openapispec, indent=2)
+        
+        # Ensure paths is a string
+        if not isinstance(paths, str):
+            paths = str(paths)
+
         update_task_state(task_id, "COMPLETE")
         memory.save_context({"input": ""}, {"output": openapispec})
         print(memory.buffer)
@@ -291,6 +279,13 @@ def generate():
 
         modification_check_result = check_for_modifications(final_input)
         openapispec,paths = generate_spec(api_type, final_input, modification_check_result) 
+
+        if isinstance(openapispec, dict):
+            openapispec = json.dumps(openapispec, indent=2)
+        
+        if not isinstance(paths, str):
+            paths = str(paths)
+
         print("after modification: " + openapispec)
 
         memory.save_context({"input": ""}, {"output": openapispec})
