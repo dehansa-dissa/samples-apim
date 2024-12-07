@@ -97,9 +97,9 @@ prompt_template_to_generate_spec = """
 
     Your goal is to return 2 values:
     1. The specification
-    2. The HTTP Methods with the paths/resources
+    2. An array of HTTP Methods with the paths/resources
 
-    You MUST return your response in JSON format with the key 'generated_spec' and 'resources'
+    You MUST return your response in a JSON format where the overall structure uses JSON keys and values, but the 'generated_spec' value MUST be in YAML format, and 'resources' MUST be an array like this for example ['get /transactions', 'post /transactions']
 
 """
 

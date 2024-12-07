@@ -91,35 +91,17 @@ def generate_spec(api_type, final_input, modification_statements=None):
     response = llm.invoke(prompt_with_history)
     answer_text = response.content.strip()
 
-    # Parse the JSON response while preserving newlines
     try:
-        # If the response is a string, parse it
-        if isinstance(answer_text, str):
-            # Use json.loads with ensure_ascii=False to preserve special characters
-            response_dict = json.loads(answer_text, strict=False)
-        # If it's already a dict, use it directly
-        elif isinstance(answer_text, dict):
-            response_dict = answer_text
-        else:
-            raise ValueError("Unexpected response type")
-        
-        # Extract generated_spec and paths
-        generated_spec = response_dict.get('generated_spec', {})
-        paths = response_dict.get('resources', '')
-        
-        # Ensure generated_spec is a dict and paths is a string
-        if not isinstance(generated_spec, dict):
-            generated_spec = {}
-        
-        if not isinstance(paths, str):
-            paths = str(paths)
-        
-        return generated_spec, paths
+        data = json.loads(answer_text)
+        generated_spec = data.get("generated_spec", "")
+        resources = data.get("resources", [])
+
+        return generated_spec, resources
     
-    except (json.JSONDecodeError, ValueError) as e:
-        print(f"Error parsing response: {e}")
-        return {}, ''
-    
+    except json.JSONDecodeError as e:
+        print(f"Failed to parse JSON: {e}")
+        return None
+
 
 # Invokes LLM to summarize spec to be added to memory
 def summarize_openAPI(openAPI):
@@ -249,14 +231,6 @@ def generate():
         modification_check_result = check_for_modifications(final_input)
         openapispec,paths = generate_spec(api_type, final_input, modification_check_result) 
 
-        # Ensure openapispec is a string representation with preserved newlines
-        if isinstance(openapispec, dict):
-            openapispec = json.dumps(openapispec, indent=2)
-        
-        # Ensure paths is a string
-        if not isinstance(paths, str):
-            paths = str(paths)
-
         update_task_state(task_id, "COMPLETE")
         memory.save_context({"input": ""}, {"output": openapispec})
         print(memory.buffer)
@@ -279,14 +253,6 @@ def generate():
 
         modification_check_result = check_for_modifications(final_input)
         openapispec,paths = generate_spec(api_type, final_input, modification_check_result) 
-
-        if isinstance(openapispec, dict):
-            openapispec = json.dumps(openapispec, indent=2)
-        
-        if not isinstance(paths, str):
-            paths = str(paths)
-
-        print("after modification: " + openapispec)
 
         memory.save_context({"input": ""}, {"output": openapispec})
         print(memory.buffer)
