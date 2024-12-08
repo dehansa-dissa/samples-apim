@@ -82,6 +82,14 @@ prompt_template_to_generate_spec = """
     IMPORTANT: You MUST include the modification statements: {modification_statements} when generating the response.
     STRICT CONDITION: DO NOT specify the extracted modification statements
 
+    If API type: {api_type} is REST, generate:
+        - OpenAPI 3.0 specification.
+        - An array of HTTP methods and their corresponding paths/resources.
+        
+    For other api_type values (GraphQL, WebSocket, WebSub, SSE):
+        - Generate the corresponding Schema Definition (for GraphQL) or AsyncAPI Definition (for the other types).
+        - Set the array of resources to ['No resources'].
+
     Guidelines:
     - Do not mention the format (e.g., YAML or JSON) in your response.
     - Depending on the API type, provide one of the following:
@@ -99,7 +107,7 @@ prompt_template_to_generate_spec = """
     1. The specification
     2. An array of HTTP Methods with the paths/resources
 
-    You MUST return your response in a JSON format where the overall structure uses JSON keys and values, but the 'generated_spec' value MUST be in YAML format, and 'resources' MUST be an array like this for example ['get /transactions', 'post /transactions']
+    You MUST return your response in a JSON format where the overall structure uses JSON keys and values, but the 'generated_spec' value MUST be in YAML format, and 'resources' MUST be an array like this for example ['GET /transactions', 'POST /transactions'] for REST APIs or ['No resources'] for other API types.
 
 """
 

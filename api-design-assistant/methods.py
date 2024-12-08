@@ -32,8 +32,13 @@ CORS(app)
 task_states = {}
 
 # Updates task state
-def update_task_state(task_id, state, message=""):
-    task_states[task_id] = {"state": state, "message": message}
+def update_task_state(task_id, state, message="", api_type=None):
+    if task_id not in task_states:
+        task_states[task_id] = {}
+    task_states[task_id]["state"] = state
+    task_states[task_id]["message"] = message
+    if api_type:
+        task_states[task_id]["api_type"] = api_type
 
 
 # Validates user input
@@ -205,69 +210,69 @@ def generate():
         }, 200
 
     # Step 2: Confirm or select API type
-    elif task_states[task_id]['state'] == "AWAITING_CONFIRMATION":
-        confirmed_api_type = check_confirmation(user_input) 
-        task_states[task_id]['api_type'] = confirmed_api_type
-        memory.save_context({"input": f"Create this type of API: {confirmed_api_type}"}, {"output": ""})    
-        update_task_state(task_id, "CHECKING_MISSING_PROPERTIES", confirmed_api_type)
+    elif task_states[task_id].get('state') == "AWAITING_CONFIRMATION":
+        confirmed_api_type = check_confirmation(user_input)
+        update_task_state(task_id, "CHECKING_MISSING_PROPERTIES", confirmed_api_type, api_type=confirmed_api_type)
+        memory.save_context({"input": f"Create this type of API: {confirmed_api_type}"}, {"output": ""})
 
         # Step 3: Check for missing properties
-        api_type = task_states[task_id].get('message')
+        api_type = task_states[task_id].get('api_type')
         missing_values_prompt = generate_missing_values_prompt(api_type)
         update_task_state(task_id, "AWAITING_MISSING_PROPERTIES", missing_values_prompt)
         isSuggestions = False
 
         return {
             "backendResponse": missing_values_prompt,
-            "isSuggestions":isSuggestions,
+            "isSuggestions": isSuggestions,
             "state": "AWAITING_MISSING_PROPERTIES"
         }, 200
-    
+
     # Step 4: Generate OpenAPI spec
-    elif task_states[task_id]['state'] == "AWAITING_MISSING_PROPERTIES":
+    elif task_states[task_id].get('state') == "AWAITING_MISSING_PROPERTIES":
         api_type = task_states[task_id].get('api_type')
         final_input = user_input
 
         modification_check_result = check_for_modifications(final_input)
-        openapispec,paths = generate_spec(api_type, final_input, modification_check_result) 
+        openapispec, paths = generate_spec(api_type, final_input, modification_check_result)
 
         update_task_state(task_id, "COMPLETE")
         memory.save_context({"input": ""}, {"output": openapispec})
-        print(memory.buffer)
 
         suggestions = generate_suggestions(user_input)
         isSuggestions = True
 
         return {
             "backendResponse": suggestions,
-            "isSuggestions":isSuggestions,
+            "isSuggestions": isSuggestions,
+            "typeOfApi": api_type,
             "code": openapispec,
-            "paths":paths,
+            "paths": paths,
             "state": "COMPLETE"
         }, 200
 
-    # Step 4: Generate OpenAPI spec
-    elif task_states[task_id]['state'] == "COMPLETE":
+    # Step 5: Handle completed task re-execution
+    elif task_states[task_id].get('state') == "COMPLETE":
         api_type = task_states[task_id].get('api_type')
         final_input = user_input
 
         modification_check_result = check_for_modifications(final_input)
-        openapispec,paths = generate_spec(api_type, final_input, modification_check_result) 
+        openapispec, paths = generate_spec(api_type, final_input, modification_check_result)
 
         memory.save_context({"input": ""}, {"output": openapispec})
-        print(memory.buffer)
         suggestions = generate_suggestions(user_input)
         isSuggestions = True
 
         return {
             "backendResponse": suggestions,
-            "isSuggestions":isSuggestions,
+            "isSuggestions": isSuggestions,
+            "typeOfApi": api_type,
             "code": openapispec,
-            "paths":paths,
+            "paths": paths,
             "state": "COMPLETE"
         }, 200
-    
+
     return {"error": "Invalid state or input"}, 400
+
 
 # Endpoint which creates the API in the Publisher Portal
 @app.route('/createapiinportal', methods=['POST'])
