@@ -38,10 +38,9 @@ Follow the instructions below to run the API design assistant service and access
 pip install -r requirements.txt
 ```
 ## Running the Project
-To run the service, run the `methods.py` file located in the `api-design-assistant` directory. You can do this with the following command:
-
+To run the service, run the `methods.py` file located in the `api-design-assistant` directory. You can also execute the following command from the root folder to achieve this:
 ```
-python methods.py
+python api-design-assistant/methods.py
 ```
 
 ## Accessing the Service
