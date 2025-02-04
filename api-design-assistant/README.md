@@ -13,7 +13,7 @@ Follow these steps to set up the API Design Assistant service locally.
 ### 2. Configuring the API Design Assistant Service
 1. Clone this repo.
 ```bash
-git clone <repository-url>
+git clone https://github.com/wso2-enterprise/apim-ai-deployments.git
 cd api-design-assistant
 ```
 2. Create the `.env` with the following configurations.
