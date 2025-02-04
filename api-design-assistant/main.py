@@ -9,12 +9,11 @@
   this license, please see the license as well as any agreement you’ve
   entered into with WSO2 governing the purchase of this software and any
 """
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from flask_cors import CORS
 import json
 from prompts import (
     prompt_template_to_generate_spec,
-    chatbot_prompt_template_summarize_code,
     chatbot_prompt_template_generate_suggestions,
     identify_modifications_prompt,
     prompt_template_to_suggest_api_type,
@@ -23,43 +22,55 @@ from prompts import (
     chatbot_prompt_template_modify_openapi,
     chatbot_prompt_template_graphql
 )
-from api_utils import publish_api
-from config import llm, memory, token, required_properties
+from config import r, llm, required_properties
 
 app = Flask(__name__)
 CORS(app)
 
-task_id = None
-
-# In-memory storage for task progress and state management
-task_states = {}
-
-
-# Updates task state
-def update_task_state(new_task_id, state, message="", api_type=None):
-    global task_id  # Declare task_id as global to update it
-    task_id = new_task_id
-    if task_id not in task_states:
-        task_states[task_id] = {}
-    task_states[task_id]["state"] = state
-    task_states[task_id]["message"] = message
-    if api_type:
-        task_states[task_id]["api_type"] = api_type
-
 
 # Validates user input
 def validate_user_input(data):
-    user_input = data.get('text', '')
-    if not user_input:
-        return {"error": "Hello! Please provide the details of the API you would like to create."}, 400
+    if data is None:
+        return {"error": "Request body must be in JSON format."}, 415
+    
+    if 'text' not in data:
+        return {"error": "Invalid request. The 'text' field is missing or incorrectly named."}, 400
+    if not data.get('text', '').strip():
+        return {"error": "Please provide the details of the API you would like to create."}, 400
+
+    if 'session_id' not in data or not data['session_id']:
+        return {"error": "Invalid request. The 'session_id' field is missing or incorrectly named."}, 400
+    if not data.get('session_id', '').strip():
+        return {"error": "Please enter a Session ID."}, 400
+
     return None, 200
 
 
-# Invokes LLM to suggest a type of API for the given use case
-def suggest_api_type(user_input):
-    history_str = memory.buffer
+# Retrieves data stored in Redis for a given task ID
+def get_task_data(session_id):
+    task_data = r.get(session_id)
+    return json.loads(task_data) if task_data else {"state": "START", "chat_history": [], "specification": "", "api_type": ""}
+
+
+# Updates data stored in Redis for a given task ID  
+def update_task_data(session_id, state=None, chat_history=None, specification=None, api_type=None):
+    task_data = get_task_data(session_id)
     
-    prompt_to_suggest_api_type = prompt_template_to_suggest_api_type.format(user_input=user_input, history=history_str)
+    if state:
+        task_data["state"] = state
+    if chat_history is not None:
+        task_data["chat_history"] = chat_history
+    if specification is not None:
+        task_data["specification"] = specification
+    if api_type is not None:
+        task_data["api_type"] = api_type
+    
+    r.setex(session_id, 900, json.dumps(task_data))
+
+
+# Invokes LLM to suggest a type of API for the given use case
+def suggest_api_type(user_input, chat_history):   
+    prompt_to_suggest_api_type = prompt_template_to_suggest_api_type.format(user_input=user_input, history=chat_history)
     response = llm.invoke(prompt_to_suggest_api_type)
     answer_text = response.content.strip()
 
@@ -76,9 +87,7 @@ def suggest_api_type(user_input):
 
 
 # Invokes LLM to ask the user for the missing properties
-def generate_missing_values_prompt(api_type):
-    history_str = memory.buffer
-
+def generate_missing_values_prompt(api_type, chat_history):
     properties = required_properties.get(api_type, [])
 
     # If the api_type is not found, fallback to a default list
@@ -87,38 +96,27 @@ def generate_missing_values_prompt(api_type):
 
     properties_str = ", ".join(properties)
 
-    missing_values_prompt = missing_values_prompt_template.format(api_type=api_type, history=history_str, allproperties=properties_str)
+    missing_values_prompt = missing_values_prompt_template.format(api_type=api_type, history=chat_history, allproperties=properties_str)
     response = llm.invoke(missing_values_prompt)
     missing_values = response.content.strip()
 
     return missing_values
 
 
-# summarize openAPI spec to be added to memory
-def summarize_code(gen_spec):
-    prompt_with_history = chatbot_prompt_template_summarize_code.format(gen_spec=gen_spec)
-    response = llm.invoke(prompt_with_history)
-    summary = response.content
-    memory.save_context({"input": f"Human prompt: {summary}"}, {"output": ""})
-
-    return summary
-
-
 # Invokes LLM to generate the spec according to API type and provided information
-def generate_spec(api_type, final_input, modification_statements=None):
-    history_str = memory.buffer
-    
+def generate_spec(api_type, final_input, chat_history, specification=None, modification_statements=None):
     if api_type == "REST":
-        prompt_with_history = chatbot_prompt_template_modify_openapi.format(history=history_str, modification_statements=modification_statements)
+        prompt_with_history = chatbot_prompt_template_modify_openapi.format(history=chat_history, specification = specification, modification_statements=modification_statements)
 
     elif api_type == "GraphQL":
-        prompt_with_history = chatbot_prompt_template_graphql.format(history=history_str, modification_statements=modification_statements)
+        prompt_with_history = chatbot_prompt_template_graphql.format(history=chat_history, specification = specification, modification_statements=modification_statements)
 
     else:
         prompt_with_history = prompt_template_to_generate_spec.format(
             api_type=api_type, 
             final_input=final_input, 
-            history=history_str, 
+            history=chat_history, 
+            specification = specification,
             modification_statements=modification_statements
         )
     
@@ -130,8 +128,6 @@ def generate_spec(api_type, final_input, modification_statements=None):
         generated_spec = data.get("generated_spec", "")
         resources = data.get("resources", [])
 
-        summarize_code(generated_spec)
-
         return generated_spec, resources
     
     except json.JSONDecodeError as e:
@@ -140,9 +136,8 @@ def generate_spec(api_type, final_input, modification_statements=None):
 
 
 # Invokes LLM to generate suggestions for more modifications
-def generate_suggestions(api_type):
-    history_str = memory.buffer
-    prompt = chatbot_prompt_template_generate_suggestions.format(api_type=api_type, history=history_str)
+def generate_suggestions(api_type, chat_history):
+    prompt = chatbot_prompt_template_generate_suggestions.format(api_type=api_type, history=chat_history)
     response = llm.invoke(prompt)
 
     suggestions = response.content.strip().lower()
@@ -179,7 +174,7 @@ def read_file(file_path):
 
 
 # Invoke LLM to generate the payload for the API
-def generate_payload(api_type):
+def generate_payload(api_type, chat_history, specification):
     if not isinstance(api_type, str):
         api_type = str(api_type)
 
@@ -201,8 +196,7 @@ def generate_payload(api_type):
 
     content = read_file(file_path)
 
-    history_str = memory.buffer
-    prompt_with_history = chatbot_prompt_template_apiUsecase.format(history=history_str, api_type=api_type, content=content)
+    prompt_with_history = chatbot_prompt_template_apiUsecase.format(history=chat_history, specification=specification, api_type=api_type, content=content)
     response = llm.invoke(prompt_with_history)
     gen_payload = response.content
 
@@ -225,82 +219,73 @@ def display_payload(content):
         print(line)
 
 
-# Method to send payload to publisher portal to create API
-def try_publish_api(generated_payload, api_type, retries=1):
-    result = publish_api(generated_payload, token)
-
-    # If there's an error in creating the API, retry the process
-    if "error" in result and retries > 0:
-        print(f"Error occurred: {result['error']}. Retrying...")
-        new_generated_payload = generate_payload(api_type)
-        return try_publish_api(new_generated_payload, retries - 1)
-    
-    return result
-
-
 # Endpoint which calls relevant methods for generating the specifications based on the states
 @app.route('/api-design', methods=['POST'])
 def generate():
-    data = request.get_json()
-    
-    user_input = data.get('text', '').strip()
-    task_id = data.get('task_id', '')
+    data = request.get_json(silent=True)
     
     error_response, status_code = validate_user_input(data)
-    if error_response:
+    if status_code != 200:
         return error_response, status_code
-
-    if not task_id:
-        return {"error": "Task ID is required"}, 400
     
-    memory.save_context({"input": f"Human prompt: {user_input}"}, {"output": ""})
+    user_input = data.get('text', '').strip()
+    session_id = data.get('session_id', '')
+    
+    task_data = get_task_data(session_id)
+    chat_history = task_data["chat_history"]
+    update_task_data(session_id, chat_history=chat_history)
+    
+    if task_data['state'] == "START":
+        api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
+        chat_history.append({"user_input": user_input})
+        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
 
-    if task_id not in task_states or task_states[task_id]['state'] == "START":
-        api_type, api_type_suggestion = suggest_api_type(user_input)
+        update_task_data(session_id, chat_history=chat_history, state="IN_PROGRESS", api_type=api_type)
 
-        update_task_state(task_id, "IN_PROGRESS", api_type, api_type=api_type)
-        memory.save_context({"input": f"Create this type of API: {api_type}"}, {"output": ""})
-
-        modification_check_result = None
-        openapispec, paths = generate_spec(api_type, user_input, modification_check_result)
-
-        update_task_state(task_id, "COMPLETE")
-        suggestions = generate_suggestions(api_type)
+        specification, paths = generate_spec(api_type, user_input, chat_history, None, None)
+        update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification)
+        
+        suggestions = generate_suggestions(api_type, chat_history)
         isSuggestions = True
-        missing_values_prompt = generate_missing_values_prompt(api_type)
-
+        missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
+        
         return {
             "backendResponse": suggestions,
             "isSuggestions": isSuggestions,
             "typeOfApi": api_type,
-            "code": openapispec,
+            "code": specification,
             "paths": paths,
             "apiTypeSuggestion": api_type_suggestion,
             "missingValues": missing_values_prompt,
             "state": "COMPLETE"
         }, 200
+    
+    elif task_data['state'] == "COMPLETE":
+        api_type = task_data.get("api_type", "")
+        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
 
-    elif task_states[task_id].get('state') == "COMPLETE":
-        api_type = task_states[task_id].get('api_type')
-        memory.save_context({"input": f"Create this type of API: {api_type}"}, {"output": ""})
+        api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
+        chat_history.append({"user_input": user_input})
+        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
 
-        api_type, api_type_suggestion = suggest_api_type(user_input)
-
-        update_task_state(task_id, "COMPLETE", api_type, api_type=api_type)
-        memory.save_context({"input": f"Create this type of API: {api_type}"}, {"output": ""})
+        update_task_data(session_id, chat_history=chat_history, api_type=api_type)
 
         modification_check_result = check_for_modifications(user_input)
-        openapispec, paths = generate_spec(api_type, user_input, modification_check_result)
 
-        suggestions = generate_suggestions(api_type)
+        last_specification = task_data["specification"]
+        specification, paths = generate_spec(api_type, user_input, chat_history, last_specification, modification_check_result)
+
+        update_task_data(session_id, specification=specification)
+        
+        suggestions = generate_suggestions(api_type, chat_history)
         isSuggestions = True
-        missing_values_prompt = generate_missing_values_prompt(api_type)
-
+        missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
+        
         return {
             "backendResponse": suggestions,
             "isSuggestions": isSuggestions,
             "typeOfApi": api_type,
-            "code": openapispec,
+            "code": specification,
             "paths": paths,
             "apiTypeSuggestion": api_type_suggestion,
             "missingValues": missing_values_prompt,
@@ -313,19 +298,18 @@ def generate():
 # Endpoint which calls relevant methods for creating the API in the Publisher Portal
 @app.route('/create-api', methods=['POST'])
 def createapiinportal():
-    global task_id  # Use the global task_id
-    if task_id is None or task_id not in task_states:
-        return jsonify({"error": "Invalid task_id or task_id not set"}), 400
-    
-    api_type = task_states[task_id].get('api_type')
-    if not api_type:
-        return jsonify({"error": "api_type not found for the task"}), 400
-    
-    generated_payload = generate_payload(api_type) 
-    result = try_publish_api(generated_payload, api_type)
+    data = request.get_json()
+    session_id = data.get('session_id', '')
 
-    return jsonify(result)
+    task_data = get_task_data(session_id)
+    api_type = task_data["api_type"]
+    chat_history = task_data["chat_history"]
+    specification = task_data["specification"]
+
+    generated_payload = generate_payload(api_type, chat_history, specification)
+
+    return json.loads(generated_payload)
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=8000, debug=True)
