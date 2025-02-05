@@ -24,11 +24,11 @@ paths:
               properties:
                 text:
                   type: string
-		  description: Natural language description of the API to be created
+                  description: Natural language description of the API to be created
                   example: "create an API for a banking transaction."
                 session_id:
                   type: string
-		  description: Unique identifier for the user session
+                  description: Unique identifier for the user session
                   example: "1234567890"
       responses:
         "200":
@@ -39,19 +39,17 @@ paths:
                 type: object
                 properties:
                   backendResponse:
-                    type: array
-		    description: List of suggestions for API improvements
-                    items:
-                      type: string
+                    type: string
+                    description: List of suggestions for API improvements
                   isSuggestions:
-                    type: Boolean
-		    description: Indicates if there are suggestions available
+                    type: boolean
+                    description: Indicates if there are suggestions available
                   typeOfApi:
                     type: string
-		    description: Detected type of API to be created
+                    description: Detected type of API to be created
                   code:
                     type: string
-		    description: Generated API specification
+                    description: Generated API specification
                   paths:
                     type: object
                     description: API endpoint paths and operations
@@ -63,7 +61,7 @@ paths:
                     description: Prompts for any required missing information
                   state:
                     type: string
-		    description: Current state of the API generation process
+                    description: Current state of the API generation process
                     enum: [START, IN_PROGRESS, COMPLETE]
         "400":
           description: Invalid request
@@ -74,7 +72,7 @@ paths:
                 properties:
                   error:
                     type: string
-		    example: "Invalid request. The 'text' field is missing or incorrectly named."
+                    example: "Invalid request. The 'text' field is missing or incorrectly named."
         "415":
           description: Unsupported Media Type (Invalid JSON format)
           content:
@@ -109,7 +107,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                type: string
                 description: Generated payload for API
         "400":
           description: Invalid request or session ID
@@ -119,6 +117,8 @@ paths:
                 type: object
                 properties:
                   error:
+                    type: string
+                    description: Error message
 components:
   schemas:
     Error:
