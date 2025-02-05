@@ -14,7 +14,6 @@ Follow these steps to set up the API Design Assistant service locally.
 1. Clone this repo.
 ```bash
 git clone https://github.com/wso2-enterprise/apim-ai-deployments.git
-cd api-design-assistant
 ```
 2. Create the `.env` with the following configurations.
 ```plaintext
@@ -36,7 +35,7 @@ Follow the instructions below to run the API design assistant service and access
 
 ## Prerequisites
 
-- Ensure you have **Python 3.x** installed on your system.
+- Ensure you have **Python 3.12.4** installed on your system.
 - Install the required dependencies listed in the `requirements.txt` file using the following command:
 
 ```bash
