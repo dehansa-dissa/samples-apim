@@ -295,7 +295,7 @@ def generate():
     return {"error": "Invalid state or input"}, 400
 
 
-# Endpoint which calls relevant methods for creating the API in the Publisher Portal
+# Endpoint which calls relevant methods for creating the API payload
 @app.route('/create-api', methods=['POST'])
 def createapiinportal():
     data = request.get_json()
