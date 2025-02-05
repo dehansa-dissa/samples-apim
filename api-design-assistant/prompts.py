@@ -139,13 +139,17 @@ modify_openapi_template = openapispec_file + """
     Previous Interactions:
     {history}
 
+    Latest Specification:
+    {specification}
+
     Answer:
 """
 
 chatbot_prompt_template_modify_openapi = PromptTemplate(
-    input_variables=["history", "modification_statements"], 
+    input_variables=["history", "specification", "modification_statements"], 
     template=modify_openapi_template
 )
+
 
 # reads example schema definition for context
 with open('api-design-assistant/graphqlschemadefinition.txt', 'r') as file:
@@ -188,18 +192,21 @@ graphql_template = graphqlfile + """
     Previous Interactions:
     {history}
 
+    Latest Specification:
+    {specification}
+
     Answer:
 """
 
 chatbot_prompt_template_graphql = PromptTemplate(
-    input_variables=["history", "modification_statements"], 
+    input_variables=["history", "specification", "modification_statements"], 
     template=graphql_template
 )
 
 
 # generates the async definition for Async APIs
 prompt_template_to_generate_spec = """
-    You are an assistant that generates responses for {api_type} APIs based on the user's input: "{final_input}" and the conversation history: "{history}".
+    You are an assistant that generates responses for {api_type} APIs based on the user's input: "{final_input}", the conversation history: "{history}" and latest specification: {specification}.
     Please create the necessary API specification, filling in any missing details using best practices for the selected API type.
 
     STRICT CONDITION: DO NOT specify the language(yaml) when providing the answer.
@@ -233,23 +240,6 @@ prompt_template_to_generate_spec = """
 
     You MUST return your response in a JSON format where the overall structure uses JSON keys and values, but the 'generated_spec' value MUST be in YAML format, and 'resources' MUST be an array like this for example ['GET /transactions', 'POST /transactions'] for REST APIs or ['No resources'] for other API types.
 """
-
-
-# Prompt to generate a summary of the file
-prompt_template_summarize_code = """  
-    You are an intelligent assistant whose task is to generate an accurate summarization of this specification - {gen_spec}
-    STRICT CONDITION: You must carefully read the specification and intelligently summarize it.
-
-    STRICT CONDITION: If the specification is an Open API specification, you MUST include the information of the HTTP methods and its respective paths with the parameter values or values returned in the summary.
-    STRICT CONDITION: If the specification is a schema definition or AsyncAPI specification, you MUST include the information of the each value for each property including x-wso2-basePath in the summary.
-
-    Answer:
-"""
-
-chatbot_prompt_template_summarize_code = PromptTemplate(
-    input_variables=["gen_spec"], 
-    template=prompt_template_summarize_code
-)
 
 
 # reads JSON structure of the suggestions for context
@@ -295,11 +285,11 @@ chatbot_prompt_template_generate_suggestions = PromptTemplate(
 chatbot_template_apiUsecase = """ {content}          
 You are a highly skilled and intelligent assistant, specializing in generating a payload based on the Previous Interactions.
 
-Your task is to take the details from the ENTIRE history of Previous Interactions and intelligently generate the payload containing exactly 60 properties and their respective values, following the structure provided.
+Your task is to take the details from the Latest Specification, the ENTIRE history of Previous Interactions and intelligently generate the payload containing exactly 60 properties and their respective values, following the structure provided.
 
 STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
-STRICT CONDITION: The name of the API MUST NOT be 'hello API'. Instead it must be a name you intelligently create based on the ENTIRE history of Previous Interactions.
-STRICT CONDITION: The context of the API MUST be a context you intelligently create based on the ENTIRE history of Previous Interactions.
+STRICT CONDITION: The name of the API MUST NOT be 'hello API'. Instead it must be a name you intelligently create based on the ENTIRE history of Previous Interactions and Latest Specification.
+STRICT CONDITION: The context of the API MUST be a context you intelligently create based on the ENTIRE history of Previous Interactions  and Latest Specification.
 STRICT CONDITION: DO NOT make up new properties. You MUST only use the properties provided in the structure above.
 STRICT CONDITION: If in the history of Previous Interactions it states to SET ACCESS CONTROL, then you MUST update accessControl's value to "RESTRICTED"
 
@@ -308,7 +298,7 @@ EXTREMELY STRICT CONDITION: You MUST include all the modifications provided in t
 EXTREMELY STRICT CONDITION: Based on the API type: {api_type}, YOU MUST change the value of the "type" property to "HTTP" for REST APIs, "GRAPHQL" for GraphQL APIs, "WS" for WebSocket APIs, "WEBSUB" for Websub/ Webhook APIs and "SSE" for Server-Sent Events (SSE) APIs.
 
 EXTREMELY STRICT CONDITIONS:
-    - "accessControlRoles" MUST be ["admin"] if access control is enabled in the Previous Interactions
+    - "accessControlRoles" MUST be []
     - "visibleRoles" MUST be ["admin"], if visible roles are set in the Previous Interactions
     - "maxTps" MUST be null
     - "apiThrottlingPolicy" MUST be null
@@ -327,9 +317,12 @@ STRICT CONDITIONS:
 
 Previous Interactions:
 {history}
+
+Latest Specification:
+{specification}
 """
 
 chatbot_prompt_template_apiUsecase = PromptTemplate(
-    input_variables=["history", "api_type", "content"],
+    input_variables=["history", "specification", "api_type", "content"],
     template=chatbot_template_apiUsecase
 )

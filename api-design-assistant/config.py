@@ -9,14 +9,13 @@
   this license, please see the license as well as any agreement you’ve
   entered into with WSO2 governing the purchase of this software and any
 """
+import redis
 import os
 import openai
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
-from langchain.memory import ConversationBufferMemory
 
 load_dotenv()
-memory = ConversationBufferMemory()
 
 deployment_name = os.getenv("AZURE_CHAT_DEPLOYMENT")
 openai.api_type = "azure"
@@ -31,7 +30,13 @@ llm = AzureChatOpenAI(
     azure_endpoint=openai.azure_endpoint
 )
 
-token = os.getenv("YOUR_API_TOKEN")
+r = redis.Redis(
+    host=os.getenv("REDIS_HOST"), port=int(os.getenv("REDIS_PORT")),
+    password=os.getenv("REDIS_PASSWORD"),
+    db=int(os.getenv("REDIS_DB")),
+    ssl=True,
+    ssl_ca_certs=os.getenv("REDIS_SSL_CERT")
+)
 
 required_properties = {
     "REST": [

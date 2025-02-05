@@ -13,8 +13,7 @@ Follow these steps to set up the API Design Assistant service locally.
 ### 2. Configuring the API Design Assistant Service
 1. Clone this repo.
 ```bash
-git clone <repository-url>
-cd api-design-assistant
+git clone https://github.com/wso2-enterprise/apim-ai-deployments.git
 ```
 2. Create the `.env` with the following configurations.
 ```plaintext
@@ -23,6 +22,11 @@ AZURE_CHAT_DEPLOYMENT= # Azure chat model name
 AZURE_CHAT_VERSION= # Azure API version
 AZURE_ENDPOINT= # Azure API URL
 YOUR_API_TOKEN= # Access token (Retrieved following the previous steps)
+REDIS_HOST= # Redis Host
+REDIS_PASSWORD= # Redis Password
+REDIS_PORT= # Redis Port
+REDIS_DB= # Redis Database Number
+REDIS_SSL_CERT= # path/to/the/sslCertificate.pem
 ```
 
 # Run
@@ -31,34 +35,44 @@ Follow the instructions below to run the API design assistant service and access
 
 ## Prerequisites
 
-- Ensure you have **Python 3.x** installed on your system.
+- Ensure you have **Python 3.12.4** installed on your system.
 - Install the required dependencies listed in the `requirements.txt` file using the following command:
 
 ```bash
 pip install -r requirements.txt
 ```
 ## Running the Project
-To run the service, run the `methods.py` file located in the `api-design-assistant` directory. You can also execute the following command from the root folder to achieve this:
+To run the service, run the `main.py` file located in the `api-design-assistant` directory. You can also execute the following command from the root folder to achieve this:
 ```
-python api-design-assistant/methods.py
+python api-design-assistant/main.py
 ```
 
 ## Accessing the Service
 Once the service is running, it will be accessible at the following URL:
 
 ```arduino
-http://127.0.0.1:5000/{PATH}
+http://127.0.0.1:8000/{PATH}
 ```
-Replace {PATH} with the appropriate endpoint path (`/generate` or `/createapiinportal`) for the specific API functionality you want to access.
+Replace {PATH} with the appropriate endpoint path (`/api-design` or `/create-api`) for the specific API functionality you want to access.
 
 ## Example Request
-Test the service using tools such as curl or Postman. Here's an example curl command for the `/generate` endpoint:
+Test the service using tools such as curl or Postman. Here's an example curl command for the `/api-design` endpoint:
 
 ```bash
-curl -X POST http://127.0.0.1:5000/generate \
+curl -X POST http://127.0.0.1:8000/api-design \
 -H "Content-Type: application/json" \
 -d '{
-  "user_input": "create an API for a banking transaction.",
-  "task_id": "1234567890"
+  "text": "create an API for a banking transaction.",
+  "session_id": "1234567890"
+}'
+```
+
+Here's an example curl command for the `/create-api` endpoint:
+
+```bash
+curl -X POST http://127.0.0.1:8000/create-api \
+-H "Content-Type: application/json" \
+-d '{
+  "session_id": "1234567890"
 }'
 ```
