@@ -220,7 +220,7 @@ def display_payload(content):
 
 
 # Endpoint which calls relevant methods for generating the specifications based on the states
-@app.route('/api-design', methods=['POST'])
+@app.route('/chat', methods=['POST'])
 def generate():
     data = request.get_json(silent=True)
     
@@ -296,7 +296,7 @@ def generate():
 
 
 # Endpoint which calls relevant methods for creating the API payload
-@app.route('/create-api', methods=['POST'])
+@app.route('/generate-api-payload', methods=['POST'])
 def createapiinportal():
     data = request.get_json()
     session_id = data.get('session_id', '')

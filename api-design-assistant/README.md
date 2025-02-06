@@ -53,13 +53,13 @@ Once the service is running, it will be accessible at the following URL:
 ```arduino
 http://127.0.0.1:8000/{PATH}
 ```
-Replace {PATH} with the appropriate endpoint path (`/api-design` or `/create-api`) for the specific API functionality you want to access.
+Replace {PATH} with the appropriate endpoint path (`/chat` or `/generate-api-payload`) for the specific API functionality you want to access.
 
 ## Example Request
-Test the service using tools such as curl or Postman. Here's an example curl command for the `/api-design` endpoint:
+Test the service using tools such as curl or Postman. Here's an example curl command for the `/chat` endpoint:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api-design \
+curl -X POST http://127.0.0.1:8000/chat \
 -H "Content-Type: application/json" \
 -d '{
   "text": "create an API for a banking transaction.",
@@ -67,10 +67,10 @@ curl -X POST http://127.0.0.1:8000/api-design \
 }'
 ```
 
-Here's an example curl command for the `/create-api` endpoint:
+Here's an example curl command for the `/generate-api-payload` endpoint:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/create-api \
+curl -X POST http://127.0.0.1:8000/generate-api-payload \
 -H "Content-Type: application/json" \
 -d '{
   "session_id": "1234567890"

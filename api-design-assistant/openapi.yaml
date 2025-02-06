@@ -7,7 +7,7 @@ servers:
   - url: http://127.0.0.1:8000
     description: Local development server
 paths:
-  /api-design:
+  /chat:
     post:
       summary: Generate API specifications based on user input
       description: Generates API specifications based on user input and tracks session state.
@@ -83,7 +83,7 @@ paths:
                   error:
                     type: string
                     example: "Request body must be in JSON format."
-  /create-api:
+  /generate-api-payload:
     post:
       summary: Create API Payload
       description: Creates an API payload using the stored specification.
