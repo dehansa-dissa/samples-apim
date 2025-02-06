@@ -21,7 +21,6 @@ OPENAI_API_KEY= # OpenAI API Key
 AZURE_CHAT_DEPLOYMENT= # Azure chat model name
 AZURE_CHAT_VERSION= # Azure API version
 AZURE_ENDPOINT= # Azure API URL
-YOUR_API_TOKEN= # Access token (Retrieved following the previous steps)
 REDIS_HOST= # Redis Host
 REDIS_PASSWORD= # Redis Password
 REDIS_PORT= # Redis Port
