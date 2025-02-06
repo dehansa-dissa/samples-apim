@@ -220,7 +220,7 @@ def display_payload(content):
 
 
 # Endpoint which calls relevant methods for generating the specifications based on the states
-@app.route('/api-design', methods=['POST'])
+@app.route('/chat', methods=['POST'])
 def generate():
     data = request.get_json(silent=True)
     
@@ -295,8 +295,8 @@ def generate():
     return {"error": "Invalid state or input"}, 400
 
 
-# Endpoint which calls relevant methods for creating the API in the Publisher Portal
-@app.route('/create-api', methods=['POST'])
+# Endpoint which calls relevant methods for creating the API payload
+@app.route('/generate-api-payload', methods=['POST'])
 def createapiinportal():
     data = request.get_json()
     session_id = data.get('session_id', '')
