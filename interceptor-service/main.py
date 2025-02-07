@@ -398,3 +398,41 @@ async def remove_bulk_apis(x_jwt_assertion: str = Header(None), TENANT_DOMAIN: s
                 return await response.json()
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
+
+
+@app.post("/ai/api-design-assistant/chat", status_code=status.HTTP_201_CREATED)
+async def design_assistant_chat(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+
+    text = req["text"]
+    session_id = req["session_id"]
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            'http://127.0.0.1:8000/chat',
+            json={"text": text, "session_id": session_id}
+        ) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
+    
+        
+@app.post("/ai/api-design-assistant/generate-api-payload", status_code=status.HTTP_201_CREATED)
+async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    async with aiohttp.ClientSession() as session:
+        session_id = req["session_id"]
+        async with session.post('http://127.0.0.1:8000/generate-api-payload', 
+                                json={'session_id': session_id}) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
