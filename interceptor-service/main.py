@@ -408,12 +408,12 @@ async def design_assistant_chat(req: dict, x_jwt_assertion: str = Header(None)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
 
     text = req["text"]
-    session_id = req["session_id"]
+    sessionId = req["sessionId"]
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
             'http://127.0.0.1:8000/chat',
-            json={"text": text, "session_id": session_id}
+            json={"text": text, "sessionId": sessionId}
         ) as response:
             if response.status == 200:
                 return await response.json()
@@ -429,9 +429,9 @@ async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
     async with aiohttp.ClientSession() as session:
-        session_id = req["session_id"]
+        sessionId = req["sessionId"]
         async with session.post('http://127.0.0.1:8000/generate-api-payload', 
-                                json={'session_id': session_id}) as response:
+                                json={'sessionId': sessionId}) as response:
             if response.status == 200:
                 return await response.json()
             else:

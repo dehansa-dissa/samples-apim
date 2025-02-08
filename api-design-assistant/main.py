@@ -38,9 +38,9 @@ def validate_user_input(data):
     if not data.get('text', '').strip():
         return {"error": "Please provide the details of the API you would like to create."}, 400
 
-    if 'session_id' not in data or not data['session_id']:
-        return {"error": "Invalid request. The 'session_id' field is missing or incorrectly named."}, 400
-    if not data.get('session_id', '').strip():
+    if 'sessionId' not in data or not data['sessionId']:
+        return {"error": "Invalid request. The 'sessionId' field is missing or incorrectly named."}, 400
+    if not data.get('sessionId', '').strip():
         return {"error": "Please enter a Session ID."}, 400
 
     return None, 200
@@ -229,7 +229,7 @@ def generate():
         return error_response, status_code
     
     user_input = data.get('text', '').strip()
-    session_id = data.get('session_id', '')
+    session_id = data.get('sessionId', '')
     
     task_data = get_task_data(session_id)
     chat_history = task_data["chat_history"]
@@ -299,7 +299,7 @@ def generate():
 @app.route('/generate-api-payload', methods=['POST'])
 def createapiinportal():
     data = request.get_json()
-    session_id = data.get('session_id', '')
+    session_id = str(data.get('sessionId', ''))
 
     task_data = get_task_data(session_id)
     api_type = task_data["api_type"]
