@@ -62,7 +62,7 @@ curl -X POST http://127.0.0.1:8000/chat \
 -H "Content-Type: application/json" \
 -d '{
   "text": "create an API for a banking transaction.",
-  "session_id": "1234567890"
+  "sessionId": "1234567890"
 }'
 ```
 
@@ -72,6 +72,6 @@ Here's an example curl command for the `/generate-api-payload` endpoint:
 curl -X POST http://127.0.0.1:8000/generate-api-payload \
 -H "Content-Type: application/json" \
 -d '{
-  "session_id": "1234567890"
+  "sessionId": "1234567890"
 }'
 ```
