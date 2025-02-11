@@ -6,7 +6,7 @@ Sample Request for a basic REST API
 Sample Request Body
 {
   "text": "I want an API where users can search for books in our library database. They should be able to search by title, author, or ISBN and get back details like book title, author, publication date, and a brief summary.",
-  "session_id": "123456"
+  "sessionId": "123456"
 }
 
 -----------------
@@ -18,5 +18,5 @@ Sample Request for a basic Async API
 
 {
   "text": "I want an API for real-time messaging",
-  "session_id": "123456"
+  "sessionId": "123456"
 }

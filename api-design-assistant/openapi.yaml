@@ -20,13 +20,13 @@ paths:
               type: object
               required:
                 - text
-                - session_id
+                - sessionId
               properties:
                 text:
                   type: string
                   description: Natural language description of the API to be created
                   example: "create an API for a banking transaction."
-                session_id:
+                sessionId:
                   type: string
                   description: Unique identifier for the user session
                   example: "1234567890"
@@ -95,9 +95,9 @@ paths:
             schema:
               type: object
               required:
-                - session_id
+                - sessionId
               properties:
-                session_id:
+                sessionId:
                   type: string
                   description: Session ID to retrieve the generated API specification
                   example: "1234567890"
