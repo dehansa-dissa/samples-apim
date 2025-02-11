@@ -20,6 +20,7 @@ from jwt_validation import validate_backend_jwt
 
 api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
 marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
+api_design_assistant_endpoint = os.getenv("API_DA_ENDPOINT")
 api_publisher_endpoint = os.getenv("API_PUBLISHER_ENDPOINT")
 api_chat_access_token = os.getenv("API_CHAT_ENDPOINT_ACCESS_TOKEN")
 introspect_endpoint = os.getenv("INTROSPECTION_ENDPOINT")
@@ -412,7 +413,7 @@ async def design_assistant_chat(req: dict, x_jwt_assertion: str = Header(None)):
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            'http://127.0.0.1:8000/chat',
+            api_design_assistant_endpoint + "/chat",
             json={"text": text, "sessionId": sessionId}
         ) as response:
             if response.status == 200:
@@ -430,7 +431,7 @@ async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(
     
     async with aiohttp.ClientSession() as session:
         sessionId = req["sessionId"]
-        async with session.post('http://127.0.0.1:8000/generate-api-payload', 
+        async with session.post(api_design_assistant_endpoint + "/generate-api-payload", 
                                 json={'sessionId': sessionId}) as response:
             if response.status == 200:
                 return await response.json()
