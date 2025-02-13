@@ -111,7 +111,7 @@ modify_openapi_template = openapispec_file + """
         - 500 (Internal Server Error)
     - Use HTTP methods like GET, PUT, POST, DELETE and PATCH as relevant to the use case.
     
-    2. Include detailed schemas for request and response objects using industry-sandard field types (e.g., string, integer, boolean, date-time).
+    2. Include detailed schemas for request and response objects using industry-standard field types (e.g., string, integer, boolean, date-time).
     
     3. Your task is to ONLY provide the generated OpenAPI specification in YAML format and must match the structure of the example OpenAPI 3.0 specification file.
 
