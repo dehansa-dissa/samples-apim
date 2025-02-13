@@ -218,97 +218,320 @@ def display_payload(content):
     for line in content.split('\n'):
         print(line)
 
-
 # Endpoint which calls relevant methods for generating the specifications based on the states
 @app.route('/chat', methods=['POST'])
 def generate():
-    data = request.get_json(silent=True)
-    
-    error_response, status_code = validate_user_input(data)
-    if status_code != 200:
-        return error_response, status_code
-    
-    user_input = data.get('text', '').strip()
-    session_id = data.get('sessionId', '')
-    
-    task_data = get_task_data(session_id)
-    chat_history = task_data["chat_history"]
-    update_task_data(session_id, chat_history=chat_history)
-    
-    if task_data['state'] == "START":
-        api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
-        chat_history.append({"user_input": user_input})
-        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
+    suggestions = {
+        "1": {
+            "title": "set access control",
+            "description": "restrict access to certain publishers and creators, enhancing security and data integrity for the rest api."
+        },
+        "2": {
+            "title": "enable response caching",
+            "description": "improve performance by caching responses, reducing server load and speeding up data retrieval for users."
+        },
+        "3": {
+            "title": "set transport to https",
+            "description": "ensure secure data transmission by enforcing https, protecting sensitive information from potential interception."
+        },
+        "4": {
+            "title": "enable schema validation",
+            "description": "validate incoming requests against defined schemas, ensuring data integrity and reducing errors in processing."
+        },
+        "5": {
+            "title": "set throttling policy",
+            "description": "implement a throttling policy to manage request rates, preventing abuse and ensuring fair usage among users."
+        }
+    }
 
-        update_task_data(session_id, chat_history=chat_history, state="IN_PROGRESS", api_type=api_type)
+    api_type = "REST"
+    api_type_suggestion = "The current choice is suitable for hospital management. Proceed with REST?"
+    paths = [
+        "GET /patients",
+        "POST /patients",
+        "GET /patients/{id}",
+        "PUT /patients/{id}",
+        "DELETE /patients/{id}"
+    ]
+    missing_values_prompt = """The following properties are missing for the REST API:
 
-        specification, paths = generate_spec(api_type, user_input, chat_history, None, None)
-        update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification)
-        
-        suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = True
-        missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
-        
-        return {
-            "backendResponse": suggestions,
-            "isSuggestions": isSuggestions,
-            "typeOfApi": api_type,
-            "code": specification,
-            "paths": paths,
-            "apiTypeSuggestion": api_type_suggestion,
-            "missingValues": missing_values_prompt,
-            "state": "COMPLETE"
-        }, 200
-    
-    elif task_data['state'] == "COMPLETE":
-        api_type = task_data.get("api_type", "")
-        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
+- name: The name or main purpose of the API.
+- version: The specific version of the API.
+- context: The context or base path for the API.
+- endpoint: The specific endpoints that the API will expose.
+- http methods: The HTTP methods (GET, POST, PUT, DELETE, etc.) that will be used for each endpoint.
+- paths: The specific paths for the API endpoints.
 
-        api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
-        chat_history.append({"user_input": user_input})
-        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
+Please provide the values for the missing properties."""
 
-        update_task_data(session_id, chat_history=chat_history, api_type=api_type)
+    specification = """openapi: 3.0.1
+info:
+  title: Hospital Management API
+  version: 1.0.0
+servers:
+ -
+  url: /
+security:
+ -
+  default: []
+paths:
+  /patients:
+    get:
+      summary: Retrieve a list of patients
+      responses:
+        "200":
+          description: A list of patients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                    age:
+                      type: integer
+                    gender:
+                      type: string
+        "400":
+          description: Bad Request
+        "500":
+          description: Internal Server Error
+      security:
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: Unlimited
+      x-wso2-application-security:
+        security-types:
+         - oauth2
+        optional: false"""
 
-        modification_check_result = check_for_modifications(user_input)
-
-        last_specification = task_data["specification"]
-        specification, paths = generate_spec(api_type, user_input, chat_history, last_specification, modification_check_result)
-
-        update_task_data(session_id, specification=specification)
-        
-        suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = True
-        missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
-        
-        return {
-            "backendResponse": suggestions,
-            "isSuggestions": isSuggestions,
-            "typeOfApi": api_type,
-            "code": specification,
-            "paths": paths,
-            "apiTypeSuggestion": api_type_suggestion,
-            "missingValues": missing_values_prompt,
-            "state": "COMPLETE"
-        }, 200
-    
-    return {"error": "Invalid state or input"}, 400
+    return {
+        "backendResponse": suggestions,
+        "isSuggestions": True,
+        "typeOfApi": api_type,
+        "code": specification,
+        "paths": paths,
+        "apiTypeSuggestion": api_type_suggestion,
+        "missingValues": missing_values_prompt,
+        "state": "COMPLETE"
+    }, 200
 
 
-# Endpoint which calls relevant methods for creating the API payload
+
 @app.route('/generate-api-payload', methods=['POST'])
 def createapiinportal():
-    data = request.get_json()
-    session_id = str(data.get('sessionId', ''))
+    generated_payload = {
+        "accessControl": "RESTRICTED",
+        "accessControlRoles": [],
+        "additionalProperties": [],
+        "additionalPropertiesMap": {},
+        "advertiseInfo": {
+            "advertised": False,
+            "apiExternalProductionEndpoint": "https://run.mocky.io/v3/c0e060d1-8116-429a-8ec9-959d2382bdfd",
+            "apiExternalSandboxEndpoint": "https://run.mocky.io/v3/c0e060d1-8116-429a-8ec9-959d2382bdfd"
+        },
+        "apiKeyHeader": "ApiKey",
+        "apiPolicies": None,
+        "apiThrottlingPolicy": None,
+        "asyncTransportProtocols": [],
+        "audience": None,
+        "authorizationHeader": "Authorization",
+        "businessInformation": {
+            "businessOwner": None,
+            "businessOwnerEmail": None,
+            "technicalOwner": None,
+            "technicalOwnerEmail": None
+        },
+        "cacheTimeout": 300,
+        "categories": [],
+        "context": "/hospitalManagement",
+        "corsConfiguration": {
+            "accessControlAllowOrigins": ["*"],
+            "corsConfigurationEnabled": False
+        },
+        "createdTime": "1720589788682",
+        "description": None,
+        "enableSchemaValidation": False,
+        "enableSubscriberVerification": False,
+        "endpointConfig": {
+            "endpoint_type": "http"
+        },
+        "endpointImplementationType": "ENDPOINT",
+        "gatewayType": "wso2/synapse",
+        "gatewayVendor": "wso2",
+        "hasThumbnail": False,
+        "id": "12341234-1234-1234-1234-121212121212",
+        "isDefaultVersion": False,
+        "isRevision": False,
+        "keyManagers": ["all"],
+        "lastUpdatedTime": "2024-08-20 10:42:18.511",
+        "lastUpdatedTimestamp": "1724130738511",
+        "lifeCycleStatus": "CREATED",
+        "maxTps": None,
+        "mediationPolicies": [],
+        "monetization": None,
+        "name": "Hospital Management System API",
+        "operations": [
+            {
+                "authType": "Application & Application User",
+                "id": "getPatients",
+                "target": "/patients",
+                "verb": "GET"
+            },
+            {
+                "authType": "Application & Application User",
+                "id": "addPatient",
+                "target": "/patients",
+                "verb": "POST"
+            },
+            {
+                "authType": "Application & Application User",
+                "id": "getPatientById",
+                "target": "/patients/{id}",
+                "verb": "GET"
+            },
+            {
+                "authType": "Application & Application User",
+                "id": "updatePatientById",
+                "target": "/patients/{id}",
+                "verb": "PUT"
+            },
+            {
+                "authType": "Application & Application User",
+                "id": "deletePatientById",
+                "target": "/patients/{id}",
+                "verb": "DELETE"
+            }
+        ],
+        "policies": ["Unlimited"],
+        "provider": "admin",
+        "responseCachingEnabled": False,
+        "revisionId": 0,
+        "revisionedApiId": None,
+        "scopes": [],
+        "securityScheme": [
+            "oauth_basic_auth_api_key_mandatory",
+            "oauth2"
+        ],
+        "serviceInfo": None,
+        "subscriptionAvailability": "CURRENT_TENANT",
+        "subscriptionAvailableTenants": [],
+        "tags": [],
+        "threatProtectionPolicies": None,
+        "transport": ["http", "https"],
+        "type": "HTTP",
+        "version": "1.0.0",
+        "visibility": "PUBLIC",
+        "visibleRoles": ["admin"],
+        "visibleTenants": [],
+        "websubSubscriptionConfiguration": {
+            "enable": False,
+            "secret": "",
+            "signatureHeader": "x-hub-signature",
+            "signingAlgorithm": "SHA1"
+        },
+        "workflowStatus": None,
+        "wsdlInfo": None,
+        "wsdlUrl": None
+    }
 
-    task_data = get_task_data(session_id)
-    api_type = task_data["api_type"]
-    chat_history = task_data["chat_history"]
-    specification = task_data["specification"]
+    return generated_payload
 
-    generated_payload = generate_payload(api_type, chat_history, specification)
+# # Endpoint which calls relevant methods for generating the specifications based on the states
+# @app.route('/chat', methods=['POST'])
+# def generate():
+#     data = request.get_json(silent=True)
+    
+#     error_response, status_code = validate_user_input(data)
+#     if status_code != 200:
+#         return error_response, status_code
+    
+#     user_input = data.get('text', '').strip()
+#     session_id = data.get('sessionId', '')
+    
+#     task_data = get_task_data(session_id)
+#     chat_history = task_data["chat_history"]
+#     update_task_data(session_id, chat_history=chat_history)
+    
+#     if task_data['state'] == "START":
+#         api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
+#         chat_history.append({"user_input": user_input})
+#         chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
 
-    return json.loads(generated_payload)
+#         update_task_data(session_id, chat_history=chat_history, state="IN_PROGRESS", api_type=api_type)
+
+#         specification, paths = generate_spec(api_type, user_input, chat_history, None, None)
+#         update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification)
+        
+#         suggestions = generate_suggestions(api_type, chat_history)
+#         isSuggestions = True
+#         missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
+        
+#         return {
+#             "backendResponse": suggestions,
+#             "isSuggestions": isSuggestions,
+#             "typeOfApi": api_type,
+#             "code": specification,
+#             "paths": paths,
+#             "apiTypeSuggestion": api_type_suggestion,
+#             "missingValues": missing_values_prompt,
+#             "state": "COMPLETE"
+#         }, 200
+    
+#     elif task_data['state'] == "COMPLETE":
+#         api_type = task_data.get("api_type", "")
+#         chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
+
+#         api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
+#         chat_history.append({"user_input": user_input})
+#         chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
+
+#         update_task_data(session_id, chat_history=chat_history, api_type=api_type)
+
+#         modification_check_result = check_for_modifications(user_input)
+
+#         last_specification = task_data["specification"]
+#         specification, paths = generate_spec(api_type, user_input, chat_history, last_specification, modification_check_result)
+
+#         update_task_data(session_id, specification=specification)
+        
+#         suggestions = generate_suggestions(api_type, chat_history)
+#         isSuggestions = True
+#         missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
+        
+#         return {
+#             "backendResponse": suggestions,
+#             "isSuggestions": isSuggestions,
+#             "typeOfApi": api_type,
+#             "code": specification,
+#             "paths": paths,
+#             "apiTypeSuggestion": api_type_suggestion,
+#             "missingValues": missing_values_prompt,
+#             "state": "COMPLETE"
+#         }, 200
+    
+#     return {"error": "Invalid state or input"}, 400
+
+
+# # Endpoint which calls relevant methods for creating the API payload
+# @app.route('/generate-api-payload', methods=['POST'])
+# def createapiinportal():
+#     data = request.get_json()
+#     session_id = str(data.get('sessionId', ''))
+
+#     task_data = get_task_data(session_id)
+#     api_type = task_data["api_type"]
+#     chat_history = task_data["chat_history"]
+#     specification = task_data["specification"]
+
+#     generated_payload = generate_payload(api_type, chat_history, specification)
+
+#     return json.loads(generated_payload)
 
 
 if __name__ == '__main__':
