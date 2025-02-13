@@ -31,11 +31,10 @@ llm = AzureChatOpenAI(
 )
 
 r = redis.Redis(
-    host=os.getenv("REDIS_HOST"), 
-    port=int(os.getenv("REDIS_PORT")),
+    host=os.getenv("REDIS_HOST"), port=int(os.getenv("REDIS_PORT")),
     password=os.getenv("REDIS_PASSWORD"),
     db=int(os.getenv("REDIS_DB")),
-    ssl=False
+    ssl=True
 )
 
 required_properties = {
