@@ -88,7 +88,7 @@ identify_modifications_prompt = PromptTemplate(
 
 
 # reads example openapi spec for context
-with open('api-design-assistant/openapispec.txt', 'r') as file:
+with open('openapispec.txt', 'r') as file:
     openapispec_file = file.read()
 
 # generates the OpenAPI specification for REST APIs
@@ -111,7 +111,7 @@ modify_openapi_template = openapispec_file + """
         - 500 (Internal Server Error)
     - Use HTTP methods like GET, PUT, POST, DELETE and PATCH as relevant to the use case.
     
-    2. Include detailed schemas for request and response objects using industry-standard field types (e.g., string, integer, boolean, date-time).
+    2. Include detailed schemas for request and response objects using industry-sandard field types (e.g., string, integer, boolean, date-time).
     
     3. Your task is to ONLY provide the generated OpenAPI specification in YAML format and must match the structure of the example OpenAPI 3.0 specification file.
 
@@ -152,7 +152,7 @@ chatbot_prompt_template_modify_openapi = PromptTemplate(
 
 
 # reads example schema definition for context
-with open('api-design-assistant/graphqlschemadefinition.txt', 'r') as file:
+with open('graphqlschemadefinition.txt', 'r') as file:
     graphqlfile = file.read().replace("{", "{{").replace("}", "}}")
 
 # generates the schema definition for GraphQL APIs
@@ -243,7 +243,7 @@ prompt_template_to_generate_spec = """
 
 
 # reads JSON structure of the suggestions for context
-with open('api-design-assistant/suggestionJSONformat.txt', 'r') as file:
+with open('suggestionJSONformat.txt', 'r') as file:
     payload_file = file.read().replace("{", "{{").replace("}", "}}")
 
 # prompt generates suggestions based on user's query

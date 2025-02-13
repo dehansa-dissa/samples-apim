@@ -179,20 +179,20 @@ def generate_payload(api_type, chat_history, specification):
         api_type = str(api_type)
 
     if api_type.upper() == "REST":
-        file_path = 'api-design-assistant/restPayloadExample.txt'
+        file_path = 'restPayloadExample.txt'
 
     elif api_type == "GraphQL":
-        file_path = 'api-design-assistant/graphqlPayloadExample.txt'
+        file_path = 'graphqlPayloadExample.txt'
 
     elif api_type == "WebSocket":
-        file_path = 'api-design-assistant/websocketPayloadExample.txt'
+        file_path = 'websocketPayloadExample.txt'
 
     elif api_type == "WebSub":
-        file_path = 'api-design-assistant/websubPayloadExample.txt'
+        file_path = 'websubPayloadExample.txt'
 
     elif api_type == "SSE":
-        # file_path = 'api-design-assistant/ssePayloadExample.txt'
-        file_path = 'api-design-assistant/restPayloadExample.txt'
+        # file_path = 'ssePayloadExample.txt'
+        file_path = 'restPayloadExample.txt'
 
     content = read_file(file_path)
 
