@@ -245,12 +245,12 @@ def generate():
         specification, paths = generate_spec(api_type, user_input, chat_history, None, None)
         update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification)
         
-        suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = False
+        # suggestions = generate_suggestions(api_type, chat_history)
+        isSuggestions = False                                                        # set to False so it does not display suggestions on UI
         missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
         
         return {
-            "backendResponse": suggestions,
+            "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
             "isSuggestions": isSuggestions,
             "typeOfApi": api_type,
             "code": specification,
@@ -277,12 +277,12 @@ def generate():
 
         update_task_data(session_id, specification=specification)
         
-        suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = False
+        # suggestions = generate_suggestions(api_type, chat_history)
+        isSuggestions = False                                                        # set to False so it does not display suggestions on UI
         missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
         
         return {
-            "backendResponse": suggestions,
+            "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
             "isSuggestions": isSuggestions,
             "typeOfApi": api_type,
             "code": specification,
