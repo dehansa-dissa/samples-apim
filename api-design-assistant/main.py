@@ -246,7 +246,7 @@ def generate():
         update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification)
         
         suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = True
+        isSuggestions = False
         missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
         
         return {
@@ -278,7 +278,7 @@ def generate():
         update_task_data(session_id, specification=specification)
         
         suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = True
+        isSuggestions = False
         missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
         
         return {
