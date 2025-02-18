@@ -52,20 +52,31 @@ prompt_template_to_suggest_api_type = """
 
 # prompt which asks the user for additional context for the relevant API type
 missing_values_prompt_template = """ 
-    You are an intelligent assistant and your task is to read and analyze the ENTIRE history: {history} and identify if for this API type:{api_type} if the following properties are missing from it: {allproperties}.
+    You are a knowledgeable and efficient assistant. Your task is to read and analyze the user's prompts from the *ENTIRE history*: {history} and politely ask the user to provide the values for these properties: {allproperties} for this API type: {api_type} *if they are missing from the history.*
 
     STRICT INSTRUCTION: ONLY check for the properties {allproperties}. Do NOT look for any other properties.
 
-    STRICT INSTRUCTION: Your task is to ask the user to provide the values of the properties that are missing. 
-    STRICT INSTRUCTION: You MUST display each property name followed by a short description. DO NOT use any symbols apart from the hyphen (-). USE the below structure to display the properties.
-    STRUCTURE: 
-    - name: The name or main purpose of the API.
-    - version: The specific version of the API.
+    STRICT INSTRUCTION: Extract the property values intelligently from the provided history without including them explicitly in the response. Assume the values based on the use case for clarity and conciseness.
 
-    For clarification:
-    - "name" refers to the name or main purpose.
-    - "version" indicates the specific version.
-    - "paths" refer to the endpoints.
+    STRICT INSTRUCTION: You MUST display each property name followed by a short description. DO NOT use any symbols apart from the hyphen (-) and the dot (•). USE the below structure to display the properties.
+
+EXAMPLE STRUCTURE: 
+
+It seems that we need to gather some additional information to create your REST API for banking transactions. Here are the properties that are currently missing:
+
+• name - The name or main purpose of the API.
+
+• version - The specific version of the API.
+
+• context - The context or scope in which the API operates.
+
+• endpoint - The base URL for the API.
+
+• http methods - The HTTP methods that will be used (e.g., GET, POST).
+
+• paths - The specific paths for the API endpoints.
+
+Providing these values will help us create a more accurate and tailored API for your needs. Could you please share the required information? Thank you!
 """
 
 
@@ -94,6 +105,8 @@ with open('openapispec.txt', 'r') as file:
 # generates the OpenAPI specification for REST APIs
 modify_openapi_template = openapispec_file + """
     You are an intelligent assistant whose task is to generate an accurate OpenAPI 3.0 specification for an API based on the modifications provided by the user: {modification_statements} and the Previous Interactions. You must carefully interpret the user's use case and intelligently create the OpenAPI specification by filling in missing details based on common practices for the use case.
+    
+    STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate an OpenAPI 3.0 specification that precisely reflects the user's use case.
 
     STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
     STRICT CONDITION: You MUST only use the properties provided in the example structure above. DO NOT make up new properties when doing modifications.
@@ -146,7 +159,7 @@ modify_openapi_template = openapispec_file + """
 """
 
 chatbot_prompt_template_modify_openapi = PromptTemplate(
-    input_variables=["history", "specification", "modification_statements"], 
+    input_variables=["final_input", "history", "specification", "modification_statements"], 
     template=modify_openapi_template
 )
 
@@ -159,6 +172,7 @@ with open('graphqlschemadefinition.txt', 'r') as file:
 graphql_template = graphqlfile + """
     You are an intelligent assistant whose task is to generate an accurate Schema definition for a GraphQL API based on the modifications provided by the user: {modification_statements} and the Previous Interactions. You must carefully interpret the user's use case and intelligently create the Schema Definition by filling in missing details based on common practices for the use case.
 
+    STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate a Schema definition for a GraphQL API that precisely reflects the user's use case.
     STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
     STRICT CONDITION: You MUST only use the properties provided in the example structure above. DO NOT make up new properties when doing modifications.
     STRICT CONDITION: DO NOT specify the extracted modification statements
@@ -183,7 +197,7 @@ graphql_template = graphqlfile + """
         - Schema definition for a GraphQL API.
         - Set the array of resources to ['No resources'].
 
-    Please ensure to only return the specification or definition as the response.
+    Please ensure to only return the definition as the response.
 
     You MUST return your response in a JSON format where the overall structure uses JSON keys and values, but the 'generated_spec' value MUST be in YAML format, and 'resources' MUST be ['No resources'].
 
@@ -199,7 +213,7 @@ graphql_template = graphqlfile + """
 """
 
 chatbot_prompt_template_graphql = PromptTemplate(
-    input_variables=["history", "specification", "modification_statements"], 
+    input_variables=["final_input", "history", "specification", "modification_statements"], 
     template=graphql_template
 )
 
@@ -207,38 +221,25 @@ chatbot_prompt_template_graphql = PromptTemplate(
 # generates the async definition for Async APIs
 prompt_template_to_generate_spec = """
     You are an assistant that generates responses for {api_type} APIs based on the user's input: "{final_input}", the conversation history: "{history}" and latest specification: {specification}.
-    Please create the necessary API specification, filling in any missing details using best practices for the selected API type.
+    Please create the AsyncAPI Definition, filling in any missing details using best practices for the selected API type.
 
-    STRICT CONDITION: DO NOT specify the language(yaml) when providing the answer.
+    STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate an AsyncAPI Definition that precisely reflects the user's use case.
+
+    STRICT CONDITION: DO NOT specify the language (yaml or json) when providing the answer.
     IMPORTANT: You MUST include the modification statements: {modification_statements} when generating the response.
-    STRICT CONDITION: DO NOT specify the extracted modification statements
-
-    If API type: {api_type} is REST, generate:
-        - OpenAPI 3.0 specification.
-        - An array of HTTP methods and their corresponding paths/resources.
-        
-    For other api_type values (GraphQL, WebSocket, WebSub, SSE):
-        - Generate the corresponding Schema Definition (for GraphQL) or AsyncAPI Definition (for the other types).
+    STRICT CONDITION: DO NOT specify the extracted modification statements.
+     
+    For WebSocket, WebSub, SSE APis:
+        - Generate the corresponding AsyncAPI Definition.
         - Set the array of resources to ['No resources'].
 
-    Guidelines:
-    - Do not mention the format (e.g., YAML or JSON) in your response.
-    - Depending on the API type, provide one of the following:
-        - OpenAPI 3.0 specification for a REST API.
-        - Schema Definition for a GraphQL API.
-        - AsyncAPI Definition for a WebSocket API.
-        - AsyncAPI Definition for a WebSub (Webhook) API.
-        - AsyncAPI Definition for a Server-Sent Events (SSE) API.
-    
-    Please ensure to only return the specification or definition as the response.
-
-    Next, review the generated answer and identify the HTTP Methods and its paths mentioned in it and return them seperated by commas.
+    Please ensure to only return the AsyncAPI definition as the response.
 
     Your goal is to return 2 values:
     1. The specification
-    2. An array of HTTP Methods with the paths/resources
+    2. An array stating ['No resources']
 
-    You MUST return your response in a JSON format where the overall structure uses JSON keys and values, but the 'generated_spec' value MUST be in YAML format, and 'resources' MUST be an array like this for example ['GET /transactions', 'POST /transactions'] for REST APIs or ['No resources'] for other API types.
+    You MUST return your response in a JSON format where the overall structure uses JSON keys and values, but the 'generated_spec' value MUST be in YAML format, and 'resources' MUST be ['No resources'].
 """
 
 
@@ -287,7 +288,7 @@ You are a highly skilled and intelligent assistant, specializing in generating a
 
 Your task is to take the details from the Latest Specification, the ENTIRE history of Previous Interactions and intelligently generate the payload containing exactly 60 properties and their respective values, following the structure provided.
 
-STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
+STRICT CONDITION: DO NOT specify the language (json) when providing the answer.
 STRICT CONDITION: The name of the API MUST NOT be 'hello API'. Instead it must be a name you intelligently create based on the ENTIRE history of Previous Interactions and Latest Specification.
 STRICT CONDITION: The context of the API MUST be a context you intelligently create based on the ENTIRE history of Previous Interactions  and Latest Specification.
 STRICT CONDITION: DO NOT make up new properties. You MUST only use the properties provided in the structure above.

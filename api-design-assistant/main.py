@@ -106,10 +106,10 @@ def generate_missing_values_prompt(api_type, chat_history):
 # Invokes LLM to generate the spec according to API type and provided information
 def generate_spec(api_type, final_input, chat_history, specification=None, modification_statements=None):
     if api_type == "REST":
-        prompt_with_history = chatbot_prompt_template_modify_openapi.format(history=chat_history, specification = specification, modification_statements=modification_statements)
+        prompt_with_history = chatbot_prompt_template_modify_openapi.format(final_input=final_input, history=chat_history, specification = specification, modification_statements=modification_statements)
 
     elif api_type == "GraphQL":
-        prompt_with_history = chatbot_prompt_template_graphql.format(history=chat_history, specification = specification, modification_statements=modification_statements)
+        prompt_with_history = chatbot_prompt_template_graphql.format(final_input=final_input, history=chat_history, specification = specification, modification_statements=modification_statements)
 
     else:
         prompt_with_history = prompt_template_to_generate_spec.format(
@@ -248,15 +248,16 @@ def generate():
         # suggestions = generate_suggestions(api_type, chat_history)
         isSuggestions = False                                                        # set to False so it does not display suggestions on UI
         missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
-        
+        chatResponse = missing_values_prompt + "\n\n\n" + api_type_suggestion
+
         return {
             "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
             "isSuggestions": isSuggestions,
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,
-            "apiTypeSuggestion": api_type_suggestion,
-            "missingValues": missing_values_prompt,
+            "apiTypeSuggestion": None,                                               # set to None so it does not display two chat bubble on the UI
+            "missingValues": chatResponse,
             "state": "COMPLETE"
         }, 200
     
@@ -280,15 +281,16 @@ def generate():
         # suggestions = generate_suggestions(api_type, chat_history)
         isSuggestions = False                                                        # set to False so it does not display suggestions on UI
         missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
-        
+        chatResponse = missing_values_prompt + "\n\n\n" + api_type_suggestion
+
         return {
             "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
             "isSuggestions": isSuggestions,
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,
-            "apiTypeSuggestion": api_type_suggestion,
-            "missingValues": missing_values_prompt,
+            "apiTypeSuggestion": None,                                               # set to None so it does not display two chat bubble on the UI
+            "missingValues": chatResponse,
             "state": "COMPLETE"
         }, 200
     
