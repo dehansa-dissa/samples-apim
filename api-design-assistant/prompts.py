@@ -31,7 +31,7 @@ prompt_template_to_suggest_api_type = """
     Output: Respond with only one word: "REST", "GraphQL", "WebSocket", "WebSub", or "SSE".
 
     2. API Type Suggestion:
-    If another API type fits the use case better, suggest it briefly (under 20 words) with a justification. Confirm if the user wants to proceed with the suggestion.
+    If another API type fits the use case better, suggest it briefly (under 40 words) with a detailed justification of why the suggested API type would be suitable for the user's given use case. Confirm if the user wants to proceed with the suggestion.
 
         To help choose the best API type, consider these characteristics:
             - REST: Ideal for CRUD operations, resource management, and stateless communication. Best for web-based apps like e-commerce or CMS.
@@ -314,7 +314,8 @@ STRICT CONDITIONS: Thoroughly understand the Previous Interactions. Based on thi
 STRICT CONDITIONS:
 - You MUST ALWAYS provide exactly 59 properties and their respective values in the payload file, no more, no less.
 - You MUST read and incorporate all the details provided in the input to generate or modify the payload, especially when modifying previous responses.
-- The policies must always be ["Unlimited"] but apipolicy must always be null.
+- The *policies must always be ["Unlimited"] for REST and Graphql APIs* but it *MUST be ["AsyncUnlimited"] if Websub or Websocket*.
+- apipolicy must always be null.
 
 Previous Interactions:
 {history}

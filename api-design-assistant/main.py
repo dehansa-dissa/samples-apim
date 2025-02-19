@@ -247,8 +247,7 @@ def generate():
         
         # suggestions = generate_suggestions(api_type, chat_history)
         isSuggestions = False                                                        # set to False so it does not display suggestions on UI
-        missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
-        chatResponse = missing_values_prompt + "\n\n\n" + api_type_suggestion
+        # missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
 
         return {
             "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
@@ -256,8 +255,8 @@ def generate():
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,
-            "apiTypeSuggestion": None,                                               # set to None so it does not display two chat bubble on the UI
-            "missingValues": chatResponse,
+            "apiTypeSuggestion": api_type_suggestion,                                # set to None so it does not display two chat bubble on the UI
+            "missingValues": None,
             "state": "COMPLETE"
         }, 200
     
@@ -280,8 +279,7 @@ def generate():
         
         # suggestions = generate_suggestions(api_type, chat_history)
         isSuggestions = False                                                        # set to False so it does not display suggestions on UI
-        missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
-        chatResponse = missing_values_prompt + "\n\n\n" + api_type_suggestion
+        # missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
 
         return {
             "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
@@ -289,11 +287,11 @@ def generate():
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,
-            "apiTypeSuggestion": None,                                               # set to None so it does not display two chat bubble on the UI
-            "missingValues": chatResponse,
+            "apiTypeSuggestion": api_type_suggestion,                                # set to None so it does not display two chat bubble on the UI
+            "missingValues": None,
             "state": "COMPLETE"
         }, 200
-    
+       
     return {"error": "Invalid state or input"}, 400
 
 
