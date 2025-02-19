@@ -258,19 +258,14 @@ def generate():
         api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
         chat_history.append({"user_input": user_input})
         chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-
         update_task_data(session_id, chat_history=chat_history, state="IN_PROGRESS", api_type=api_type)
 
         specification, paths = generate_spec(api_type, user_input, chat_history, None, None)
         update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification, paths=paths)
         
-        # suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = False                                                        # set to False so it does not display suggestions on UI
-        # missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
-
         return {
             "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
-            "isSuggestions": isSuggestions,
+            "isSuggestions": False,                                                  # set to False so it does not display suggestions on UI
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,
@@ -285,7 +280,6 @@ def generate():
         answerGeneralQuestion = checkGeneralQuestion(user_input, chat_history, specification)
 
         if answerGeneralQuestion is not None:
-
             return {
                 "backendResponse": None,
                 "isSuggestions": False,
@@ -298,27 +292,18 @@ def generate():
             }, 200
         
         chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-
         api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
         chat_history.append({"user_input": user_input})
         chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-
         update_task_data(session_id, chat_history=chat_history, api_type=api_type)
 
         modification_check_result = check_for_modifications(user_input)
-
-        last_specification = task_data["specification"]
-        specification, paths = generate_spec(api_type, user_input, chat_history, last_specification, modification_check_result)
-
+        specification, paths = generate_spec(api_type, user_input, chat_history, specification, modification_check_result)
         update_task_data(session_id, specification=specification, paths=paths)
-        
-        # suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = False                                                        # set to False so it does not display suggestions on UI
-        # missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
 
         return {
             "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
-            "isSuggestions": isSuggestions,
+            "isSuggestions": False,                                                  # set to False so it does not display suggestions on UI
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,

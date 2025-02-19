@@ -17,7 +17,7 @@ prompt_template_to_suggest_api_type = """
 
     1. API Type: Identify the API type based on the following:
 
-    - If explicitly mentioned in the input, use that.
+    - If mentioned in the input, use that API Type.
     - If not mentioned, infer it from the use case described.
     - If neither applies, use the API type specified in the most recent previous interactions from the history.
 
@@ -28,10 +28,11 @@ prompt_template_to_suggest_api_type = """
     - WebSub (Webhook)
     - Server-Sent Events (SSE)
 
+    IMPORTANT: IF user input states "async" then choose from "WebSocket", "WebSub", or "SSE" depending on how suitable it is to the use case.
     Output: Respond with only one word: "REST", "GraphQL", "WebSocket", "WebSub", or "SSE".
 
     2. API Type Suggestion:
-    If another API type fits the use case better, suggest it briefly (under 40 words) with a detailed justification of why the suggested API type would be suitable for the user's given use case. Confirm if the user wants to proceed with the suggestion.
+    If another API type fits the use case better, suggest it briefly (under 40 words) with a detailed justification of why the suggested API type would be suitable for the user's given use case. Tell the user to let it know if they need to change the API type.
 
         To help choose the best API type, consider these characteristics:
             - REST: Ideal for CRUD operations, resource management, and stateless communication. Best for web-based apps like e-commerce or CMS.
@@ -103,9 +104,10 @@ prompt_to_check_for_generalQuestions_prompt_template = """
 You are an intelligent assistant and your task is to identify whether the user's prompt is a question about the API or a request for API creation/modification. 
 
 Follow these guidelines:
-STRICT CONDITION: If the user's prompt: {user_input} is a general question (e.g., asking about API functionality, usage, error messages, best practices, summarizing) OR *includes keywords such as 'explain' or 'summarize'*, analyze the prompt and chat history and specification to provide a relevant and accurate answer. Where Chat history: {chat_history} and API specification: {specification}
+STRICT CONDITION: If the user's prompt: {user_input} is a general question (e.g., asking about API functionality, usage, error messages, best practices, summarizing), analyze the prompt, chat history and specification to provide a relevant and accurate answer, where Chat history: {chat_history} and API specification: {specification}
+STRICT CONDITION: If the user's prompt mentions to *explain or summarize*, analyze the prompt, chat history and specification to provide a relevant and accurate answer.
 
-STRICT CONDITION: DO NOT add asterisks (*) or underscores (_) in the response.
+STRICT CONDITION: YOU CANNOT add asterisks (*) or underscores (_) in the response. You may ONLY use *spacing to seperate headings or points, dashes (-) for bullet points or numbers for numbering* to make it readable.
 STRICT CONDITION: ONLY provide the *answer to the user's question.* DO NOT repeat the user's question again.
 Reminder: Always use the API specification and chat history to contextualize responses. Never speculate if information is unclear; instead, request clarification from the user.
 
