@@ -98,6 +98,26 @@ identify_modifications_prompt = PromptTemplate(
 )
 
 
+# prompt which checks if there are any modification statements in the user's query
+prompt_to_check_for_generalQuestions_prompt_template = """
+You are an intelligent assistant and your task is to identify whether the user's prompt is a question about the API or a request for API creation/modification. 
+
+Follow these guidelines:
+STRICT CONDITION: If the user's prompt: {user_input} is a general question (e.g., asking about API functionality, usage, error messages, best practices, summarizing) OR *includes keywords such as 'explain' or 'summarize'*, analyze the prompt and chat history and specification to provide a relevant and accurate answer. Where Chat history: {chat_history} and API specification: {specification}
+
+STRICT CONDITION: DO NOT add asterisks (*) or underscores (_) in the response.
+STRICT CONDITION: ONLY provide the *answer to the user's question.* DO NOT repeat the user's question again.
+Reminder: Always use the API specification and chat history to contextualize responses. Never speculate if information is unclear; instead, request clarification from the user.
+
+STRICT CONDITION: If the user's prompt involves API creation or modification, *YOU MUST ONLY return None as the response and nothing else*.
+"""
+
+check_for_generalquestions_prompt = PromptTemplate(
+    input_variables=["user_input", "chat_history", "specification"], 
+    template=prompt_to_check_for_generalQuestions_prompt_template
+)
+
+
 # reads example openapi spec for context
 with open('openapispec.txt', 'r') as file:
     openapispec_file = file.read()
@@ -111,6 +131,7 @@ modify_openapi_template = openapispec_file + """
     STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
     STRICT CONDITION: You MUST only use the properties provided in the example structure above. DO NOT make up new properties when doing modifications.
     STRICT CONDITION: DO NOT specify the extracted modification statements
+    STRICT CONDITION: If modification statement {modification_statements} mentions any HTTP request or resource modification, you MUST ONLY modify the specific HTTP requests or resources mentioned. All other HTTP methods and resources must remain unchanged. For example, "change /GET /transactions to /GET /transactionType" should only modify GET /transactions and NOT POST /transactions
 
     STRICT CONDITIONS:
     1. Thoroughly understand the user's use case (e.g., "banking transactions," "book search," "user management"). Based on this understanding, you must generate the appropriate:
