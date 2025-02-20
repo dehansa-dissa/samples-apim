@@ -122,7 +122,7 @@ check_for_generalquestions_prompt = PromptTemplate(
 
 # reads example openapi spec for context
 with open('openapispec.txt', 'r') as file:
-    openapispec_file = file.read()
+    openapispec_file = file.read().replace("{", "{{").replace("}", "}}")
 
 # generates the OpenAPI specification for REST APIs
 modify_openapi_template = openapispec_file + """
@@ -130,7 +130,7 @@ modify_openapi_template = openapispec_file + """
     
     STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate an OpenAPI 3.0 specification that precisely reflects the user's use case.
     STRICT CONDITION: If the *user's request: {modification_statements}* specifies a change in the API type, you MUST refer to the Latest Specification provided and generate a new specification reflecting the requested API type and the information in the Latest Specification.
-    
+
     STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
     STRICT CONDITION: You MUST only use the properties provided in the example structure above. DO NOT make up new properties when doing modifications.
     STRICT CONDITION: DO NOT specify the extracted modification statements
