@@ -13,6 +13,7 @@ from flask import Flask, request
 from flask_cors import CORS
 import json
 from prompts import (
+    check_for_generalquestions_prompt,
     prompt_template_to_generate_spec,
     chatbot_prompt_template_generate_suggestions,
     identify_modifications_prompt,
@@ -49,11 +50,11 @@ def validate_user_input(data):
 # Retrieves data stored in Redis for a given task ID
 def get_task_data(session_id):
     task_data = r.get(session_id)
-    return json.loads(task_data) if task_data else {"state": "START", "chat_history": [], "specification": "", "api_type": ""}
+    return json.loads(task_data) if task_data else {"state": "START", "chat_history": [], "specification": "", "api_type": "", "paths":['No resources']}
 
 
 # Updates data stored in Redis for a given task ID  
-def update_task_data(session_id, state=None, chat_history=None, specification=None, api_type=None):
+def update_task_data(session_id, state=None, chat_history=None, specification=None, api_type=None, paths=None):
     task_data = get_task_data(session_id)
     
     if state:
@@ -64,6 +65,8 @@ def update_task_data(session_id, state=None, chat_history=None, specification=No
         task_data["specification"] = specification
     if api_type is not None:
         task_data["api_type"] = api_type
+    if paths is not None:
+        task_data["paths"] = paths
     
     r.setex(session_id, 900, json.dumps(task_data))
 
@@ -159,6 +162,21 @@ def check_for_modifications(user_input):
     return modification_statements
 
 
+# Invokes LLM to check user's query for any general questions
+def checkGeneralQuestion(user_input, chat_history, specification):
+    prompt_to_check_for_generalQuestions = check_for_generalquestions_prompt.format(user_input=user_input, chat_history=chat_history, specification=specification )
+    response = llm.invoke(prompt_to_check_for_generalQuestions)
+    generalQuestions_status = response.content.strip()
+
+    answer_generalQuestions = None
+    if generalQuestions_status == "None":
+        answer_generalQuestions = None
+    else:
+        answer_generalQuestions = generalQuestions_status
+
+    return answer_generalQuestions
+
+
 # Method to read the payload example text file
 def read_file(file_path):
     try:
@@ -233,67 +251,67 @@ def generate():
     
     task_data = get_task_data(session_id)
     chat_history = task_data["chat_history"]
+    paths = task_data["paths"]
     update_task_data(session_id, chat_history=chat_history)
     
     if task_data['state'] == "START":
         api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
         chat_history.append({"user_input": user_input})
         chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-
         update_task_data(session_id, chat_history=chat_history, state="IN_PROGRESS", api_type=api_type)
 
         specification, paths = generate_spec(api_type, user_input, chat_history, None, None)
-        update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification)
+        update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification, paths=paths)
         
-        # suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = False                                                        # set to False so it does not display suggestions on UI
-        missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
-        chatResponse = missing_values_prompt + "\n\n\n" + api_type_suggestion
-
         return {
             "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
-            "isSuggestions": isSuggestions,
+            "isSuggestions": False,                                                  # set to False so it does not display suggestions on UI
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,
-            "apiTypeSuggestion": None,                                               # set to None so it does not display two chat bubble on the UI
-            "missingValues": chatResponse,
+            "apiTypeSuggestion": api_type_suggestion,                                # set to None so it does not display two chat bubble on the UI
+            "missingValues": None,
             "state": "COMPLETE"
         }, 200
     
     elif task_data['state'] == "COMPLETE":
         api_type = task_data.get("api_type", "")
-        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
+        specification = task_data["specification"]
+        answerGeneralQuestion = checkGeneralQuestion(user_input, chat_history, specification)
 
+        if answerGeneralQuestion is not None:
+            return {
+                "backendResponse": None,
+                "isSuggestions": False,
+                "typeOfApi": api_type,
+                "code": specification,
+                "paths": paths,
+                "apiTypeSuggestion": None,
+                "missingValues": answerGeneralQuestion,
+                "state": "COMPLETE"
+            }, 200
+        
+        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
         api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
         chat_history.append({"user_input": user_input})
         chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-
         update_task_data(session_id, chat_history=chat_history, api_type=api_type)
 
         modification_check_result = check_for_modifications(user_input)
-
-        last_specification = task_data["specification"]
-        specification, paths = generate_spec(api_type, user_input, chat_history, last_specification, modification_check_result)
-
-        update_task_data(session_id, specification=specification)
-        
-        # suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = False                                                        # set to False so it does not display suggestions on UI
-        missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
-        chatResponse = missing_values_prompt + "\n\n\n" + api_type_suggestion
+        specification, paths = generate_spec(api_type, user_input, chat_history, specification, modification_check_result)
+        update_task_data(session_id, specification=specification, paths=paths)
 
         return {
             "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
-            "isSuggestions": isSuggestions,
+            "isSuggestions": False,                                                  # set to False so it does not display suggestions on UI
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,
-            "apiTypeSuggestion": None,                                               # set to None so it does not display two chat bubble on the UI
-            "missingValues": chatResponse,
+            "apiTypeSuggestion": api_type_suggestion,                                # set to None so it does not display two chat bubble on the UI
+            "missingValues": None,
             "state": "COMPLETE"
         }, 200
-    
+       
     return {"error": "Invalid state or input"}, 400
 
 

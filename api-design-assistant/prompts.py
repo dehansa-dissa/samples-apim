@@ -17,7 +17,7 @@ prompt_template_to_suggest_api_type = """
 
     1. API Type: Identify the API type based on the following:
 
-    - If explicitly mentioned in the input, use that.
+    - If mentioned in the input, use that API Type.
     - If not mentioned, infer it from the use case described.
     - If neither applies, use the API type specified in the most recent previous interactions from the history.
 
@@ -28,10 +28,11 @@ prompt_template_to_suggest_api_type = """
     - WebSub (Webhook)
     - Server-Sent Events (SSE)
 
+    IMPORTANT: IF user input states "async" then choose from "WebSocket", "WebSub", or "SSE" depending on how suitable it is to the use case.
     Output: Respond with only one word: "REST", "GraphQL", "WebSocket", "WebSub", or "SSE".
 
     2. API Type Suggestion:
-    If another API type fits the use case better, suggest it briefly (under 20 words) with a justification. Confirm if the user wants to proceed with the suggestion.
+    If another API type fits the use case better, suggest it briefly (under 40 words) with a detailed justification of why the suggested API type would be suitable for the user's given use case. Tell the user to let it know if they need to change the API type.
 
         To help choose the best API type, consider these characteristics:
             - REST: Ideal for CRUD operations, resource management, and stateless communication. Best for web-based apps like e-commerce or CMS.
@@ -98,19 +99,42 @@ identify_modifications_prompt = PromptTemplate(
 )
 
 
+# prompt which checks if there are any modification statements in the user's query
+prompt_to_check_for_generalQuestions_prompt_template = """
+You are an intelligent assistant and your task is to identify whether the user's prompt is a question about the API or a request for API creation/modification. 
+
+Follow these guidelines:
+STRICT CONDITION: If the user's prompt: {user_input} is a general question (e.g., asking about API functionality, usage, error messages, best practices, summarizing), analyze the prompt, chat history and specification to provide a relevant and accurate answer, where Chat history: {chat_history} and API specification: {specification}
+STRICT CONDITION: If the user's prompt mentions to *explain or summarize*, analyze the prompt, chat history and specification to provide a relevant and accurate answer.
+
+STRICT CONDITION: You MUST NOT use asterisks (*) or underscores (_) in the response. Use only spacing to separate headings or points, dashes (-) for bullet points, and numbers for numbering to improve readability.
+STRICT CONDITION: ONLY provide the *answer to the user's question.* DO NOT repeat the user's question again.
+Reminder: Always use the API specification and chat history to contextualize responses. Never speculate if information is unclear; instead, request clarification from the user.
+
+STRICT CONDITION: If the user's prompt involves API creation or modification, *YOU MUST ONLY return None as the response and nothing else*.
+"""
+
+check_for_generalquestions_prompt = PromptTemplate(
+    input_variables=["user_input", "chat_history", "specification"], 
+    template=prompt_to_check_for_generalQuestions_prompt_template
+)
+
+
 # reads example openapi spec for context
 with open('openapispec.txt', 'r') as file:
-    openapispec_file = file.read()
+    openapispec_file = file.read().replace("{", "{{").replace("}", "}}")
 
 # generates the OpenAPI specification for REST APIs
 modify_openapi_template = openapispec_file + """
     You are an intelligent assistant whose task is to generate an accurate OpenAPI 3.0 specification for an API based on the modifications provided by the user: {modification_statements} and the Previous Interactions. You must carefully interpret the user's use case and intelligently create the OpenAPI specification by filling in missing details based on common practices for the use case.
     
     STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate an OpenAPI 3.0 specification that precisely reflects the user's use case.
+    STRICT CONDITION: If the *user's request: {modification_statements}* specifies a change in the API type, you MUST refer to the Latest Specification provided and generate a new specification reflecting the requested API type and the information in the Latest Specification.
 
     STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
     STRICT CONDITION: You MUST only use the properties provided in the example structure above. DO NOT make up new properties when doing modifications.
     STRICT CONDITION: DO NOT specify the extracted modification statements
+    STRICT CONDITION: If modification statement {modification_statements} mentions any HTTP request or resource modification, you MUST ONLY modify the specific HTTP requests or resources mentioned. All other HTTP methods and resources must remain unchanged. For example, "change /GET /transactions to /GET /transactionType" should only modify GET /transactions and NOT POST /transactions
 
     STRICT CONDITIONS:
     1. Thoroughly understand the user's use case (e.g., "banking transactions," "book search," "user management"). Based on this understanding, you must generate the appropriate:
@@ -173,6 +197,8 @@ graphql_template = graphqlfile + """
     You are an intelligent assistant whose task is to generate an accurate Schema definition for a GraphQL API based on the modifications provided by the user: {modification_statements} and the Previous Interactions. You must carefully interpret the user's use case and intelligently create the Schema Definition by filling in missing details based on common practices for the use case.
 
     STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate a Schema definition for a GraphQL API that precisely reflects the user's use case.
+    STRICT CONDITION: If the *user's request: {modification_statements}* specifies a change in the API type, you MUST refer to the Latest Specification provided and generate a new specification reflecting the requested API type and the information in the Latest Specification.
+
     STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
     STRICT CONDITION: You MUST only use the properties provided in the example structure above. DO NOT make up new properties when doing modifications.
     STRICT CONDITION: DO NOT specify the extracted modification statements
@@ -224,7 +250,8 @@ prompt_template_to_generate_spec = """
     Please create the AsyncAPI Definition, filling in any missing details using best practices for the selected API type.
 
     STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate an AsyncAPI Definition that precisely reflects the user's use case.
-
+    STRICT CONDITION: If the *user's request: {modification_statements}* specifies a change in the API type, you MUST refer to the Latest Specification provided and generate a new specification reflecting the requested API type and the information in the Latest Specification.
+    
     STRICT CONDITION: DO NOT specify the language (yaml or json) when providing the answer.
     IMPORTANT: You MUST include the modification statements: {modification_statements} when generating the response.
     STRICT CONDITION: DO NOT specify the extracted modification statements.
@@ -314,7 +341,8 @@ STRICT CONDITIONS: Thoroughly understand the Previous Interactions. Based on thi
 STRICT CONDITIONS:
 - You MUST ALWAYS provide exactly 59 properties and their respective values in the payload file, no more, no less.
 - You MUST read and incorporate all the details provided in the input to generate or modify the payload, especially when modifying previous responses.
-- The policies must always be ["Unlimited"] but apipolicy must always be null.
+- The *policies must always be ["Unlimited"] for REST and Graphql APIs* but it *MUST be ["AsyncUnlimited"] if Websub or Websocket*.
+- apipolicy must always be null.
 
 Previous Interactions:
 {history}

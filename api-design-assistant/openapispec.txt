@@ -82,7 +82,7 @@ components:
       flows:
         implicit:
           authorizationUrl: https://test.com
-          scopes: []
+          scopes: {}
 x-wso2-auth-header: Authorization
 x-wso2-api-key-header: ApiKey
 x-wso2-cors:
