@@ -280,6 +280,9 @@ def generate():
         answerGeneralQuestion = checkGeneralQuestion(user_input, chat_history, specification)
 
         if answerGeneralQuestion is not None:
+            chat_history.append({user_input})
+            chat_history.append({answerGeneralQuestion})
+
             return {
                 "backendResponse": None,
                 "isSuggestions": False,

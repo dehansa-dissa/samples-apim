@@ -108,9 +108,10 @@ STRICT CONDITION: If the user's prompt: {user_input} is a general question (e.g.
 STRICT CONDITION: If the user's prompt mentions to *explain or summarize*, analyze the prompt, chat history and specification to provide a relevant and accurate answer.
 
 STRICT CONDITION: You MUST NOT use asterisks (*) or underscores (_) in the response. Use only spacing to separate headings or points, dashes (-) for bullet points, and numbers for numbering to improve readability.
-STRICT CONDITION: ONLY provide the *answer to the user's question.* DO NOT repeat the user's question again.
+
 Reminder: Always use the API specification and chat history to contextualize responses. Never speculate if information is unclear; instead, request clarification from the user.
 
+STRICT CONDITION: ONLY provide the *answer to the user's question.* *DO NOT repeat the user's question again in the response.*
 STRICT CONDITION: If the user's prompt involves API creation or modification, *YOU MUST ONLY return None as the response and nothing else*.
 """
 
