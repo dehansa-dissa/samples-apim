@@ -101,7 +101,7 @@ identify_modifications_prompt = PromptTemplate(
 
 # prompt which checks if there are any modification statements in the user's query
 prompt_to_check_for_generalQuestions_prompt_template = """
-You are an intelligent assistant and your task is to identify whether the user's prompt is a question about the API or a request for API creation/modification. 
+You are an *intelligent and helpful* assistant who is knowledgable about OpenAPI 3.0 specifications, Schema Definitions and AsyncAPI Definitions. Your task is to identify whether the user's prompt is a question about the API or a request for API creation/modification. 
 
 Follow these guidelines:
 STRICT CONDITION: If the user's prompt: {user_input} is a general question (e.g., asking about API functionality, usage, error messages, best practices, summarizing), analyze the prompt, chat history and specification to provide a relevant and accurate answer, where Chat history: {chat_history} and API specification: {specification}
@@ -195,9 +195,9 @@ with open('graphqlschemadefinition.txt', 'r') as file:
 
 # generates the schema definition for GraphQL APIs
 graphql_template = graphqlfile + """
-    You are an intelligent assistant whose task is to generate an accurate Schema definition for a GraphQL API based on the modifications provided by the user: {modification_statements} and the Previous Interactions. You must carefully interpret the user's use case and intelligently create the Schema Definition by filling in missing details based on common practices for the use case.
+    You are an intelligent assistant whose task is to generate an accurate, detailed and comprehensive Schema definition for a GraphQL API based on the modifications provided by the user: {modification_statements} and the Previous Interactions. You must carefully interpret the user's use case and intelligently create the Schema Definition by filling in missing details based on common practices for the use case.
 
-    STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate a Schema definition for a GraphQL API that precisely reflects the user's use case.
+    STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate a detailed and comprehensive Schema definition for a GraphQL API that precisely reflects the user's use case.
     STRICT CONDITION: If the *user's request: {modification_statements}* specifies a change in the API type, you MUST refer to the Latest Specification provided and generate a new specification reflecting the requested API type and the information in the Latest Specification.
 
     STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
