@@ -100,24 +100,57 @@ identify_modifications_prompt = PromptTemplate(
 
 
 # prompt which checks if there are any modification statements in the user's query
-prompt_to_check_for_generalQuestions_prompt_template = """
-You are an *intelligent and helpful* assistant who is knowledgable about OpenAPI 3.0 specifications, Schema Definitions and AsyncAPI Definitions. Your task is to identify whether the user's prompt is a question about the API or a request for API creation/modification. 
+prompt_to_check_for_general_questions_prompt_template = """
+    You are an *intelligent and helpful* assistant who is knowledgable about OpenAPI 3.0 specifications, Schema Definitions and AsyncAPI Definitions. Your task is to identify whether the user's prompt is a question about the API or a request for API creation/modification. 
+    STRICT CONDITION: The values for both keys below CANNOT be None. This means that the value of either 'answer' key or 'task_assigned' key should be 'Yes' OR BOTH values can be 'Yes'.
 
-Follow these guidelines:
-STRICT CONDITION: If the user's prompt: {user_input} is a general question (e.g., asking about API functionality, usage, error messages, best practices, summarizing), analyze the prompt, chat history and specification to provide a relevant and accurate answer, where Chat history: {chat_history} and API specification: {specification}
-STRICT CONDITION: If the user's prompt mentions to *explain or summarize*, analyze the prompt, chat history and specification to provide a relevant and accurate answer.
+    Analyze the user input: "{user_input}" and determine:
 
-STRICT CONDITION: You MUST NOT use asterisks (*) or underscores (_) in the response. Use only spacing to separate headings or points, dashes (-) for bullet points, and numbers for numbering to improve readability.
+    1. The value of 'answer' key:
 
-Reminder: Always use the API specification and chat history to contextualize responses. Never speculate if information is unclear; instead, request clarification from the user.
+    STRICT CONDITION: If the user's prompt: {user_input} is a general question (e.g., asking about API functionality, usage, error messages, best practices, summarizing), *YOU MUST ONLY return Yes as the response and nothing else*.
+    STRICT CONDITION: If the user's prompt mentions to *explain or summarize*, *YOU MUST ONLY return Yes as the response and nothing else*.
 
-STRICT CONDITION: ONLY provide the *answer to the user's question.* *DO NOT repeat the user's question again in the response.*
-STRICT CONDITION: If the user's prompt involves API creation or modification, *YOU MUST ONLY return None as the response and nothing else*.
+    Reminder: Always use the API specification and chat history to contextualize responses. Never speculate if information is unclear; instead, request clarification from the user.
+    
+    STRICT CONDITION: If the user's prompt does not involve any of the above then *YOU MUST ONLY return None as the response and nothing else*.
+
+    2. The value of 'task_assigned' key:
+    STRICT CONDITION: If the user's prompt involves API creation or modification, *YOU MUST ONLY return Yes as the response and nothing else*.
+    STRICT CONDITION: If the user's prompt does not involve API creation or modification or *any task*, *YOU MUST ONLY return None as the response and nothing else*.
+
+    Return Format: Respond in JSON with two keys:
+    - answer: 'Yes' or 'None'.
+    - task_assigned: 'Yes' or 'None'.
+
+    STRICT CONDITION: DO NOT specify the language(json) when providing the answer.
 """
 
-check_for_generalquestions_prompt = PromptTemplate(
+check_for_general_questions_prompt = PromptTemplate(
     input_variables=["user_input", "chat_history", "specification"], 
-    template=prompt_to_check_for_generalQuestions_prompt_template
+    template=prompt_to_check_for_general_questions_prompt_template
+)
+
+
+# prompt which checks if there are any modification statements in the user's query
+prompt_to_answer_general_questions_prompt_template = """
+    You are an *intelligent and helpful* assistant who is knowledgable about OpenAPI 3.0 specifications, Schema Definitions and AsyncAPI Definitions. Your task is to answer the user's question or command or task. 
+
+    Analyze the user input: "{user_input}" and determine:
+
+    STRICT CONDITION: If the user's prompt: {user_input} is a general question (e.g., asking about API functionality, usage, error messages, best practices, summarizing), analyze the prompt, chat history and specification to provide a relevant and accurate answer, where Chat history: {chat_history} and API specification: {specification}
+    STRICT CONDITION: If the user's prompt mentions to *explain or summarize*, analyze the prompt, chat history and specification to provide a relevant and accurate answer. Assume the reader has no prior knowledge; explain clearly for a non-technical audience.
+
+    STRICT CONDITION: You MUST NOT use asterisks (*) or underscores (_) in the response. Use only spacing to separate headings or points, dashes (-) for bullet points, and numbers for numbering to improve readability.
+    IMPORTANT : Add spacing between points.
+    Reminder: Always use the API specification and chat history to contextualize responses. Never speculate if information is unclear; instead, request clarification from the user.
+    
+    STRICT CONDITION: ONLY provide the *answer to the user's question.* *DO NOT repeat the user's question again in the response.*
+"""
+
+answer_general_questions_prompt = PromptTemplate(
+    input_variables=["user_input", "chat_history", "specification"], 
+    template=prompt_to_answer_general_questions_prompt_template
 )
 
 
@@ -195,10 +228,10 @@ with open('graphqlschemadefinition.txt', 'r') as file:
 
 # generates the schema definition for GraphQL APIs
 graphql_template = graphqlfile + """
-    You are an intelligent assistant whose task is to generate an accurate, detailed and comprehensive Schema definition for a GraphQL API based on the modifications provided by the user: {modification_statements} and the Previous Interactions. You must carefully interpret the user's use case and intelligently create the Schema Definition by filling in missing details based on common practices for the use case.
+    You are an intelligent assistant whose task is to generate an accurate Schema definition for a GraphQL API based on the modifications provided by the user: {modification_statements} and the Previous Interactions: {history}. You must carefully interpret the user's use case and intelligently create the Schema Definition by filling in missing details based on common practices for the use case.
 
-    STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate a detailed and comprehensive Schema definition for a GraphQL API that precisely reflects the user's use case.
-    STRICT CONDITION: If the *user's request: {modification_statements}* specifies a change in the API type, you MUST refer to the Latest Specification provided and generate a new specification reflecting the requested API type and the information in the Latest Specification.
+    STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate a Schema definition for a GraphQL API that precisely reflects the user's use case.
+    STRICT CONDITION: If the *user's request: {modification_statements}* specifies a change in the API type, you MUST refer to the Latest Specification provided and generate a new specification reflecting the requested API type and the information in the Latest Specification: {specification}
 
     STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
     STRICT CONDITION: You MUST only use the properties provided in the example structure above. DO NOT make up new properties when doing modifications.
@@ -229,12 +262,6 @@ graphql_template = graphqlfile + """
     You MUST return your response in a JSON format where the overall structure uses JSON keys and values, but the 'generated_spec' value MUST be in YAML format, and 'resources' MUST be ['No resources'].
 
     STRICT CONDITION: DO NOT specify the extracted modification statements
-    
-    Previous Interactions:
-    {history}
-
-    Latest Specification:
-    {specification}
 
     Answer:
 """
