@@ -12,8 +12,10 @@
 from flask import Flask, request
 from flask_cors import CORS
 import json
+import yaml
 from prompts import (
-    check_for_generalquestions_prompt,
+    check_for_general_questions_prompt,
+    answer_general_questions_prompt,
     prompt_template_to_generate_spec,
     chatbot_prompt_template_generate_suggestions,
     identify_modifications_prompt,
@@ -130,7 +132,7 @@ def generate_spec(api_type, final_input, chat_history, specification=None, modif
         data = json.loads(answer_text)
         generated_spec = data.get("generated_spec", "")
         resources = data.get("resources", [])
-
+        
         return generated_spec, resources
     
     except json.JSONDecodeError as e:
@@ -162,19 +164,34 @@ def check_for_modifications(user_input):
     return modification_statements
 
 
-# Invokes LLM to check user's query for any general questions
-def checkGeneralQuestion(user_input, chat_history, specification):
-    prompt_to_check_for_generalQuestions = check_for_generalquestions_prompt.format(user_input=user_input, chat_history=chat_history, specification=specification )
+# Invokes LLM to check user's query for any general questions or modifications
+def check_question_or_task(user_input, chat_history, specification):
+    prompt_to_check_for_generalQuestions = check_for_general_questions_prompt.format(user_input=user_input, chat_history=chat_history, specification=specification)
     response = llm.invoke(prompt_to_check_for_generalQuestions)
-    generalQuestions_status = response.content.strip()
+    question_or_task_data = response.content.strip()
 
-    answer_generalQuestions = None
-    if generalQuestions_status == "None":
-        answer_generalQuestions = None
+    question_or_task = json.loads(question_or_task_data)
+    answer_general_question = None
+    if question_or_task.get('answer') == "None":
+        answer_general_question = None
     else:
-        answer_generalQuestions = generalQuestions_status
+        answer_general_question = question_or_task.get('answer')
 
-    return answer_generalQuestions
+    general_task = None
+    if question_or_task.get('task_assigned') == "None":
+        general_task = None
+    else:
+        general_task = question_or_task.get('task_assigned')
+
+    return answer_general_question, general_task
+
+
+# Invokes LLM to answer user's general question
+def form_answer_general_question(user_input, chat_history, specification):
+    prompt_to_answer_general_questions = answer_general_questions_prompt.format(user_input=user_input, chat_history=chat_history, specification=specification)
+    response = llm.invoke(prompt_to_answer_general_questions)
+    answer_to_question = response.content.strip()
+    return answer_to_question
 
 
 # Method to read the payload example text file
@@ -269,52 +286,55 @@ def generate():
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,
-            "apiTypeSuggestion": api_type_suggestion,                                # set to None so it does not display two chat bubble on the UI
-            "missingValues": None,
+            "apiTypeSuggestion": api_type_suggestion,
+            "missingValues": None,                                                   # set to None so it does not display two chat bubble on the UI
             "state": "COMPLETE"
         }, 200
     
     elif task_data['state'] == "COMPLETE":
         api_type = task_data.get("api_type", "")
         specification = task_data["specification"]
-        answerGeneralQuestion = checkGeneralQuestion(user_input, chat_history, specification)
+        answer_general_question, general_task = check_question_or_task(user_input, chat_history, specification)
 
-        if answerGeneralQuestion is not None:
-            chat_history.append({user_input})
-            chat_history.append({answerGeneralQuestion})
-
-            return {
-                "backendResponse": None,
-                "isSuggestions": False,
-                "typeOfApi": api_type,
-                "code": specification,
-                "paths": paths,
-                "apiTypeSuggestion": None,
-                "missingValues": answerGeneralQuestion,
-                "state": "COMPLETE"
-            }, 200
-        
-        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-        api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
-        chat_history.append({"user_input": user_input})
-        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-        update_task_data(session_id, chat_history=chat_history, api_type=api_type)
-
-        modification_check_result = check_for_modifications(user_input)
-        specification, paths = generate_spec(api_type, user_input, chat_history, specification, modification_check_result)
-        update_task_data(session_id, specification=specification, paths=paths)
-
-        return {
-            "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
-            "isSuggestions": False,                                                  # set to False so it does not display suggestions on UI
+        response = {
+            "backendResponse": None,
+            "isSuggestions": False,
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,
-            "apiTypeSuggestion": api_type_suggestion,                                # set to None so it does not display two chat bubble on the UI
             "missingValues": None,
             "state": "COMPLETE"
-        }, 200
+        }
+        
+        if general_task is not None:
+            chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
+            api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
+
+            chat_history.append({"user_input": user_input})
+            chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
+            update_task_data(session_id, chat_history=chat_history, api_type=api_type)
+            
+            modification_check_result = check_for_modifications(user_input)
+            specification, paths = generate_spec(api_type, user_input, chat_history, specification, modification_check_result)
+            update_task_data(session_id, specification=specification, paths=paths)
+            
+            response["apiTypeSuggestion"] = (
+                answer_general_question
+                if answer_general_question
+                else api_type_suggestion
+            )
+            
+        if answer_general_question is not None:
+            answer_to_question = form_answer_general_question(user_input, chat_history, specification)
+            chat_history.append(answer_to_question)
        
+            response["apiTypeSuggestion"] = answer_to_question
+            
+        response["code"] = specification
+        response["paths"] = paths
+        
+        return response, 200
+    
     return {"error": "Invalid state or input"}, 400
 
 
