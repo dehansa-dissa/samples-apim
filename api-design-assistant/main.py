@@ -132,7 +132,7 @@ def generate_spec(api_type, final_input, chat_history, specification=None, modif
         data = json.loads(answer_text)
         generated_spec = data.get("generated_spec", "")
         resources = data.get("resources", [])
-        
+
         return generated_spec, resources
     
     except json.JSONDecodeError as e:
@@ -330,6 +330,7 @@ def generate():
        
             response["apiTypeSuggestion"] = answer_to_question
             
+        response["typeOfApi"] = api_type
         response["code"] = specification
         response["paths"] = paths
         
