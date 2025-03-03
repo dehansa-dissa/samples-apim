@@ -14,6 +14,7 @@ from flask_cors import CORS
 import json
 import yaml
 from prompts import (
+    prompt_template_to_validate_query,
     check_for_general_questions_prompt,
     answer_general_questions_prompt,
     prompt_template_to_generate_spec,
@@ -73,6 +74,18 @@ def update_task_data(session_id, state=None, chat_history=None, specification=No
     r.setex(session_id, 900, json.dumps(task_data))
 
 
+# Invokes LLM to check user's query's validity'
+def validate_query_content(user_input, chat_history):
+    prompt_to_validate_query = prompt_template_to_validate_query.format(user_input=user_input, chat_history=chat_history)
+    llm_response = llm.invoke(prompt_to_validate_query)
+    response = llm_response.content.strip()
+
+    if response == "None":
+        response = None
+
+    return response
+
+
 # Invokes LLM to suggest a type of API for the given use case
 def suggest_api_type(user_input, chat_history):   
     prompt_to_suggest_api_type = prompt_template_to_suggest_api_type.format(user_input=user_input, history=chat_history)
@@ -109,9 +122,9 @@ def generate_missing_values_prompt(api_type, chat_history):
 
 
 # Invokes LLM to generate the spec according to API type and provided information
-def generate_spec(api_type, final_input, chat_history, specification=None, modification_statements=None):
+def generate_spec(api_type, final_input, chat_history, specification=None, modification_statements=None, yaml_validation_error = None):
     if api_type == "REST":
-        prompt_with_history = chatbot_prompt_template_modify_openapi.format(final_input=final_input, history=chat_history, specification = specification, modification_statements=modification_statements)
+        prompt_with_history = chatbot_prompt_template_modify_openapi.format(final_input=final_input, history=chat_history, specification = specification, modification_statements=modification_statements, yaml_validation_error=yaml_validation_error)
 
     elif api_type == "GraphQL":
         prompt_with_history = chatbot_prompt_template_graphql.format(final_input=final_input, history=chat_history, specification = specification, modification_statements=modification_statements)
@@ -122,7 +135,8 @@ def generate_spec(api_type, final_input, chat_history, specification=None, modif
             final_input=final_input, 
             history=chat_history, 
             specification = specification,
-            modification_statements=modification_statements
+            modification_statements=modification_statements,
+            yaml_validation_error=yaml_validation_error
         )
     
     response = llm.invoke(prompt_with_history)
@@ -132,6 +146,12 @@ def generate_spec(api_type, final_input, chat_history, specification=None, modif
         data = json.loads(answer_text)
         generated_spec = data.get("generated_spec", "")
         resources = data.get("resources", [])
+
+        if api_type != "GraphQL":
+            try:
+                yaml.safe_load(generated_spec)
+            except yaml.YAMLError as e:
+                generate_spec(api_type, final_input, chat_history, specification, modification_statements, e)
 
         return generated_spec, resources
     
@@ -267,9 +287,40 @@ def generate():
     session_id = data.get('sessionId', '')
     
     task_data = get_task_data(session_id)
-    chat_history = task_data["chat_history"]
+    api_type = task_data.get("api_type", "")
+    specification = task_data["specification"]
     paths = task_data["paths"]
+    chat_history = task_data["chat_history"]
+    
     update_task_data(session_id, chat_history=chat_history)
+
+    response = validate_query_content(user_input, chat_history)
+    if response is not None:
+        chat_history.append({"user_input": user_input})
+        chat_history.append({"response to above user_input": response})
+
+        if specification == "":
+            return {
+                "backendResponse": None,
+                "isSuggestions": False,
+                "typeOfApi": '',
+                "code": '',
+                "paths": ['No Resources'],
+                "apiTypeSuggestion": response,
+                "missingValues": None,
+                "state": None
+            }, 200
+        else:
+            return {
+                "backendResponse": None,
+                "isSuggestions": False,
+                "typeOfApi": api_type,
+                "code": specification,
+                "paths": paths,
+                "apiTypeSuggestion": response,
+                "missingValues": None,
+                "state": "COMPLETE"
+            }, 200
     
     if task_data['state'] == "START":
         api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
@@ -277,7 +328,7 @@ def generate():
         chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
         update_task_data(session_id, chat_history=chat_history, state="IN_PROGRESS", api_type=api_type)
 
-        specification, paths = generate_spec(api_type, user_input, chat_history, None, None)
+        specification, paths = generate_spec(api_type, user_input, chat_history, None, None, None)
         update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification, paths=paths)
         
         return {
@@ -292,8 +343,6 @@ def generate():
         }, 200
     
     elif task_data['state'] == "COMPLETE":
-        api_type = task_data.get("api_type", "")
-        specification = task_data["specification"]
         answer_general_question, general_task = check_question_or_task(user_input, chat_history, specification)
 
         response = {
@@ -315,7 +364,7 @@ def generate():
             update_task_data(session_id, chat_history=chat_history, api_type=api_type)
             
             modification_check_result = check_for_modifications(user_input)
-            specification, paths = generate_spec(api_type, user_input, chat_history, specification, modification_check_result)
+            specification, paths = generate_spec(api_type, user_input, chat_history, specification, modification_check_result, None)
             update_task_data(session_id, specification=specification, paths=paths)
             
             response["apiTypeSuggestion"] = (

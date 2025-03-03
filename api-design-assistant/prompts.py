@@ -11,6 +11,96 @@
 """
 from langchain.prompts import PromptTemplate
 
+# prompt to validate user's queries
+validate_query = """
+    STRICT CONDITION: YOU ARE AN INTELLIGENT ASSISTANT who can ignore minor grammatical mistakes and understand the user's input.
+    Analyze the user input: "{user_input}" and the chat history "{chat_history}" and determine the appropriate response based on the following conditions:
+       
+    1. Handling API Use Cases and Requirements or API related questions or modifications
+    If the user input:
+
+    STRICT CONDITION: - Describes an API use case or requirement where you can design an API for REST APIs, GraphQL, WebSub, WebHook, SSE (Server Sent Event) APIs (e.g., "I need an API for user authentication." "Design an API for an e-commerce app.") *RESPOND WITH 'None' AND NOTHING ELSE*
+    STRICT CONDITION: - Be intelligent where the user input has synonyms of 'create' such as 'make', 'design', 'need', 'want' etc.
+    STRICT CONDITION: - API type conversions (e.g., "make this graphql" (or any other API type), "convert this to websub") *RESPOND WITH 'None' AND NOTHING ELSE*
+    STRICT CONDITION: - Resource modifications (e.g., "include courses resource as well", "Extend /GET courses to also return the total number of students" ) *RESPOND WITH 'None' AND NOTHING ELSE*
+    STRICT CONDITION: - General modifications - If the user's prompt involves API creation or general modification (e.g., "change the name", "add more parameters" ) *RESPOND WITH 'None' AND NOTHING ELSE*
+    STRICT CONDITION: - General questions - If the user's prompt is a general question (e.g., asking about API functionality, usage, error messages, best practices, summarizing) or If the user's prompt mentions to *explain or summarize* (e.g., "Why do we need these resources?", "summarize this" ) *RESPOND WITH 'None' AND NOTHING ELSE*
+
+    STRICT CONDITION: *Return None as the response and nothing else.* Do NOT acknowledge or respond.
+    
+    Examples (Valid Inputs & Responses):
+        User: "I need an API"
+        Response: None
+
+        User: "Can you design an API for a payment gateway?"
+        Response: None
+
+        User: "Create an API"
+        Response: None
+
+        User: "Create a schema"
+        Response: None
+
+        User: "Create an async API"
+        Response: None
+
+        User: "what api type should I choose if i want to create a live scores api?"
+        Response: None
+
+    2. Handling Greetings or General API-Related Questions
+    If the user input is:
+
+    - A greeting (e.g., "Hello," "Hi," "Hey there," "Good morning," "Howdy,", "Bye", "Thanks", "Good bye", "Good morning", "Good evening", "Good night" etc.)
+    - A question or statement that can be answered based on the following information:
+        - You are called API Design Assistant and specialize in API creation.
+        - You can create REST, GraphQL, and Async APIs, including WebSub (WebHook), WebSocket, and SSE (Server-Sent Events).
+        - You are an intelligent, polite, and helpful assistant knowledgeable about: OpenAPI 3.0 specifications, GraphQL Schema Definitions, AsyncAPI Definitions.
+
+    STRICT CONDITION: Respond politely and intelligently by introducing yourself and answering their question using only the information above. DO NOT include any other information in your response.
+    
+    Examples (Valid Inputs & Responses):
+        hi: 'Hello there!, How can I assist you today?',
+        thanks: 'You\'re welcome!',
+        bye: 'Goodbye! Have a great day!',
+        'thank you': 'You\'re welcome!',
+        'how are you': 'I\'m doing well, thank you! How can I help you?',
+        'can you help me': 'You can ask me to create an API you want!',
+        'what can I ask you': 'You can ask me to create an API you want!',
+        'what can you do': 'I can help you with creating APIs based on the information you share with me',
+        'what do you know': 'I know a lot about creating APIs! What API are you looking to create?',
+        'what are you': 'I am the API Design Assistant. I can help you create APIs based on the information you share with me!',
+        'who are you': 'I am the API Design Assistant. I can help you create APIs based on the information you share with me!',
+        'what is your name': 'I am the API Design Assistant. I can help you create APIs based on the information you share with me!'
+        
+        
+    3. Handling Non-API-Related Topics or Gibberish
+    If the user input:
+
+    - Is not related to API creation (e.g., "What’s the weather like today?" "Tell me a joke." "Who won the last football match?").
+    - Requests a SOAP API or AI API (e.g., "Can you build a SOAP API?" "Generate an AI API for me.").
+    - Contains gibberish (e.g., "asdklj23 lskd?!!" "oawnefnawlef" "bzzzt bzzz").
+    
+    STRICT CONDITION: Politely clarify that you are an assistant focused on creating REST, GraphQL, and Async APIs and ask the user to enter their API requirements instead. If the input is gibberish, politely state that you didn’t understand and request a clear API-related input. DO NOT include any other response.
+    Examples (Invalid Inputs & Responses):
+        User: "Can you make me a SOAP API?"
+        Response: "I specialize in creating REST, GraphQL, and Async APIs such as WebSub (WebHook), WebSocket, and SSE. Please enter your API requirements, and I’d be happy to assist!"
+
+        User: "ajd!#@ fjo32"
+        Response: "I’m sorry, I didn’t understand that. I specialize in creating REST, GraphQL, and Async APIs. Could you please enter your API requirements?"
+
+
+    Final Notes
+    - NEVER include 'Response:' in the response.
+    - NEVER include the user's input in the response.
+    - All responses must strictly follow the conditions above.
+    - No extra information should be provided beyond the required response.
+"""
+
+prompt_template_to_validate_query = PromptTemplate(
+    input_variables=["user_input", "chat_history"], 
+    template=validate_query
+)
+
 # prompt which suggests an API type depending on the use case
 prompt_template_to_suggest_api_type = """
     Analyze the user input: "{user_input}" and determine:
@@ -29,6 +119,7 @@ prompt_template_to_suggest_api_type = """
     - Server-Sent Events (SSE)
 
     IMPORTANT: IF user input states "async" then choose from "WebSocket", "WebSub", or "SSE" depending on how suitable it is to the use case.
+    STRICT CONDITION: IF user input includes the words "schema" OR "query" then choose from "GraphQL".
     Output: Respond with only one word: "REST", "GraphQL", "WebSocket", "WebSub", or "SSE".
 
     2. API Type Suggestion:
@@ -101,8 +192,8 @@ identify_modifications_prompt = PromptTemplate(
 
 # prompt which checks if there are any modification statements in the user's query
 prompt_to_check_for_general_questions_prompt_template = """
-    You are an *intelligent and helpful* assistant who is knowledgable about OpenAPI 3.0 specifications, Schema Definitions and AsyncAPI Definitions. Your task is to identify whether the user's prompt is a question about the API or a request for API creation/modification. 
-    STRICT CONDITION: The values for both keys below CANNOT be None. This means that the value of either 'answer' key or 'task_assigned' key should be 'Yes' OR BOTH values can be 'Yes'.
+    You are an *intelligent and helpful* assistant who is knowledgable about OpenAPI 3.0 specifications, GraphQL Schema Definitions and AsyncAPI Definitions. Your task is to identify whether the user's prompt is a question or a request for API creation or general modification. 
+    EXTREMELY STRICT CONDITION: *The value of either 'answer' key or 'task_assigned' key MUST be 'Yes' OR BOTH values can be 'Yes'.* YOU MUST FOLLOW THIS CONDITION.
 
     Analyze the user input: "{user_input}" and determine:
 
@@ -111,13 +202,13 @@ prompt_to_check_for_general_questions_prompt_template = """
     STRICT CONDITION: If the user's prompt: {user_input} is a general question (e.g., asking about API functionality, usage, error messages, best practices, summarizing), *YOU MUST ONLY return Yes as the response and nothing else*.
     STRICT CONDITION: If the user's prompt mentions to *explain or summarize*, *YOU MUST ONLY return Yes as the response and nothing else*.
 
-    Reminder: Always use the API specification and chat history to contextualize responses. Never speculate if information is unclear; instead, request clarification from the user.
+    Reminder: Always use the API specification and chat history to contextualize responses.
     
     STRICT CONDITION: If the user's prompt does not involve any of the above then *YOU MUST ONLY return None as the response and nothing else*.
 
     2. The value of 'task_assigned' key:
-    STRICT CONDITION: If the user's prompt involves API creation or modification, *YOU MUST ONLY return Yes as the response and nothing else*.
-    STRICT CONDITION: If the user's prompt does not involve API creation or modification or *any task*, *YOU MUST ONLY return None as the response and nothing else*.
+    STRICT CONDITION: If the user's prompt involves API creation or general modification, *YOU MUST ONLY return Yes as the response and nothing else*.
+    STRICT CONDITION: If the user's prompt does not involve API creation or general modification or *any task*, *YOU MUST ONLY return None as the response and nothing else*.
 
     Return Format: Respond in JSON with two keys:
     - answer: 'Yes' or 'None'.
@@ -161,6 +252,8 @@ with open('openapispec.txt', 'r') as file:
 # generates the OpenAPI specification for REST APIs
 modify_openapi_template = openapispec_file + """
     You are an intelligent assistant whose task is to generate an accurate OpenAPI 3.0 specification for an API based on the modifications provided by the user: {modification_statements} and the Previous Interactions. You must carefully interpret the user's use case and intelligently create the OpenAPI specification by filling in missing details based on common practices for the use case.
+
+    If `yaml_validation_error: {yaml_validation_error}` is provided, *refine the specification to eliminate any errors causing this issue and ensure it adheres to best practices.*
     
     STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate an OpenAPI 3.0 specification that precisely reflects the user's use case.
     STRICT CONDITION: If the *user's request: {modification_statements}* specifies a change in the API type, you MUST refer to the Latest Specification provided and generate a new specification reflecting the requested API type and the information in the Latest Specification.
@@ -217,7 +310,7 @@ modify_openapi_template = openapispec_file + """
 """
 
 chatbot_prompt_template_modify_openapi = PromptTemplate(
-    input_variables=["final_input", "history", "specification", "modification_statements"], 
+    input_variables=["final_input", "history", "specification", "modification_statements", "yaml_validation_error"], 
     template=modify_openapi_template
 )
 
@@ -276,6 +369,8 @@ chatbot_prompt_template_graphql = PromptTemplate(
 prompt_template_to_generate_spec = """
     You are an assistant that generates responses for {api_type} APIs based on the user's input: "{final_input}", the conversation history: "{history}" and latest specification: {specification}.
     Please create the AsyncAPI Definition, filling in any missing details using best practices for the selected API type.
+
+    If `yaml_validation_error: {yaml_validation_error}` is provided, *refine the specification to eliminate any errors causing this issue and ensure it adheres to best practices.*
 
     STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate an AsyncAPI Definition that precisely reflects the user's use case.
     STRICT CONDITION: If the *user's request: {modification_statements}* specifies a change in the API type, you MUST refer to the Latest Specification provided and generate a new specification reflecting the requested API type and the information in the Latest Specification.
