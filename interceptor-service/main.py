@@ -374,7 +374,7 @@ async def upload_bulk_apis(req: dict, x_jwt_assertion: str = Header(None)):
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             async with session.post(api_publisher_endpoint + '/bulk_add_vector', json=req,
-                                    params={'orgID': handle[0], 'keyID': handle[0]}, headers=headers) as response:
+                                    params={'orgID': orgID, 'keyID': handle[0]}, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
@@ -394,7 +394,7 @@ async def remove_bulk_apis(x_jwt_assertion: str = Header(None), TENANT_DOMAIN: s
     async with aiohttp.ClientSession() as session:
         headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
         async with session.delete(api_publisher_endpoint + '/bulk_remove_vector',
-                                params={'orgID': handle[0], 'keyID': handle[0], "tenantDomain": TENANT_DOMAIN}, headers=headers) as response:
+                                params={'orgID': orgID, 'keyID': handle[0], "tenantDomain": TENANT_DOMAIN}, headers=headers) as response:
             if response.status == 200:
                 return await response.json()
             else:
