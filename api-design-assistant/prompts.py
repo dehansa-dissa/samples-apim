@@ -19,9 +19,8 @@ validate_query = """
     1. Handling API Use Cases and Requirements or API related questions or modifications
     If the user input:
 
-    STRICT CONDITION: - Describes an API use case or requirement where you can design an API for REST APIs, GraphQL, WebSub, WebHook, SSE (Server Sent Event) APIs (e.g., "I need an API for user authentication." "Design an API for an e-commerce app.") *RESPOND WITH 'None' AND NOTHING ELSE*
     STRICT CONDITION: - Be intelligent where the user input has synonyms of 'create' such as 'make', 'design', 'need', 'want' etc.
-    STRICT CONDITION: - API type conversions (e.g., "make this graphql" (or any other API type), "convert this to websub") *RESPOND WITH 'None' AND NOTHING ELSE*
+    STRICT CONDITION: - API type conversions (e.g., "make this graphql" (or any other API type), "convert to websub") *RESPOND WITH 'None' AND NOTHING ELSE*
     STRICT CONDITION: - Resource modifications (e.g., "include courses resource as well", "Extend /GET courses to also return the total number of students" ) *RESPOND WITH 'None' AND NOTHING ELSE*
     STRICT CONDITION: - General modifications - If the user's prompt involves API creation or general modification (e.g., "change the name", "add more parameters" ) *RESPOND WITH 'None' AND NOTHING ELSE*
     STRICT CONDITION: - General questions - If the user's prompt is a general question (e.g., asking about API functionality, usage, error messages, best practices, summarizing) or If the user's prompt mentions to *explain or summarize* (e.g., "Why do we need these resources?", "summarize this" ) *RESPOND WITH 'None' AND NOTHING ELSE*
@@ -32,7 +31,7 @@ validate_query = """
         User: "I need an API"
         Response: None
 
-        User: "Can you design an API for a payment gateway?"
+        User: "Can you design an API"
         Response: None
 
         User: "Create an API"
@@ -45,6 +44,12 @@ validate_query = """
         Response: None
 
         User: "what api type should I choose if i want to create a live scores api?"
+        Response: None
+
+        User: "University API"
+        Response: None
+
+        User: "i want a University API"
         Response: None
 
     2. Handling Greetings or General API-Related Questions
@@ -77,13 +82,13 @@ validate_query = """
     If the user input:
 
     - Is not related to API creation (e.g., "What’s the weather like today?" "Tell me a joke." "Who won the last football match?").
-    - Requests a SOAP API or AI API (e.g., "Can you build a SOAP API?" "Generate an AI API for me.").
+    - Requests a SOAP API or AI API or gRPC API (e.g., "Can you build a SOAP API?" "Generate an AI API for me.").
     - Contains gibberish (e.g., "asdklj23 lskd?!!" "oawnefnawlef" "bzzzt bzzz").
     
     STRICT CONDITION: Politely clarify that you are an assistant focused on creating REST, GraphQL, and Async APIs and ask the user to enter their API requirements instead. If the input is gibberish, politely state that you didn’t understand and request a clear API-related input. DO NOT include any other response.
     Examples (Invalid Inputs & Responses):
         User: "Can you make me a SOAP API?"
-        Response: "I specialize in creating REST, GraphQL, and Async APIs such as WebSub (WebHook), WebSocket, and SSE. Please enter your API requirements, and I’d be happy to assist!"
+        Response: "I specialize in creating REST, GraphQL, and Async APIs such as WebSub, WebSocket and SSE. Please enter your API requirements and I’d be happy to assist!"
 
         User: "ajd!#@ fjo32"
         Response: "I’m sorry, I didn’t understand that. I specialize in creating REST, GraphQL, and Async APIs. Could you please enter your API requirements?"
@@ -254,6 +259,7 @@ modify_openapi_template = openapispec_file + """
     You are an intelligent assistant whose task is to generate an accurate OpenAPI 3.0 specification for an API based on the modifications provided by the user: {modification_statements} and the Previous Interactions. You must carefully interpret the user's use case and intelligently create the OpenAPI specification by filling in missing details based on common practices for the use case.
 
     If `yaml_validation_error: {yaml_validation_error}` is provided, *refine the specification to eliminate any errors causing this issue and ensure it adheres to best practices.*
+    STRICT CONDITION: The spec MUST NOT cause this error - duplicated mapping key for 'components'
     
     STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate an OpenAPI 3.0 specification that precisely reflects the user's use case.
     STRICT CONDITION: If the *user's request: {modification_statements}* specifies a change in the API type, you MUST refer to the Latest Specification provided and generate a new specification reflecting the requested API type and the information in the Latest Specification.
@@ -273,7 +279,9 @@ modify_openapi_template = openapispec_file + """
         - 200 (Success)
         - 400 (Bad Request)
         - 500 (Internal Server Error)
-    - Use HTTP methods like GET, PUT, POST, DELETE and PATCH as relevant to the use case.
+    IMPORTANT- Use HTTP methods like GET, PUT, POST, DELETE and PATCH as relevant to the use case.
+    STRICT CONDITION: YOU MUST ensure that the specification provides resources with more variety. *Provide atleast 6 resources which include multiple models or entities.*
+    STRICT CONDITION: BE INTELLIGENT. The generated API specification MUST be enriched and include multiple models or entities, ensuring comprehensive coverage for diverse use cases. For example, a university API should not only include a 'students' resource but also 'staff' and 'admin.' Similarly, an e-commerce API should encompass 'customers,' 'orders,' and 'products,' while a healthcare API should incorporate 'patients,' 'doctors,' and 'appointments.' *This requirement applies to all domains to guarantee a well-structured and enriched API design.* YOU MUST FOLLOW THIS CONDITION.
     
     2. Include detailed schemas for request and response objects using industry-standard field types (e.g., string, integer, boolean, date-time).
     
