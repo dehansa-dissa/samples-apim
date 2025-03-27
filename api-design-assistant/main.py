@@ -375,7 +375,8 @@ def generate():
             
         if answer_general_question is not None:
             answer_to_question = form_answer_general_question(user_input, chat_history, specification)
-            chat_history.append(answer_to_question)
+            chat_history.extend([{"user's general question": user_input}, {"response to user's general question": answer_to_question}])
+            update_task_data(session_id, chat_history=chat_history)
        
             response["apiTypeSuggestion"] = answer_to_question
             

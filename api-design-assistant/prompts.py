@@ -15,6 +15,8 @@ from langchain.prompts import PromptTemplate
 validate_query = """
     STRICT CONDITION: YOU ARE AN INTELLIGENT ASSISTANT who can ignore minor grammatical mistakes and understand the user's input.
     Analyze the user input: "{user_input}" and the chat history "{chat_history}" and determine the appropriate response based on the following conditions:
+    STRICT CONDITION: Translate the user input, understand what it means and accordingly choose the correct path from the below options.
+    STRICT CONDITION: The response MUST be in the *same language* as the user input or chat history.
        
     1. Handling API Use Cases and Requirements or API related questions or modifications
     If the user input:
@@ -142,6 +144,7 @@ prompt_template_to_suggest_api_type = """
     - api_type_suggestion: Either a confirmation of the current API type or a question about changing to a more suitable type.
 
     STRICT CONDITION: DO NOT specify the language(json) when providing the answer.
+    STRICT CONDITION: The response MUST be in the *same language* as the user input or chat history.
 
     Previous Interactions Context: {history}
 """
@@ -242,6 +245,7 @@ prompt_to_answer_general_questions_prompt_template = """
     Reminder: Always use the API specification and chat history to contextualize responses. Never speculate if information is unclear; instead, request clarification from the user.
     
     STRICT CONDITION: ONLY provide the *answer to the user's question.* *DO NOT repeat the user's question again in the response.*
+    STRICT CONDITION: The response MUST be in the *same language* as the user input or chat history.
 """
 
 answer_general_questions_prompt = PromptTemplate(
@@ -264,12 +268,13 @@ modify_openapi_template = openapispec_file + """
     STRICT CONDITION: You MUST prioritize the *user's request: {final_input}* above all else and accurately generate an OpenAPI 3.0 specification that precisely reflects the user's use case.
     STRICT CONDITION: If the *user's request: {modification_statements}* specifies a change in the API type, you MUST refer to the Latest Specification provided and generate a new specification reflecting the requested API type and the information in the Latest Specification.
 
-    STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
     STRICT CONDITION: You MUST only use the properties provided in the example structure above. DO NOT make up new properties when doing modifications.
     STRICT CONDITION: DO NOT specify the extracted modification statements
     STRICT CONDITION: If modification statement {modification_statements} mentions any HTTP request or resource modification, you MUST ONLY modify the specific HTTP requests or resources mentioned. All other HTTP methods and resources must remain unchanged. For example, "change /GET /transactions to /GET /transactionType" should only modify GET /transactions and NOT POST /transactions
 
     STRICT CONDITIONS:
+    STRICT CONDITION: Ensure that **all elements** of the specification, including resource path NAMES (e.g., `/accounts`, `/transactions`), resource descriptions, and other details, are in the **same language** as the user input or chat history.
+
     1. Thoroughly understand the user's use case (e.g., "banking transactions," "book search," "user management"). Based on this understanding, you must generate the appropriate:
     - Titles for the API and its operations
     - Paths for each endpoint
@@ -286,6 +291,7 @@ modify_openapi_template = openapispec_file + """
     2. Include detailed schemas for request and response objects using industry-standard field types (e.g., string, integer, boolean, date-time).
     
     3. Your task is to ONLY provide the generated OpenAPI specification in YAML format and must match the structure of the example OpenAPI 3.0 specification file.
+        STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer. 
 
     4. STRICTLY ensure the following:
     - You MUST include the user's modification statements such as: {modification_statements} to generate an accurate OpenAPI specification based on the relevant information from the 'Human prompt' in the Previous Interactions.
@@ -299,6 +305,7 @@ modify_openapi_template = openapispec_file + """
         - An array of HTTP methods and their corresponding paths/resources.
         
     Please ensure to only return the specification or definition as the response.
+    STRICT CONDITION: The resources and descriptions MUST be in the *same language* as the user input or chat history.
 
     Next, review the generated answer and identify the HTTP Methods and its paths mentioned in it and return them seperated by commas.
 
@@ -307,6 +314,7 @@ modify_openapi_template = openapispec_file + """
     2. An array of HTTP Methods with the paths/resources
 
     You MUST return your response in a JSON format where the overall structure uses JSON keys and values, but the 'generated_spec' value MUST be in YAML format, and 'resources' MUST be an array like this for example ['GET /transactions', 'POST /transactions'].
+    STRICT CONDITION: DO NOT specify the language (json) when providing the answer.
 
     Previous Interactions:
     {history}
