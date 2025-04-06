@@ -3,7 +3,8 @@ def generate_mocks_prompt(config):
 
 Instructions:
 - Use mc.getProperty() and mc.getPayloadJSON() for request data.
-- Get path params via mc.getProperty('uri.var.paramName').
+- Get path params via mc.getProperty('uri.var.{paramName}').
+- Get Query Parameters via mc.getProperty('query.param.{paramName}').
 - Prepopulate mockDB with 3+ records.
 - Always Load and persist mockDB using mc.getProperty('mockDB') and mc.setProperty('mockDB', JSON.stringify(db)).
 - Handle all status codes, support JSON/XML.
