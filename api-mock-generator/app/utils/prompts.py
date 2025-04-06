@@ -1,4 +1,3 @@
-
 def generate_mocks_prompt(config):
     prompt = """Generate ES3 JavaScript for rhinojs to mock OpenAPI from: the given OpenAPI Specification
 

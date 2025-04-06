@@ -1,7 +1,5 @@
 from flask import Blueprint, request, jsonify
 from app.services.ai_operations import generate_mock_scripts, modify_method
-from app.utils.helpers import get_simplified_spec
-import json
 api_blueprint = Blueprint('api', __name__)
 
 @api_blueprint.route('/ai/api-mock/generate-mocks', methods=['POST'])
@@ -43,7 +41,6 @@ def modify_method_endpoint():
     method = config.get('modify').get('method')
     script = config.get('script')
     instructions = config.get('instructions')
-    print(instructions)
     #return {"modified_script": script+ "aaaaaaa"}, 201
     if not (open_api_spec and path and method and script and instructions):
         return jsonify({"error": "Open API Spec, path, method, script, and instructions are required"}), 400
