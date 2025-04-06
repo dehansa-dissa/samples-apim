@@ -46,4 +46,4 @@ def modify_method_endpoint():
         return jsonify({"error": "Open API Spec, path, method, script, and instructions are required"}), 400
 
     mock_script = modify_method(open_api_spec,script,path,method, instructions)
-    return jsonify(mock_script)
+    return jsonify(mock_script), 201
