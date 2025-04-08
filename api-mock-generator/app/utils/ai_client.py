@@ -13,14 +13,15 @@ def generate_text(prompt):
 
 def generate_structured_output(sys_msg,user_msg, schema):
     # Call the OpenAI API
+    messages = [{"role": "system", "content": sys_msg}]
+    if user_msg:
+        messages.append({"role": "user", "content": user_msg})
+    messages.append({"role": "user", "content": f"Use the following schema for the output: '{schema}'"})
+
     response = client.chat.completions.create(
         model=deployment_name,
         response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": sys_msg},
-            {"role": "user", "content":  user_msg},
-            {"role": "user", "content": f"Use the following schema for the output: '{schema}'"}
-        ],
+        messages=messages,
         temperature=0.7
     )
     

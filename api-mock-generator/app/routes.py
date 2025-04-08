@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
 from app.services.ai_operations import generate_mock_scripts, modify_method
+from app.utils.dev_tools import records_from_spec, rec
+
 api_blueprint = Blueprint('api', __name__)
 
 @api_blueprint.route('/ai/api-mock/generate-mocks', methods=['POST'])
@@ -17,11 +19,12 @@ def generate_mock_scripts_endpoint():
         return jsonify({"error": "No API Definition provided"}), 400
 
     config = data.get('config')
-
-    print(config)
+    
     #return
-
+    records_from_spec(open_api_spec)
     mock_scripts = generate_mock_scripts(open_api_spec, config)
+    print(rec.get_all())
+    rec.save()
     return mock_scripts, 201
 
 

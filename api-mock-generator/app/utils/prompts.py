@@ -76,6 +76,14 @@ While making sure the Functionality is 100% correct as the first priority
 def generate_mocks_sys_msg(spec: dict, config: str) -> str:
     return f"Design a scalable, secure, and well-documented mock API for testing for the OpenAPI Specification {spec}, ensuring ease of use and maintenance."
 
+def fix_schema_prompt(response):
+    return f"""
+  The given response has a schema issue. Please fix the schema to ensure it is valid and adheres to the Schema Given below.
+  Dont change the functionality of the code
+  The response is:
+  {response}
+    """
+
 def modify_method_prompt(script, instructions):
     return f"""Modify the given ES3 JavaScript script for rhinojs to update the behavior of an existing OpenAPI mock method based on the provided context.
 
@@ -113,3 +121,4 @@ Expected Output:
 
 def modify_method_sys_msg(method, path, method_spec):
     return f"Modify the script for the {method.upper()} method at the {path} endpoint based on the OpenAPI Specification part {method_spec}. Ensure the script is functional, secure, and behaves like a real API, while supporting scalability and maintainability."
+
