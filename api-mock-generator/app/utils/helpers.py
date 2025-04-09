@@ -12,7 +12,6 @@ def clean_openapi_spec(api_definition: dict) -> dict:
                 details.pop("x-mediation-script", None)
                 details.pop("x-wso2-application-security", None)
                 details.pop("externalDocs", None)
-                details.pop("parameters", None)
 
     components = api_definition.get("components", {})
     components.pop("securitySchemes", None)
@@ -21,42 +20,6 @@ def clean_openapi_spec(api_definition: dict) -> dict:
         "paths": paths
     }
     return cleaned_swagger
-
-def generate_output_json_schema_from_spec(api_definition: dict) -> dict:
-    json_schema = {
-        "title": "api-mocking",
-        "description": "Inline Mock Scripts and the pre-populated DB",
-        "type": "object",
-        "properties": {
-            "mockDB": {
-                "type": "string",
-                "description": "The prepopulated MockDB in the format {collectionName:[...]}"
-            },
-            "paths": {
-                "type": "object",
-                "description": "Paths of the Open Api Spec",
-                "properties": {}
-            }
-        },
-        "required": ["mockDB", "paths"]
-    }
-
-    paths = api_definition.get("paths", {})
-    for path, methods in paths.items():
-        json_schema["properties"]["paths"]["properties"][path] = {
-            "type": "object",
-            "properties": {},
-            "required": [
-                method for method in methods.keys()
-            ]
-        }
-        for method, details in methods.items():
-            json_schema["properties"]["paths"]["properties"][path]["properties"][method] = {
-                "type": "string",
-                "description": "The Inline Script For the execution of the method "+ method + " on the path " + path,
-            }
-
-    return json_schema
 
 def output_json_schema_generate_mocks(api_definition: dict) -> dict:
     json_schema = {
@@ -108,3 +71,20 @@ def validate_response(response, output_schema):
     
     return True
 
+def output_json_schema_generate_mocks_sim_resource(paths: dict, path: str) -> dict:
+    json_schema = {}
+
+    if path not in paths:
+        if path == "mockDB":
+            json_schema["mockDB"] = "The prepopulated MockDB in the format {collectionName:[...]}"
+            return json_schema
+        return json_schema
+
+    methods = paths[path]
+    json_schema[path] = {}
+    for method, details in methods.items():
+        if method == 'parameters':
+            continue
+        json_schema[path][method] = "The Inline Script For the execution of the method "+ method + " on the path " + path
+
+    return json_schema

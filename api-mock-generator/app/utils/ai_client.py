@@ -13,9 +13,9 @@ def generate_text(prompt):
 
 def generate_structured_output(sys_msg,user_msg, schema):
     # Call the OpenAI API
-    messages = [{"role": "system", "content": sys_msg}]
-    if user_msg:
-        messages.append({"role": "user", "content": user_msg})
+    messages = [{"role": "user", "content": user_msg}]
+    if sys_msg:
+        messages.append({"role": "system", "content": sys_msg})
     messages.append({"role": "user", "content": f"Use the following schema for the output: '{schema}'"})
 
     response = client.chat.completions.create(

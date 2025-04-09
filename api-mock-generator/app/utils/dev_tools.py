@@ -84,8 +84,3 @@ def records_from_spec(open_api_spec):
     rec.add(Consts.no_of_methods, no_of_methods)
 
     rec.add(Consts.length_of_spec, len(str(open_api_spec)))
-    rec.add(Consts.syntax_errors, '')
-    rec.add(Consts.deployment_success, '')
-    rec.add(Consts.deployment_errors, '')
-    rec.add(Consts.passed_enpoint_count, '')
-    rec.add(Consts.failed_enpoint_count, '')

@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from app.services.ai_operations import generate_mock_scripts, modify_method
+from app.services.ai_operations import generate_mock_scripts, modify_method, generate_mock_scripts_sim_resource
 from app.utils.dev_tools import records_from_spec, rec
 
 api_blueprint = Blueprint('api', __name__)
@@ -21,10 +21,11 @@ def generate_mock_scripts_endpoint():
     config = data.get('config')
     
     #return
-    records_from_spec(open_api_spec)
-    mock_scripts = generate_mock_scripts(open_api_spec, config)
-    print(rec.get_all())
-    rec.save()
+    rec.clear()
+    #records_from_spec(open_api_spec)
+    #mock_scripts = generate_mock_scripts(open_api_spec, config)
+    mock_scripts = generate_mock_scripts_sim_resource(open_api_spec, config)
+    #rec.save()
     return mock_scripts, 201
 
 
