@@ -127,7 +127,9 @@ since all of the other endpoint scripts are there dont make changes that will ca
 Expected Output:
 - A modified script that reflects the new instructions (if possible) and adheres to the above rules.
 - If the instructions cannot be fully achieved, the output must still be a functioning and correct script.
+- Modification to the structure of the code should be minimal and only be done to achive the instructions
 """
+    return prompt
 
 def modify_method_sys_msg(method, path, method_spec):
     return f"Modify the script for the {method.upper()} method at the {path} endpoint based on the OpenAPI Specification part {method_spec}. Ensure the script is functional, secure, and behaves like a real API, while supporting scalability and maintainability."

@@ -23,7 +23,7 @@ def generate_mock_scripts_endpoint():
     #return
     rec.clear()
     records_from_spec(open_api_spec)
-    resourcewise = True
+    resourcewise = False
     if resourcewise:
         mock_scripts = generate_mock_scripts_sim_resource(open_api_spec, config)
         rec.save("records_sim.csv")
