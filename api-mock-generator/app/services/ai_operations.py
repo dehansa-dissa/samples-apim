@@ -2,13 +2,13 @@ from app.utils.helpers import get_simplified_spec,output_json_schema_generate_mo
 from app.utils.ai_client import generate_structured_output
 from app.utils.prompts import generate_mocks_sys_msg,generate_mocks_prompt,modify_method_prompt,modify_method_sys_msg, fix_schema_prompt, generate_mocks_sim_resource_prompt
 from app.utils.dev_tools import rec,Consts
-from datetime import datetime
+import time
 import concurrent.futures
 
 import json
 
 def generate_mock_scripts(open_api_spec, config):
-    time = datetime.now()
+    start_time = time.perf_counter()
     simplified_spec = get_simplified_spec(open_api_spec)
     rec.add(Consts.length_of_cleaned_spec, len(str(simplified_spec)))
     output_json_schema = output_json_schema_generate_mocks(simplified_spec)
@@ -20,7 +20,6 @@ def generate_mock_scripts(open_api_spec, config):
     mock_scripts = generate_structured_output(sys_msg,user_msg, output_json_schema)
     rec.add(Consts.response_length, len(mock_scripts))
     response_json = json.loads(mock_scripts)
-    rec.add(Consts.response_time, (datetime.now()-time).microseconds)
     print(response_json)
     if (not validate_response(response_json, output_json_schema)):
         rec.add(Consts.is_response_schema_valid_1, False)
@@ -37,67 +36,112 @@ def generate_mock_scripts(open_api_spec, config):
         return response_json
     rec.add(Consts.is_response_schema_valid_1, True)
     rec.add(Consts.deployment_success, True)
+    response_time_ms = int((time.perf_counter() - start_time) * 1000)
+    rec.add(Consts.response_time, response_time_ms)
     return response_json
 
-def generate_mock_scripts_sim_resource(open_api_spec, config):
-    paths = get_simplified_spec(open_api_spec).get("paths")
+def generate_mock_scripts_sim_resource(open_api_spec, config, sim=False):
+    start_time = time.perf_counter()
+    simplified_spec = get_simplified_spec(open_api_spec)
+    rec.add(Consts.length_of_cleaned_spec, len(str(simplified_spec)))
+
+    paths = simplified_spec.get("paths")
     final_response = {}
     paths_response = {}
-    sys_msg = generate_mocks_sys_msg(paths, config)
-    mockDB_output_json_schema = output_json_schema_generate_mocks_sim_resource(paths, "mockDB")
-    user_msg = generate_mocks_sim_resource_prompt(config, "mockDB")
-    print("generating mockDB...")
-    mockDB = generate_structured_output(sys_msg, user_msg, mockDB_output_json_schema)
-    mockDB_json = json.loads(mockDB)
-    if not validate_response(mockDB_json, mockDB_output_json_schema):
-        rec.add(Consts.is_response_schema_valid_1, False)
-        # retry 
-        print("Retrying...")
-        user_msg = fix_schema_prompt(mockDB)
-        mockDB = generate_structured_output(None, user_msg, mockDB)
+    sys_msg = generate_mocks_sys_msg(simplified_spec, config)
+    user_msg_len = 0
+    sys_msg_len = len(sys_msg)
+
+    # Generate mockDB first
+    def generate_mockDB():
+        print("Generating mockDB...")
+        mockDB_output_json_schema = output_json_schema_generate_mocks_sim_resource(paths, "mockDB")
+        user_msg = generate_mocks_sim_resource_prompt(config, "mockDB")
+        nonlocal user_msg_len
+        user_msg_len += len(user_msg)
+
+        mockDB = generate_structured_output(sys_msg, user_msg, mockDB_output_json_schema)
         mockDB_json = json.loads(mockDB)
-        if (not validate_response(mockDB_json, mockDB)):
-            rec.add(Consts.is_response_schema_valid_2, False)
-            return
-        rec.add(Consts.is_response_schema_valid_2, True)
-    
+
+        if not validate_response(mockDB_json, mockDB_output_json_schema):
+            rec.add(Consts.is_response_schema_valid_1, False)
+            print("Retrying mockDB generation...")
+            user_msg = fix_schema_prompt(mockDB)
+            mockDB = generate_structured_output(None, user_msg, mockDB_output_json_schema)
+            mockDB_json = json.loads(mockDB)
+
+            if not validate_response(mockDB_json, mockDB_output_json_schema):
+                rec.add(Consts.is_response_schema_valid_2, False)
+                return None
+            rec.add(Consts.is_response_schema_valid_2, True)
+
+        return mockDB_json
+
+    mockDB_json = generate_mockDB()
+    if not mockDB_json:
+        return
+
     final_response.update(mockDB_json)
 
+    # Function to process each resource
     def process_resource(path, methods):
+        print(f"Generating mock script for path: {path}")
         output_json_schema = output_json_schema_generate_mocks_sim_resource(paths, path)
-        user_msg = generate_mocks_sim_resource_prompt(config, path, mockDB)
-        print(f"Generating mock script for path: {path}", output_json_schema)
-        mock_script = generate_structured_output(sys_msg,user_msg, output_json_schema)
+        user_msg = generate_mocks_sim_resource_prompt(config, path, mockDB_json)
+        nonlocal user_msg_len, sys_msg_len
+        user_msg_len += len(user_msg)
+        sys_msg_len += len(sys_msg)
+
+        mock_script = generate_structured_output(sys_msg, user_msg, output_json_schema)
         response_json = json.loads(mock_script)
-        if (not validate_response(response_json, output_json_schema)):
+
+        if not validate_response(response_json, output_json_schema):
             rec.add(Consts.is_response_schema_valid_1, False)
-            # retry 
-            print("Retrying...", mock_script)
+            print(f"Retrying for path: {path}")
             user_msg = fix_schema_prompt(mock_script)
             mock_script = generate_structured_output(None, user_msg, output_json_schema)
             response_json = json.loads(mock_script)
-            if (not validate_response(response_json, output_json_schema)):
+
+            if not validate_response(response_json, output_json_schema):
                 rec.add(Consts.is_response_schema_valid_2, False)
                 return
             rec.add(Consts.is_response_schema_valid_2, True)
-            paths_response.update(response_json)
-            return
+
         paths_response.update(response_json)
 
-    
-    # Use ThreadPoolExecutor to process resources simultaneously
-    #with concurrent.futures.ThreadPoolExecutor() as executor:
-        #futures = [executor.submit(process_resource, path, methods) for path, methods in paths.items()]
-        
-        # Optionally, wait for all tasks to complete
-        #concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
+    # Process paths
+    if sim:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = [executor.submit(process_resource, path, methods) for path, methods in paths.items()]
+            concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
+    else:
+        for path, methods in paths.items():
+            process_resource(path, methods)
 
-    for path, methods in paths.items():
-        process_resource(path, methods)
-
+    # Finalize response
     final_response["paths"] = paths_response
+    rec.add(Consts.length_of_output_schema, len(json.dumps(final_response)))
+    rec.add(Consts.response_length, len(json.dumps(final_response)))
+    rec.add(Consts.user_msg_length, user_msg_len)
+    rec.add(Consts.sys_msg_length, sys_msg_len)
+
+    if not validate_response(final_response, output_json_schema_generate_mocks(simplified_spec)):
+        rec.add(Consts.is_response_schema_valid_1, False)
+        print("Retrying final response generation...")
+        user_msg = fix_schema_prompt(final_response)
+        final_response = generate_structured_output(None, user_msg, output_json_schema_generate_mocks(simplified_spec))
+        response_json = json.loads(final_response)
+
+        if not validate_response(response_json, output_json_schema_generate_mocks(simplified_spec)):
+            rec.add(Consts.is_response_schema_valid_2, False)
+            return
+        rec.add(Consts.is_response_schema_valid_2, True)
+
+    rec.add(Consts.is_response_schema_valid_1, True)
+    rec.add(Consts.deployment_success, True)
+    response_time_ms = int((time.perf_counter() - start_time) * 1000)
+    rec.add(Consts.response_time, response_time_ms)
     return final_response
-    
 
 def modify_method(open_api_spec,script, path, method, instructions):
     simplified_spec = get_simplified_spec(open_api_spec)

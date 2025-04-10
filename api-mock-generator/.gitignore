@@ -18,3 +18,4 @@ venv/
 .env
 
 records.csv
+records_sim.csv

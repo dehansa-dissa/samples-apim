@@ -24,14 +24,14 @@ to avoid runtime exceptions.
 Expected Output Example:
 {{ "mockDB": "{{\\"pets\\":[{{\\"id\\":1,\\"name\\":\\"Whiskers\\"}},{{\\"id\\":2,\\"name\\":\\"Buddy\\"}},{{\\"id\\":3,\\"name\\":\\"Mittens\\"}}]}}", "paths": {{
   "/pets": {{
-    "get": {{"code": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
+    "get": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
 if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   mc.setProperty('CONTENT_TYPE', accept);\\n
   var db = JSON.parse(mc.getProperty('mockDB') || '{{}}');\\n
   mc.setPayloadJSON(db.pets || []);\\n
   mc.setProperty('HTTP_SC', '200');\\n
 "}},\n
-    "post": {{"code": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
+    "post": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
 if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   mc.setProperty('CONTENT_TYPE', accept);\\n
   var db = JSON.parse(mc.getProperty('mockDB') || '{{}}');\\n
@@ -47,7 +47,7 @@ if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
 "}}\n
   }},\n
   "/pets/{{petId}}": {{
-    "get": {{"code": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
+    "get": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
 if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   mc.setProperty('CONTENT_TYPE', accept);\\n
   var id = parseInt(mc.getProperty('uri.var.petId'), 10);\\n
@@ -146,18 +146,19 @@ Expected Output Example:
         return prompt
 
     # Default behavior for generating scripts for a specific path
-    prompt = """Generate ES3 JavaScript for rhinojs to mock OpenAPI for the given path: {path}
+    prompt = f"""Generate ES3 JavaScript for rhinojs to mock OpenAPI for the given path: {path}
 
 Instructions:
 - Use mc.getProperty() and mc.getPayloadJSON() for request data.
-- Get path params via mc.getProperty('uri.var.{paramName}').
-- Get Query Parameters via mc.getProperty('query.param.{paramName}').
+- Get path params via mc.getProperty('uri.var.{{paramName}}').
+- Get Query Parameters via mc.getProperty('query.param.{{paramName}}').
 - Prepopulate mockDB with 3+ records.
 - Always Load and persist mockDB using mc.getProperty('mockDB') and mc.setProperty('mockDB', JSON.stringify(db)).
 - Handle all status codes, support JSON/XML.
 - Use only loops (never use find, filter, map, reduce, spread like {{...orders.id}}).
 - Avoid return; use break to exit loops when needed but ensure required payload and http_sc is set correctly.
 - Validate all requests and payloads.
+- Generate scripts only for the methods available in the given path.
 """
     prompt = prompt + f"""
 - Make sure the script handles the data in the mockDB which is {mockDB} correctly with correct structure.
@@ -168,11 +169,11 @@ Instructions:
 - All data (e.g., in queries, params, and mockDB) is treated as strings. For comparisons (e.g., dates or other types), 
 ensure the data is parsed into the correct format before comparing (e.g., >=). Handle parsing errors gracefully 
 to avoid runtime exceptions.
-- Accept type can be /*/ as well then default to application/json. And always set the accept type
-- Generate scripts for all methods (e.g., GET, POST, PUT, DELETE) in the given path only.
+- Accept type can be /*/ as well then default to application/json. And always set the accept type.
+- Generate scripts for all methods (e.g., GET, POST, PUT, DELETE) that are defined in the given path.
 
-Expected Output Example if only POST is available:
-{{ "post": {{"code": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
+Expected Output Example:
+{{ "/pets": {{"post": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
 if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   mc.setProperty('CONTENT_TYPE', accept);\\n
   var db = JSON.parse(mc.getProperty('mockDB') || '{{}}');\\n
@@ -186,6 +187,22 @@ if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
     mc.setPayloadJSON({{ message: 'Invalid request, must contain id and name' }});\\n
   mc.setProperty('mockDB', JSON.stringify(db));\\n
 "}}\n
+  "/pets/{{petId}}": {{
+    "get": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
+if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
+  mc.setProperty('CONTENT_TYPE', accept);\\n
+  var id = parseInt(mc.getProperty('uri.var.petId'), 10);\\n
+  var db = JSON.parse(mc.getProperty('mockDB') || '{{}}');\\n
+  var pet = null;\\n
+  for (var i = 0; i < (db.pets || []).length; i++) {{\\n
+    if (db.pets[i].id == id) {{\\n
+      pet = db.pets[i];\\n
+      break;\\n
+    }}\\n
+  }}\\n
+  mc.setPayloadJSON(pet || {{ message: 'Pet not found' }});\\n
+  mc.setProperty('HTTP_SC', pet ? '200' : '404');\\n
+"}}\n
   }}\n
 }}
 While making sure the Functionality is 100% correct as the first priority
@@ -198,6 +215,6 @@ While making sure the Functionality is 100% correct as the first priority
             """
     
     return prompt
-    
+
 def generate_mocks_sim_resource_sys_msg(config, path):
     return
