@@ -8,6 +8,10 @@ Instructions:
 - Prepopulate mockDB with 3+ records.
 - Always Load and persist mockDB using mc.getProperty('mockDB') and mc.setProperty('mockDB', JSON.stringify(db)).
 - Handle all status codes, support JSON/XML.
+- Do not use try catch error andlings
+- Do not use break; other than inside loops
+- Do not use keywords for var names like name, event etc...
+- make sure when reading any variable if it is undefined then handle that error never call a operand without checking if it is defined
 - Use only loops (never use find, filter, map, reduce, spread like {{...orders.id}}).
 - Avoid return; use break to exit loops when needed but ensure required payload and http_sc is set correctly.
 - Validate all requests and payloads.
@@ -155,6 +159,10 @@ Instructions:
 - Prepopulate mockDB with 3+ records.
 - Always Load and persist mockDB using mc.getProperty('mockDB') and mc.setProperty('mockDB', JSON.stringify(db)).
 - Handle all status codes, support JSON/XML.
+- Do not use try catch error andlings
+- Do not use break; other than inside loops
+- Do not use keywords for var names like name, event etc...
+- make sure when reading any variable if it is undefined then handle that error never call a operand without checking if it is defined
 - Use only loops (never use find, filter, map, reduce, spread like {{...orders.id}}).
 - Avoid return; use break to exit loops when needed but ensure required payload and http_sc is set correctly.
 - Validate all requests and payloads.
