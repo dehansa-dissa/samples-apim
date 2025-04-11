@@ -16,7 +16,7 @@ Instructions:
 - Avoid return; use break to exit loops when needed but ensure required payload and http_sc is set correctly.
 - Validate all requests and payloads.
 - Assign responses via mc.setProperty() and mc.setPayloadJSON().
-- Ensure mock server behaves like a real one.
+- Ensure mock server behaves like a real one and the implementation is simple.
 - Comparisons should use == instead of ===.
 - The output must strictly follow the schema given in the example.
 - All data (e.g., in queries, params, and mockDB) is treated as strings. For comparisons (e.g., dates or other types), 
@@ -100,7 +100,7 @@ Instructions:
 - If the instructions cannot be fully achieved, prioritize returning a functioning and correct script over strictly adhering to the context.
 - Ensure the script adheres to the following rules:
   - Use mc.getProperty() and mc.getPayloadJSON() for request data.
-  - Access path params via mc.getProperty('uri.var.paramName').
+  - Access path params via mc.getProperty('uri.var.{paramName}').
   - Get Query Parameters via mc.getProperty('query.param.{paramName}').
   - Persist changes to mockDB using mc.getProperty('mockDB') and mc.setProperty('mockDB', JSON.stringify(db)).
   - Handle all status codes and support both JSON/XML responses.
@@ -168,7 +168,7 @@ Instructions:
 - Use only loops (never use find, filter, map, reduce, spread like {{...orders.id}}).
 - Avoid return; use break to exit loops when needed but ensure required payload and http_sc is set correctly.
 - Validate all requests and payloads.
-- Generate scripts only for the methods available in the given path.
+- Generate scripts only for the methods available in the given path and keep the implementation is simple
 """
     prompt = prompt + f"""
 - Make sure the script handles the data in the mockDB which is {mockDB} correctly with correct structure.
