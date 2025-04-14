@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from app.services.ai_operations import generate_mock_scripts, modify_method, generate_mock_scripts_sim_resource
+from app.services.ai_operations import generate_mock_scripts_at_once, modify_method, generate_mock_scripts_batch_wise
 from app.utils.dev_tools import records_from_spec, rec
 
 api_blueprint = Blueprint('api', __name__)
@@ -11,25 +11,14 @@ def generate_mock_scripts_endpoint():
     except Exception as e:
         return jsonify({"error": "Invalid JSON payload", "details": str(e)}), 400
 
-    if not data:
-        return jsonify({"error": "No JSON payload provided"}), 400
-
     open_api_spec = data.get('apiDefinition')
-    if not open_api_spec:
-        return jsonify({"error": "No API Definition provided"}), 400
-
     config = data.get('config')
-    
-    #return
-    rec.clear()
-    records_from_spec(open_api_spec)
-    resourcewise = False
+
+    resourcewise = True
     if resourcewise:
-        mock_scripts = generate_mock_scripts_sim_resource(open_api_spec, config)
-        rec.save("records_sim.csv")
+        mock_scripts = generate_mock_scripts_batch_wise(open_api_spec, config)
     else:
-        mock_scripts = generate_mock_scripts(open_api_spec, config)
-        rec.save()
+        mock_scripts = generate_mock_scripts_at_once(open_api_spec, config)
     return mock_scripts, 201
 
 

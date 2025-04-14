@@ -42,6 +42,45 @@ def output_json_schema_modify_method() -> dict:
         "modified_script": "The modified script..." 
     }
 
+def output_json_schema_generate_mocks_sim_resource(paths: dict, paths_batch: list) -> dict:
+    json_schema = {}
+    if len(paths_batch) == 1 and paths_batch[0] == 'mockDB':
+        json_schema["mockDB"] = "The prepopulated MockDB in the format {collectionName:[...]}"
+        return json_schema
+
+    if len(paths_batch) >= 1:
+        for path in paths_batch:
+            json_schema[path] = {}
+            for method in paths[path]:
+                if method == 'parameters':
+                    continue
+                json_schema[path][method] = "The Inline Script For the execution of the method "+ method + " on the path " + path
+    
+    return json_schema
+
+def batch_paths_by_method_count(paths: dict, batch_size = 10) -> list[list[str]]:
+    batches = []
+    current_batch = []
+    op_count = 0
+
+    for path, methods in paths.items():
+        method_count = len(methods)
+
+        if op_count + method_count > batch_size:
+            if current_batch:
+                batches.append(current_batch)
+            current_batch = [path]
+            op_count = method_count
+        else:
+            current_batch.append(path)
+            op_count += method_count
+
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches
+
+
 def get_simplified_spec(spec):
     #if string convert to json
     if isinstance(spec, str):
@@ -53,38 +92,20 @@ def get_simplified_spec(spec):
     spec = clean_openapi_spec(spec)
     return spec
 
-def validate_response(response, output_schema):
+def validate_schema(response, output_schema):
     if not isinstance(response, dict):
+        if isinstance(response, str) and isinstance(output_schema, str):
+            return True
         return False
-    
-    for field, sub_schema in output_schema.items():
-        if field not in response:
+
+    response_keys = set(response.keys())
+    schema_keys = set(output_schema.keys())
+
+    if response_keys != schema_keys or len(response.keys()) != len(output_schema.keys()):
+        return False
+
+    for key in response_keys:
+        if not validate_schema(response[key], output_schema[key]):
             return False
-        
-        if isinstance(sub_schema, dict):  # Handle nested structures
-            if not isinstance(response[field], dict):
-                return False
-            if not validate_response(response[field], sub_schema):
-                return False
-        elif not isinstance(sub_schema, str):
-            return False
-    
+
     return True
-
-def output_json_schema_generate_mocks_sim_resource(paths: dict, path: str) -> dict:
-    json_schema = {}
-
-    if path not in paths:
-        if path == "mockDB":
-            json_schema["mockDB"] = "The prepopulated MockDB in the format {collectionName:[...]}"
-            return json_schema
-        return json_schema
-
-    methods = paths[path]
-    json_schema[path] = {}
-    for method, details in methods.items():
-        if method == 'parameters':
-            continue
-        json_schema[path][method] = "The Inline Script For the execution of the method "+ method + " on the path " + path
-
-    return json_schema
