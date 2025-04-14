@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from app.services.ai_operations import generate_mock_scripts_at_once, modify_method, generate_mock_scripts_batch_wise
+from app.services.ai_operations import generate_mock_scripts, modify_method
 from app.utils.dev_tools import records_from_spec, rec
 
 api_blueprint = Blueprint('api', __name__)
@@ -13,12 +13,7 @@ def generate_mock_scripts_endpoint():
 
     open_api_spec = data.get('apiDefinition')
     config = data.get('config')
-
-    resourcewise = True
-    if resourcewise:
-        mock_scripts = generate_mock_scripts_batch_wise(open_api_spec, config)
-    else:
-        mock_scripts = generate_mock_scripts_at_once(open_api_spec, config)
+    mock_scripts = generate_mock_scripts(open_api_spec, config)
     return mock_scripts, 201
 
 

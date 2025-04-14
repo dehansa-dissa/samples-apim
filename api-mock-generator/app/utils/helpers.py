@@ -58,7 +58,7 @@ def output_json_schema_generate_mocks_sim_resource(paths: dict, paths_batch: lis
     
     return json_schema
 
-def batch_paths_by_method_count(paths: dict, batch_size = 10) -> list[list[str]]:
+def batch_paths_by_method_count(paths: dict, batch_size: int) -> list[list[str]]:
     batches = []
     current_batch = []
     op_count = 0
