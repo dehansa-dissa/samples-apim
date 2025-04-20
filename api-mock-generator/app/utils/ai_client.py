@@ -20,7 +20,7 @@ def generate_structured_output(messages, retry_count=1, retry_delay=1, timeout=6
             future = executor.submit(call_api)
             try:
                 response = future.result(timeout=timeout)
-                print("response:\n", response.choices[0].message.content, "\n", messages[-1], "\n")
+                print("response:\n", response.choices[0].message.content, "\n")
                 return response.choices[0].message.content
             except TimeoutError:
                 print(f"Attempt {attempt + 1} timed out after {timeout} seconds.")
@@ -57,7 +57,6 @@ def get_structured_output_with_validation(prompt_messages, schema):
             print("Schema Valid.")
             return response_json
         else: 
-            print("schema:\n", schema)
             return fix_schema(response,schema)
     except Exception as e:
         print(f"Unexpected error: {e}")

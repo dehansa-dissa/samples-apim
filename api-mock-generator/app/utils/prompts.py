@@ -155,12 +155,12 @@ Expected Output:
     return prompt 
 
 def modify_method_sys_msg(method, path, method_spec):
-    return f"Modify the script for the {method.upper()} method at the {path} endpoint based on the OpenAPI Specification part {method_spec}. Ensure the script is functional, secure, and behaves like a real API, while supporting scalability and maintainability."
+  return f"Modify the script for the {method.upper()} method at the {path} endpoint based on the OpenAPI Specification part {method_spec}. Ensure the script is functional, secure, and behaves like a real API, while supporting scalability and maintainability."
 
 def generate_mocks_sim_resource_prompt(config, paths_batch, mockDB=None):
-    if len(paths_batch) == 1 and paths_batch[0] == "mockDB":
-        # Generate prompt specifically for mockDB
-        prompt = """Generate ES3 JavaScript for rhinojs to create and manage a mockDB.
+  if len(paths_batch) == 1 and paths_batch[0] == "mockDB":
+    # Generate prompt specifically for mockDB
+    prompt = """Generate ES3 JavaScript for rhinojs to create and manage a mockDB.
 
 Instructions:
 - Prepopulate mockDB with 3+ records to match the given openAPI spec.
@@ -172,10 +172,11 @@ Instructions:
 Expected Output Example:
 {{ "mockDB": "{{\\"pets\\":[{{\\"id\\":1,\\"name\\":\\"Whiskers\\"}},{{\\"id\\":2,\\"name\\":\\"Buddy\\"}},{{\\"id\\":3,\\"name\\":\\"Mittens\\"}}]}}" }}
 """
-        return prompt
+    return prompt
 
     # Default behavior for generating scripts for a specific path
-    prompt = f"""Generate ES3 JavaScript for rhinojs to mock OpenAPI strictly only for: {paths_batch}
+  
+  prompt = f"""Generate ES3 JavaScript for rhinojs to mock OpenAPI strictly only for: {paths_batch}
 
 Instructions:
 - Use mc.getProperty() and mc.getPayloadJSON() for request data.
@@ -193,7 +194,7 @@ Instructions:
 - Validate all requests and payloads.
 - Generate scripts only for all the methods available in the respective paths and keep the implementation simple
 """
-    prompt = prompt + f"""
+  prompt = prompt + f"""
 - Make sure the script handles the data in {mockDB} which is the current mockDB correctly with correct structure.
 - Assign responses via mc.setProperty() and mc.setPayloadJSON().
 - Ensure mock server behaves like a real one.
@@ -241,10 +242,9 @@ if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
 While making sure the Functionality is 100% correct as the first priority
 """
 
-    if config.get('instructions'):
-        prompt = prompt + f"""
-            Try to Do it according to the following Instructions as well:
-            {config.get('instructions')}
-            """
-    
-    return prompt
+  if config.get('instructions'):
+    prompt = prompt + f"""
+      Try to Do it according to the following Instructions as well:
+      {config.get('instructions')}
+      """ 
+  return prompt

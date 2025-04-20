@@ -80,7 +80,6 @@ def batch_paths_by_method_count(paths: dict, batch_size: int) -> list[list[str]]
 
     return batches
 
-
 def get_simplified_spec(spec):
     #if string convert to json
     if isinstance(spec, str):
