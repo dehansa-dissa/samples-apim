@@ -31,11 +31,11 @@ def modify_method_endpoint():
     config = data.get('config')
     path = config.get('modify').get('path')
     method = config.get('modify').get('method')
+    is_default_script = config.get('modify').get('defaultScript')
     script = config.get('script')
     instructions = config.get('instructions')
-    #return {"modified_script": script+ "aaaaaaa"}, 201
     if not (open_api_spec and path and method and script and instructions):
         return jsonify({"error": "Open API Spec, path, method, script, and instructions are required"}), 400
 
-    mock_script = modify_method(open_api_spec,script,path,method, instructions)
+    mock_script = modify_method(open_api_spec,script,path,method, instructions, is_default_script)
     return jsonify(mock_script), 201

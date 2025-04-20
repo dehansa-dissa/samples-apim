@@ -47,7 +47,6 @@ def generate_mock_scripts(open_api_spec, config, batch_size = 15):
         for paths_batch in batched_paths:
             process_resource(paths_batch)
 
-
         # Finalize response
         final_response["paths"] = paths_response
         final_output_schema = output_json_schema_generate_mocks(simplified_spec)
@@ -64,11 +63,10 @@ def generate_mock_scripts(open_api_spec, config, batch_size = 15):
     else:
         return generate_mock_scripts_batch_wise(simplified_spec,config,batched_paths)
 
-
-def modify_method(open_api_spec,script, path, method, instructions):
+def modify_method(open_api_spec,script, path, method, instructions, is_default_script = False):
     simplified_spec = get_simplified_spec(open_api_spec)
     required_method = simplified_spec["paths"][path][method]
     prompt_messages = [{"role": "system", "content": modify_method_sys_msg(method,path,required_method)},
-                       {"role": "user", "content": modify_method_prompt(script,instructions)}]
+                       {"role": "user", "content": modify_method_prompt(script,instructions, is_default_script)}]
     response_json = get_structured_output_with_validation(prompt_messages,output_json_schema_modify_method())
     return response_json

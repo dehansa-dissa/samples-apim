@@ -1,5 +1,5 @@
 def generate_mocks_prompt(config):
-    prompt = """Generate ES3 JavaScript for rhinojs to mock OpenAPI from: the given OpenAPI Specification
+  prompt = """Generate ES3 JavaScript for rhinojs to mock OpenAPI from: the given OpenAPI Specification
 
 Instructions:
 - Use mc.getProperty() and mc.getPayloadJSON() for request data.
@@ -71,33 +71,33 @@ if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
 While making sure the Functionality is 100% correct as the first priority
 """
 
-    if (config.get('instructions')):
-        prompt = prompt + f"""
-            Try to Do it according to the following Instructions as well:
-            {config.get('instructions')}
-            """
+  if (config.get('instructions')):
+    prompt = prompt + f"""
+        Try to Do it according to the following Instructions as well:
+        {config.get('instructions')}
+        """
     
-    return prompt
+  return prompt
 
 def generate_mocks_sys_msg(spec: dict, config: str) -> str:
-    return f"Design a scalable, secure, and well-documented mock API for testing for the OpenAPI Specification {spec}, ensuring ease of use and maintenance."
+  return f"Design a scalable, secure, and well-documented mock API for testing for the OpenAPI Specification {spec}, ensuring ease of use and maintenance."
 
 def fix_schema_prompt(response):
-    return f"""
+  return f"""
   The given response has a schema issue. Please fix the schema to ensure it is valid and adheres to the Schema Given below.
   Dont change the functionality of the code
   The response is:
   {response}
     """
 
-def modify_method_prompt(script, instructions):
-    prompt = f"""Modify the given ES3 JavaScript script for rhinojs to update the behavior of an existing OpenAPI mock method based on the provided context.
-
+def modify_method_prompt(script, instructions, is_default_script):
+  prompt = f"""Modify the given ES3 JavaScript script for rhinojs to update the behavior of an existing OpenAPI mock method based on the provided context.
 Instructions:
 - Update the script to align with the Instructions: '{instructions}'.
-"""
-    prompt = prompt + """
 - If the instructions cannot be fully achieved, prioritize returning a functioning and correct script over strictly adhering to the context.
+"""
+  if (not is_default_script):
+    prompt = prompt + """
 - Ensure the script adheres to the following rules:
   - Use mc.getProperty() and mc.getPayloadJSON() for request data.
   - Access path params via mc.getProperty('uri.var.{paramName}').
@@ -111,18 +111,18 @@ Instructions:
   - Ensure the mock server behaves like a real one.
   - Use == for comparisons instead of ===.
   - Default to application/json for Accept type if /*/ is provided.
-- Maintain the structure and logic of the original script while incorporating the new instructions.
-
-Expected Output Format:
-{{ "modified_script": "The modified script" }}
+  - Maintain the structure and logic of the original script while incorporating the new instructions.
 """
     prompt = prompt + f"""
+Expected Output Format:
+{{ "modified_script": "The modified script" }}
+
 The already existing script is:
 {script}
 
 make sure to keep the functionality 100% correct as the first priority
 
-since all of the other endpoint scripts are there dont make changes that will cause runtime errors or db structure changes
+since all of the other endpoint scripts are already there, dont make changes that will cause runtime errors or db structure changes
 
 Expected Output:
 - A modified script that reflects the new instructions (if possible) and adheres to the above rules.
@@ -130,6 +130,29 @@ Expected Output:
 - Modification to the structure of the code should be minimal and only be done to achive the instructions
 """
     return prompt
+  else:
+    prompt = prompt + """
+- Ensure the script adheres to the following rules:
+  - Only Change the contents in the response or response codes don't change any other structures.
+  - Maintain the structure and logic of the original script while incorporating the new instructions.
+"""
+    prompt = prompt + f"""
+Expected Output Format:
+{{ "modified_script": "The modified script" }}
+
+The already existing script is:
+{script}
+
+make sure to keep the functionality 100% correct as the first priority
+
+dont make changes that will cause runtime errors
+
+Expected Output:
+- A modified script that reflects the new instructions (if possible) and adheres to the above rules.
+- If the instructions cannot be fully achieved, the output must still be a functioning and correct script.
+- Modification to the structure of the code should be minimal and only be done to achive the instructions
+"""
+    return prompt 
 
 def modify_method_sys_msg(method, path, method_spec):
     return f"Modify the script for the {method.upper()} method at the {path} endpoint based on the OpenAPI Specification part {method_spec}. Ensure the script is functional, secure, and behaves like a real API, while supporting scalability and maintainability."
@@ -225,6 +248,3 @@ While making sure the Functionality is 100% correct as the first priority
             """
     
     return prompt
-
-def generate_mocks_sim_resource_sys_msg(config, path):
-    return
