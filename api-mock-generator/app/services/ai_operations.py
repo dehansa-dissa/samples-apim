@@ -1,6 +1,6 @@
 from app.utils.helpers import get_simplified_spec,output_json_schema_generate_mocks,output_json_schema_modify_method,output_json_schema_generate_mocks_sim_resource,validate_schema, batch_paths_by_method_count
 from app.utils.ai_client import get_structured_output_with_validation,fix_schema
-from app.utils.prompts import generate_mocks_sys_msg,generate_mocks_prompt,modify_method_prompt,modify_method_sys_msg, generate_mocks_sim_resource_prompt
+from app.utils.prompts import generate_mocks_sys_msg,generate_mocks_prompt,modify_method_prompt,modify_method_sys_msg, generate_mocks_batch_prompt
 import time
 import json
 
@@ -23,7 +23,7 @@ def generate_mock_scripts(open_api_spec, config, batch_size = 15):
         def generate_mockDB():
             print("Generating mockDB...")
             prompt_messages = [{"role": "system", "content": sys_msg},
-                            {"role": "user", "content": generate_mocks_sim_resource_prompt(config, ["mockDB"])}]
+                            {"role": "user", "content": generate_mocks_batch_prompt(config, ["mockDB"])}]
             mockDB_json = get_structured_output_with_validation(prompt_messages,
                                                                 output_json_schema_generate_mocks_sim_resource(paths, ["mockDB"]))
             return mockDB_json
@@ -38,7 +38,7 @@ def generate_mock_scripts(open_api_spec, config, batch_size = 15):
         def process_resource(paths_batch):
             print(f"Generating mock script for paths: {paths_batch}")
             prompt_messages = [{"role": "system", "content": sys_msg},
-                            {"role": "user", "content": generate_mocks_sim_resource_prompt(config, paths_batch, mockDB_json)}]
+                            {"role": "user", "content": generate_mocks_batch_prompt(config, paths_batch, mockDB_json)}]
             response_json = get_structured_output_with_validation(prompt_messages,
                                                                 output_json_schema_generate_mocks_sim_resource(paths, paths_batch))
             time.sleep(1)

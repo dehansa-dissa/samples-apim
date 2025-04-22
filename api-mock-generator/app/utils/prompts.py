@@ -13,7 +13,7 @@ Instructions:
 - Do not use keywords for var names like name, event etc...
 - make sure when reading any variable if it is undefined then handle that error never call a operand without checking if it is defined
 - Use only loops (never use find, filter, map, reduce, spread like {{...orders.id}}).
-- Avoid return; use break to exit loops when needed but ensure required payload and http_sc is set correctly.
+- Avoid return; use break to exit loops when needed but ensure required payload and HTTP_SC is set correctly.
 - Validate all requests and payloads.
 - Assign responses via mc.setProperty() and mc.setPayloadJSON().
 - Ensure mock server behaves like a real one and the implementation is simple.
@@ -105,13 +105,31 @@ Instructions:
   - Persist changes to mockDB using mc.getProperty('mockDB') and mc.setProperty('mockDB', JSON.stringify(db)).
   - Handle all status codes and support both JSON/XML responses.
   - Use only loops (never use find, filter, map, reduce, or spread like {{...orders.id}}).
-  - Avoid return; use break to exit loops when necessary, ensuring payload and http_sc are set correctly.
+  - Avoid return; use break to exit loops when necessary, ensuring payload and HTTP_SC are set correctly.
+  - Do not use break; other than inside loops
   - Validate all requests and payloads.
   - Assign responses via mc.setProperty() and mc.setPayloadJSON().
   - Ensure the mock server behaves like a real one.
   - Use == for comparisons instead of ===.
   - Default to application/json for Accept type if /*/ is provided.
   - Maintain the structure and logic of the original script while incorporating the new instructions.
+
+Example Output:
+{{ "modified_script": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
+if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
+  mc.setProperty('CONTENT_TYPE', accept);\\n
+  var id = parseInt(mc.getProperty('uri.var.petId'), 10);\\n
+  var db = JSON.parse(mc.getProperty('mockDB') || '{{}}');\\n
+  var pet = null;\\n
+  for (var i = 0; i < (db.pets || []).length; i++) {{\\n
+    if (db.pets[i].id == id) {{\\n
+      pet = db.pets[i];\\n
+      break;\\n
+    }}\\n
+  }}\\n
+  mc.setPayloadJSON(pet || {{ message: 'Pet not found' }});\\n
+  mc.setProperty('HTTP_SC', pet ? '200' : '404');\\n
+"}}
 """
     prompt = prompt + f"""
 Expected Output Format:
@@ -157,7 +175,7 @@ Expected Output:
 def modify_method_sys_msg(method, path, method_spec):
   return f"Modify the script for the {method.upper()} method at the {path} endpoint based on the OpenAPI Specification part {method_spec}. Ensure the script is functional, secure, and behaves like a real API, while supporting scalability and maintainability."
 
-def generate_mocks_sim_resource_prompt(config, paths_batch, mockDB=None):
+def generate_mocks_batch_prompt(config, paths_batch, mockDB=None):
   if len(paths_batch) == 1 and paths_batch[0] == "mockDB":
     # Generate prompt specifically for mockDB
     prompt = """Generate ES3 JavaScript for rhinojs to create and manage a mockDB.
@@ -190,7 +208,7 @@ Instructions:
 - Do not use keywords for var names like name, event etc...
 - make sure when reading any variable if it is undefined then handle that error never call a operand without checking if it is defined
 - Use only loops (never use find, filter, map, reduce, spread like {{...orders.id}}).
-- Avoid return; use break to exit loops when needed but ensure required payload and http_sc is set correctly.
+- Avoid return; use break to exit loops when needed but ensure required payload and HTTP_SC is set correctly.
 - Validate all requests and payloads.
 - Generate scripts only for all the methods available in the respective paths and keep the implementation simple
 """
