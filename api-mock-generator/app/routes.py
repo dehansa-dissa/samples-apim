@@ -11,7 +11,7 @@ def generate_mock_scripts_endpoint():
     except Exception as e:
         return jsonify({"error": "Invalid JSON payload", "details": str(e)}), 400
 
-    open_api_spec = data.get('apiDefinition')
+    open_api_spec = data.get('swagger')
     config = data.get('config')
     mock_scripts = generate_mock_scripts(open_api_spec, config)
     return mock_scripts, 201
@@ -27,7 +27,7 @@ def modify_method_endpoint():
     if not data:
         return jsonify({"error": "No JSON payload provided"}), 400
 
-    open_api_spec = data.get('apiDefinition')
+    open_api_spec = data.get('swagger')
     config = data.get('config')
     path = config.get('modify').get('path')
     method = config.get('modify').get('method')
