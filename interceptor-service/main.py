@@ -19,6 +19,7 @@ import tiktoken
 from jwt_validation import validate_backend_jwt
 
 api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
+graphql_api_chat_endpoint = os.getenv("GRAPHQL_API_CHAT_ENDPOINT")
 marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
 api_design_assistant_endpoint = os.getenv("API_DA_ENDPOINT")
 api_publisher_endpoint = os.getenv("API_PUBLISHER_ENDPOINT")
@@ -227,16 +228,24 @@ async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     async with aiohttp.ClientSession() as session:
         headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
-        async with session.post(api_chat_endpoint + "/prepare", headers=headers, json=req) as response:
-            if response.status == 201:
-                response_json = await response.json()
-                if 'usage' in response_json:
-                    usage = response_json.pop('usage', None)
-                    cache_key = "org:" + orgID + ":token_count"
-                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-                return response_json
-            else:
-                raise HTTPException(status_code=response.status, detail=await response.text())
+        if not req.get("GRAPHQL_SCHEMA", False):
+            async with session.post(api_chat_endpoint + "/prepare", headers=headers, json=req) as response:
+                if response.status == 201:
+                    response_json = await response.json()
+                    if 'usage' in response_json:
+                        usage = response_json.pop('usage', None)
+                        cache_key = "org:" + orgID + ":token_count"
+                        asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                    return response_json
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
+        else:
+            async with session.post(graphql_api_chat_endpoint + "/prepare", headers=headers, json=req) as response:
+                if response.status == 200:
+                    response_json = await response.json()
+                    return response_json
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
 
 
 @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
@@ -251,16 +260,24 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
         await throttle(orgID)
     async with aiohttp.ClientSession() as session:
         headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
-        async with session.post(api_chat_endpoint + "/chat", headers=headers, json=req) as response:
-            if response.status == 201:
-                response_json = await response.json()
-                if 'usage' in response_json:
-                    usage = response_json.pop('usage', None)
-                    cache_key = "org:" + orgID + ":token_count"
-                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-                return response_json
-            else:
-                raise HTTPException(status_code=response.status, detail=await response.text())
+        if req.get("apiType") == "REST" or req.get("apiType") == "HTTP":
+            async with session.post(api_chat_endpoint + "/chat", headers=headers, json=req) as response:
+                if response.status == 201:
+                    response_json = await response.json()
+                    if 'usage' in response_json:
+                        usage = response_json.pop('usage', None)
+                        cache_key = "org:" + orgID + ":token_count"
+                        asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                    return response_json
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
+        elif req.get("apiType") == "GraphQL" or req.get("apiType") == "GRAPHQL":
+            async with session.post(graphql_api_chat_endpoint + "/chat", headers=headers, json=req) as response:
+                if response.status == 200:
+                    response_json = await response.json()
+                    return response_json
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
 
 @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
 async def chat(req: dict, x_jwt_assertion: str = Header(None)):
