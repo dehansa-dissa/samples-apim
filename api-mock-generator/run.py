@@ -1,6 +1,4 @@
-from app import create_app
-
-app = create_app()
+import uvicorn
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=app.config['DEBUG'])
+    uvicorn.run('app:create_app', host='0.0.0.0', port=8000, log_level="info", reload=True)
