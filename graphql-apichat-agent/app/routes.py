@@ -2,6 +2,7 @@ from fastapi import APIRouter, Header, Request
 from typing import Union
 from app.models import *
 from app.services import process_graphql_sdl, create_chat_agent
+from app.cache import redis_client
 
 router = APIRouter()
 
@@ -30,6 +31,18 @@ async def graphql_chat(
     payload = await response.json()
     response = await create_chat_agent(payload, apiChatRequestId)
     return response
+
+@router.get("/health", status_code=200)
+async def health_check():
+    """
+    Handles health check requests.
+    """
+    try:
+        redis_client.ping()
+        return {"status": "OK"}
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e)}
+    
     
     
     
