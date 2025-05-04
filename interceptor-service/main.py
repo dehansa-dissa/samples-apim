@@ -235,7 +235,9 @@ async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
                     if 'usage' in response_json:
                         usage = response_json.pop('usage', None)
                         cache_key = "org:" + orgID + ":token_count"
-                        asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                        asyncio.create_task(update_redis_cache(
+                            cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
+                        ))
                     return response_json
                 else:
                     raise HTTPException(status_code=response.status, detail=await response.text())
