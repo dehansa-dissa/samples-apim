@@ -264,7 +264,7 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
         await throttle(orgID)
     async with aiohttp.ClientSession() as session:
         headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
-        if req.get("apiType") == "REST" or req.get("apiType") == "HTTP":
+        if req.get("apiType") == "HTTP":
             async with session.post(api_chat_endpoint + "/chat", headers=headers, json=req) as response:
                 if response.status == 201:
                     response_json = await response.json()
@@ -277,7 +277,7 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
                     return response_json
                 else:
                     raise HTTPException(status_code=response.status, detail=await response.text())
-        elif req.get("apiType") == "GraphQL" or req.get("apiType") == "GRAPHQL":
+        elif req.get("apiType") == "GRAPHQL":
             async with session.post(graphql_api_chat_endpoint + "/chat", headers=headers, json=req) as response:
                 if response.status == 200:
                     response_json = await response.json()
