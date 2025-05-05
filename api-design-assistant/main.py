@@ -1,5 +1,5 @@
 """
- Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com). All Rights Reserved.
+  Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com). All Rights Reserved.
 
   This software is the property of WSO2 LLC. and its suppliers, if any.
   Dissemination of any information or reproduction of any material contained
@@ -9,401 +9,421 @@
   this license, please see the license as well as any agreement you’ve
   entered into with WSO2 governing the purchase of this software and any
 """
-from flask import Flask, request
-from flask_cors import CORS
+import redis
+import asyncio
+import openai
 import json
 import yaml
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from prompts import (
-    prompt_template_to_validate_query,
-    check_for_general_questions_prompt,
-    answer_general_questions_prompt,
-    prompt_template_to_generate_spec,
-    chatbot_prompt_template_generate_suggestions,
-    identify_modifications_prompt,
-    prompt_template_to_suggest_api_type,
-    missing_values_prompt_template,
-    chatbot_prompt_template_apiUsecase,
-    chatbot_prompt_template_modify_openapi,
-    chatbot_prompt_template_graphql
+    check_user_input_validity,
+    identify_api_type,
+    check_for_spec_generation_request,
+    answer_general_question,
+    generate_openapi_spec,
+    generate_graphql_spec,
+    generate_asyncapi_spec
 )
-from config import r, llm, required_properties
+from config import r, llm
+from graphql import parse, validate, build_schema, GraphQLError
 
-app = Flask(__name__)
-CORS(app)
+app = FastAPI(
+    title="WSO2 APIM API Design Assistant",
+    description="Backend for WSO2 APIM API Design Assistant",
+    version="0.1.0",
+    license_info={"name": "Apache 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["POST"],
+    allow_headers=["*"]
+)
+
+# Defines the expected structure of incoming JSON payloads to the chat endpoint
+class ChatInput(BaseModel):
+    text: str
+    sessionId: str
 
 
-# Validates user input
-def validate_user_input(data):
-    if data is None:
+# Validates the JSON payload
+async def validate_user_input(data: dict):
+    """
+    Validates the user input JSON payload for required fields.
+
+    Args:
+        data (dict): The request body containing user input.
+
+    Returns:
+        tuple: A tuple of (response: dict, status_code: int)
+            - If validation fails, returns an error message and appropriate HTTP status code.
+            - If validation passes, returns (None, 200).
+    """
+    if not data:
         return {"error": "Request body must be in JSON format."}, 415
-    
-    if 'text' not in data:
-        return {"error": "Invalid request. The 'text' field is missing or incorrectly named."}, 400
-    if not data.get('text', '').strip():
+    if 'text' not in data or not data['text'].strip():
         return {"error": "Please provide the details of the API you would like to create."}, 400
-
-    if 'sessionId' not in data or not data['sessionId']:
-        return {"error": "Invalid request. The 'sessionId' field is missing or incorrectly named."}, 400
-    if not data.get('sessionId', '').strip():
+    if 'sessionId' not in data or not data['sessionId'].strip():
         return {"error": "Please enter a Session ID."}, 400
-
     return None, 200
 
 
-# Retrieves data stored in Redis for a given task ID
-def get_task_data(session_id):
-    task_data = r.get(session_id)
-    return json.loads(task_data) if task_data else {"state": "START", "chat_history": [], "specification": "", "api_type": "", "paths":['No resources']}
+# Retry logic for Redis operations
+async def retry_redis_operation(func, *args, max_retries=3, delay=2, **kwargs):
+    """
+    Executes a Redis operation with retry logic in case of connection failures.
+
+    Parameters:
+        func (Callable): The Redis operation to execute.
+        *args: Positional arguments to pass to the Redis operation.
+        max_retries (int): Maximum number of retry attempts.
+        delay (int or float): Delay (in seconds) between retries.
+        **kwargs: Keyword arguments to pass to the Redis operation.
+
+    Returns:
+        Result of the Redis operation if successful.
+
+    Raises:
+        Exception: If the operation fails after the maximum number of retries.
+    """
+    retries = 0
+    while retries < max_retries:
+        try:
+            return await func(*args, **kwargs)
+        except redis.exceptions.ConnectionError as e:
+            retries += 1
+            if retries >= max_retries:
+                raise Exception(f"Redis operation failed after {max_retries} retries due to: {e}")
+            # Waits for 2 seconds before retrying
+            await asyncio.sleep(delay)
 
 
-# Updates data stored in Redis for a given task ID  
-def update_task_data(session_id, state=None, chat_history=None, specification=None, api_type=None, paths=None):
-    task_data = get_task_data(session_id)
+# Retrieves data stored in Redis for a given session ID
+async def get_task_data(session_id):
+    """
+    Retrieves task-related data from Redis for the specified session ID.
+
+    If no data exists for the session ID, a default structure is returned.
+
+    Args:
+        session_id (str): The session ID used as the Redis key.
+
+    Returns:
+        dict: A dictionary containing task state, chat history, specification, API type, and paths.
+    """
+    async def redis_get():
+        task_data = await r.get(session_id)
+        return json.loads(task_data) if task_data else {
+            "state": "START",
+            "chat_history": [],
+            "specification": "",
+            "api_type": "",
+            "paths": ['No resources']
+        }
     
-    if state:
-        task_data["state"] = state
-    if chat_history is not None:
-        task_data["chat_history"] = chat_history
-    if specification is not None:
-        task_data["specification"] = specification
-    if api_type is not None:
-        task_data["api_type"] = api_type
-    if paths is not None:
-        task_data["paths"] = paths
+    return await retry_redis_operation(redis_get)
+
+
+# Updates data stored in Redis for a given session ID  
+async def update_task_data(session_id, state=None, chat_history=None, specification=None, api_type=None, paths=None):
+    """
+    Updates task-related data in Redis for the specified session ID.
+
+    Only the fields provided (non-None) are updated. The updated data is set to expire after 15 minutes.
+
+    Args:
+        session_id (str): The session ID used as the Redis key.
+        state (str, optional): New task state.
+        chat_history (list, optional): Updated chat history.
+        specification (str, optional): Updated API specification.
+        api_type (str, optional): Type of API (e.g., REST, GraphQL).
+        paths (list, optional): List of resource paths.
+
+    Returns:
+        None
+    """
+    async def redis_set():
+        task_data = await get_task_data(session_id)
+        if state: 
+            task_data["state"] = state
+        if chat_history is not None: 
+            task_data["chat_history"] = chat_history
+        if specification is not None: 
+            task_data["specification"] = specification
+        if api_type is not None: 
+            task_data["api_type"] = api_type
+        if paths is not None: 
+            task_data["paths"] = paths
+        
+        await r.setex(session_id, 900, json.dumps(task_data))
     
-    r.setex(session_id, 900, json.dumps(task_data))
+    await retry_redis_operation(redis_set)
 
 
-# Invokes LLM to check user's query's validity'
-def validate_query_content(user_input, chat_history):
-    prompt_to_validate_query = prompt_template_to_validate_query.format(user_input=user_input, chat_history=chat_history)
-    llm_response = llm.invoke(prompt_to_validate_query)
-    response = llm_response.content.strip()
+# Invokes LLM and handles errors
+async def async_llm_invoke(prompt, max_retries=3, delay=2):
+    """
+    Asynchronously invokes the LLM with the given prompt, retrying on failure.
 
-    if response == "None":
-        response = None
+    Retries are triggered for rate limiting, timeout, or connection errors.
 
-    return response
+    Args:
+        prompt (str): The prompt to send to the LLM.
+        max_retries (int): Maximum number of retry attempts.
+        delay (int): Delay in seconds between retries.
+
+    Returns:
+        Any: The response from the LLM if successful.
+
+    Raises:
+        Exception: If all retries fail, an exception with the final error is raised.
+    """
+    retries = 0
+    while retries < max_retries:
+        try:
+            return await asyncio.to_thread(llm.invoke, prompt)
+        except (openai.RateLimitError, openai.APIConnectionError, openai.Timeout) as e:
+            retries += 1
+            if retries >= max_retries:
+                raise Exception(f"Failed after {max_retries} retries due to: {e}")
+            # Waits for 2 seconds before retrying
+            await asyncio.sleep(delay)
+
+
+# Invokes LLM to check user's query's validity
+async def validate_query_content(user_input, chat_history):
+    prompt = check_user_input_validity.format(user_input=user_input, chat_history=chat_history)
+    response = await async_llm_invoke(prompt)
+    return response.content.strip()
 
 
 # Invokes LLM to suggest a type of API for the given use case
-def suggest_api_type(user_input, chat_history):   
-    prompt_to_suggest_api_type = prompt_template_to_suggest_api_type.format(user_input=user_input, history=chat_history)
-    response = llm.invoke(prompt_to_suggest_api_type)
-    answer_text = response.content.strip()
-
-    try:
-        data = json.loads(answer_text)
-        api_type = data.get("api_type", "")
-        api_type_suggestion = data.get("api_type_suggestion", "")
-
-        return api_type, api_type_suggestion
-    
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse JSON: {e}")
-        return None
+async def suggest_api_type(user_input, chat_history):
+    prompt = identify_api_type.format(user_input=user_input, history=chat_history)
+    response = await async_llm_invoke(prompt)
+    return response.content.strip()
 
 
-# Invokes LLM to ask the user for the missing properties
-def generate_missing_values_prompt(api_type, chat_history):
-    properties = required_properties.get(api_type, [])
+# Invokes LLM to check user's query if spec generation is requested
+async def check_for_spec_gen_request(user_input, chat_history, specification):
+    prompt = check_for_spec_generation_request.format(user_input=user_input, chat_history=chat_history, specification=specification)
+    response = await async_llm_invoke(prompt)
+    return response.content.strip()
 
-    # If the api_type is not found, fallback to a default list
-    if not properties:
-        properties = ["name", "version"]
 
-    properties_str = ", ".join(properties)
-
-    missing_values_prompt = missing_values_prompt_template.format(api_type=api_type, history=chat_history, allproperties=properties_str)
-    response = llm.invoke(missing_values_prompt)
-    missing_values = response.content.strip()
-
-    return missing_values
+# Invokes LLM to answer user's general question
+async def form_answer_general_question(user_input, chat_history, specification):
+    prompt = answer_general_question.format(user_input=user_input, chat_history=chat_history, specification=specification)
+    response = await async_llm_invoke(prompt)
+    return response.content.strip()
 
 
 # Invokes LLM to generate the spec according to API type and provided information
-def generate_spec(api_type, final_input, chat_history, specification=None, modification_statements=None, yaml_validation_error = None):
-    if api_type == "REST":
-        prompt_with_history = chatbot_prompt_template_modify_openapi.format(final_input=final_input, history=chat_history, specification = specification, modification_statements=modification_statements, yaml_validation_error=yaml_validation_error)
+async def generate_spec(api_type, final_input, chat_history, specification=None, schema_validation_error=None, attempt=1, max_attempts=10):
+    """
+    Generates an API specification using an LLM based on the given API type and user input.
 
-    elif api_type == "GraphQL":
-        prompt_with_history = chatbot_prompt_template_graphql.format(final_input=final_input, history=chat_history, specification = specification, modification_statements=modification_statements)
+    Args:
+        api_type (str): The type of API (e.g., "REST", "GraphQL", "WebSocket", etc.).
+        final_input (str): The processed user input/query.
+        chat_history (str): Chat history for conversational context.
+        specification (str, optional): Existing spec to refine or use for context.
+        schema_validation_error (Exception, optional): Previous validation error (if retrying).
+        attempt (int, optional): Current retry attempt.
+        max_attempts (int, optional): Maximum allowed retry attempts.
 
-    else:
-        prompt_with_history = prompt_template_to_generate_spec.format(
-            api_type=api_type, 
-            final_input=final_input, 
-            history=chat_history, 
-            specification = specification,
-            modification_statements=modification_statements,
-            yaml_validation_error=yaml_validation_error
-        )
-    
-    response = llm.invoke(prompt_with_history)
-    answer_text = response.content.strip()
-
+    Returns:
+        tuple: (generated_spec: str, resources: list, chat_response: str)
+    """
     try:
-        data = json.loads(answer_text)
+        # Map each api_type to its corresponding prompt template
+        template_map = {
+            "REST": generate_openapi_spec,          # Generates OpenAPI Spec when api_type is "REST"
+            "GraphQL": generate_graphql_spec,       # Generates GraphQL Schema Definition when api_type is "GraphQL"
+            "WebSocket": generate_asyncapi_spec,    # Generates AsyncAPI Definition when api_type is either "WebSocket" or "WebSub" or "SSE"
+            "WebSub": generate_asyncapi_spec,
+            "SSE": generate_asyncapi_spec,
+        }
+
+        # Default to generating OpenAPI Spec if api_type not in the map
+        template = template_map.get(api_type, generate_openapi_spec)
+
+        prompt = template.format(
+            api_type=api_type,
+            final_input=final_input,
+            history=chat_history,
+            specification=specification,
+            schema_validation_error=schema_validation_error
+        )
+
+        llm_response = await async_llm_invoke(prompt)
+        answer_text = llm_response.content.strip()
+
+
+        # Parses LLM response as JSON so the spec, resoures list and chat response can be extracted
+        try:
+            data = json.loads(answer_text)
+        except json.JSONDecodeError as e:
+            if attempt < max_attempts:
+                # Regenerates spec if there is a JSON error when parsing
+                return await generate_spec(api_type, final_input, chat_history, None, e, attempt + 1)
+            return "Failed to parse LLM response as JSON.", ['No Resources'], "Apologies for the inconvenience. It seems that something went wrong with the API Design Assistant. Please try again."
+
+        # Extracts the spec, resoures list and chat response
         generated_spec = data.get("generated_spec", "")
         resources = data.get("resources", [])
+        chat_response = data.get("chat_response", "")
 
+
+        # Validates YAML format in the OpenAPI Spec and AsyncAPI Definition
         if api_type != "GraphQL":
             try:
                 yaml.safe_load(generated_spec)
             except yaml.YAMLError as e:
-                generate_spec(api_type, final_input, chat_history, specification, modification_statements, e)
+                if attempt < max_attempts:
+                    # Regenerates spec if there is a YAML validation error
+                    return await generate_spec(api_type, final_input, chat_history, None, e, attempt + 1)
+                return generated_spec, ['No Resources'], "Apologies for the inconvenience. It seems that something went wrong with the API Design Assistant. Please try again."
+        
+        # Performs GraphQL schema validation for the GraphQL Schema Definition
+        else:
+            try:
+                # Builds a GraphQL schema from the generated specification string
+                schema = build_schema(generated_spec)
 
-        return generated_spec, resources
-    
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse JSON: {e}")
-        return None
+                # Validate the schema by executing a simple introspection query (`__typename`) to ensure it is syntactically and semantically correct
+                validate(schema, parse("{ __typename }"))
+            except (GraphQLError, Exception) as e:
+                if attempt < max_attempts:
+                    # Regenerates spec if there is a GraphQL schema validation error
+                    return await generate_spec(api_type, final_input, chat_history, None, e, attempt + 1)
+                return generated_spec, ['No Resources'], "Apologies for the inconvenience. It seems that something went wrong with the API Design Assistant. Please try again."
 
+        # Returns spec, resources and chat response successfully
+        return generated_spec, resources, chat_response
 
-# Invokes LLM to generate suggestions for more modifications
-def generate_suggestions(api_type, chat_history):
-    prompt = chatbot_prompt_template_generate_suggestions.format(api_type=api_type, history=chat_history)
-    response = llm.invoke(prompt)
-
-    suggestions = response.content.strip().lower()
-    return suggestions
-
-
-# Invokes LLM to check user's query for any modification statements
-def check_for_modifications(user_input):
-    prompt_to_check_for_modifications = identify_modifications_prompt.format(user_input=user_input)
-    response = llm.invoke(prompt_to_check_for_modifications)
-    modification_status = response.content.lower()
-    
-    modification_statements = None
-    if modification_status == "no modifications":
-        modification_statements = None
-    else:
-        modification_statements = modification_status
-
-    return modification_statements
+    except Exception:
+        return "Unexpected error during generation.", ['No Resources'], "Apologies for the inconvenience. It seems that something went wrong with the API Design Assistant. Please try again."
 
 
-# Invokes LLM to check user's query for any general questions or modifications
-def check_question_or_task(user_input, chat_history, specification):
-    prompt_to_check_for_generalQuestions = check_for_general_questions_prompt.format(user_input=user_input, chat_history=chat_history, specification=specification)
-    response = llm.invoke(prompt_to_check_for_generalQuestions)
-    question_or_task_data = response.content.strip()
+# Chat Endpoint generates the API specifications and other related details
+@app.post("/chat")
+async def generate(request: Request):
+    """
+    Handles POST requests to the /chat endpoint for generating API specifications.
 
-    question_or_task = json.loads(question_or_task_data)
-    answer_general_question = None
-    if question_or_task.get('answer') == "None":
-        answer_general_question = None
-    else:
-        answer_general_question = question_or_task.get('answer')
+    This endpoint performs the following:
+    - Validates the incoming JSON payload for required fields (`text`, `sessionId`)
+    - Retrieves session-specific data from Redis (e.g., chat history, spec, paths)
+    - Analyzes the user input to determine if it's a greeting, irrelevant text, or an API-related query
+    - If it's a valid API request, either generates an API specification or provides a relevant response
+    - Updates Redis with the current session state, including updated chat history and specification
+    - Returns a structured response including the generated API specification
 
-    general_task = None
-    if question_or_task.get('task_assigned') == "None":
-        general_task = None
-    else:
-        general_task = question_or_task.get('task_assigned')
+    Args:
+        request (Request): The incoming HTTP request containing a JSON body with `text` and `sessionId`.
 
-    return answer_general_question, general_task
+    Returns:
+        Tuple[dict, int]: A response dictionary with keys such as:
+            - `backendResponse`: Reserved for future backend-generated content (currently always None)
+            - `isSuggestions`: Indicates if the response is a suggestion
+            - `typeOfApi` / `api_type`: The determined or selected API type (e.g., REST, GraphQL)
+            - `code` / `specification`: The generated OpenAPI specification if available
+            - `paths`: List of resource paths extracted/generated
+            - `apiTypeSuggestion`: Suggestion or response message from LLM
+            - `missingValues`: Placeholder for missing values in spec generation
+            - `state`: Session state, typically "COMPLETE" if an API spec was successfully generated
 
+        HTTP status code: 200 for success, or other status codes returned by `validate_user_input`.
+    """
+    data = await request.json()
 
-# Invokes LLM to answer user's general question
-def form_answer_general_question(user_input, chat_history, specification):
-    prompt_to_answer_general_questions = answer_general_questions_prompt.format(user_input=user_input, chat_history=chat_history, specification=specification)
-    response = llm.invoke(prompt_to_answer_general_questions)
-    answer_to_question = response.content.strip()
-    return answer_to_question
-
-
-# Method to read the payload example text file
-def read_file(file_path):
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            content = file.read()
-        return content
-    except FileNotFoundError:
-        print(f"Error: File not found at {file_path}")
-        return None
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
-
-
-# Invoke LLM to generate the payload for the API
-def generate_payload(api_type, chat_history, specification):
-    if not isinstance(api_type, str):
-        api_type = str(api_type)
-
-    if api_type.upper() == "REST":
-        file_path = 'restPayloadExample.txt'
-
-    elif api_type == "GraphQL":
-        file_path = 'graphqlPayloadExample.txt'
-
-    elif api_type == "WebSocket":
-        file_path = 'websocketPayloadExample.txt'
-
-    elif api_type == "WebSub":
-        file_path = 'websubPayloadExample.txt'
-
-    elif api_type == "SSE":
-        # file_path = 'ssePayloadExample.txt'
-        file_path = 'restPayloadExample.txt'
-
-    content = read_file(file_path)
-
-    prompt_with_history = chatbot_prompt_template_apiUsecase.format(history=chat_history, specification=specification, api_type=api_type, content=content)
-    response = llm.invoke(prompt_with_history)
-    gen_payload = response.content
-
-    save_payload('generated_payload.json', gen_payload)
-    return gen_payload
-
-
-# Saves payload as a file
-def save_payload(filename, content):
-    try:
-        with open(filename, 'w') as yaml_file:
-            yaml_file.write(content)
-    except IOError as e:
-        print(f"Failed to save payload: {e}")
-
-
-# Displays payload in the console
-def display_payload(content):
-    for line in content.split('\n'):
-        print(line)
-
-
-# Endpoint which calls relevant methods for generating the specifications based on the states
-@app.route('/chat', methods=['POST'])
-def generate():
-    data = request.get_json(silent=True)
-    
-    error_response, status_code = validate_user_input(data)
+    # Validates the JSON payload
+    error_response, status_code = await validate_user_input(data)
     if status_code != 200:
         return error_response, status_code
-    
-    user_input = data.get('text', '').strip()
-    session_id = data.get('sessionId', '')
-    
-    task_data = get_task_data(session_id)
+
+    # Extracts text and session ID from the JSON payload
+    user_input = data["text"].strip()
+    session_id = data["sessionId"].strip()
+
+    # Retrieves data stored in Redis for a given session ID and extracts the api type, specification, paths and chat history
+    task_data = await get_task_data(session_id)
     api_type = task_data.get("api_type", "")
-    specification = task_data["specification"]
-    paths = task_data["paths"]
-    chat_history = task_data["chat_history"]
-    
-    update_task_data(session_id, chat_history=chat_history)
+    specification = task_data.get("specification", "")
+    paths = task_data.get("paths", [])
+    chat_history = task_data.get("chat_history", [])
 
-    response = validate_query_content(user_input, chat_history)
-    if response is not None:
-        chat_history.append({"user_input": user_input})
-        chat_history.append({"response to above user_input": response})
+    # Determines whether the user's query is a greeting, nonsensical input or an API related prompt
+    validation_response = await validate_query_content(user_input, chat_history)
 
-        if specification == "":
-            return {
-                "backendResponse": None,
-                "isSuggestions": False,
-                "typeOfApi": '',
-                "code": '',
-                "paths": ['No Resources'],
-                "apiTypeSuggestion": response,
-                "missingValues": None,
-                "state": None
-            }, 200
-        else:
-            return {
-                "backendResponse": None,
-                "isSuggestions": False,
-                "typeOfApi": api_type,
-                "code": specification,
-                "paths": paths,
-                "apiTypeSuggestion": response,
-                "missingValues": None,
-                "state": "COMPLETE"
-            }, 200
-    
-    if task_data['state'] == "START":
-        api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
-        chat_history.append({"user_input": user_input})
-        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-        update_task_data(session_id, chat_history=chat_history, state="IN_PROGRESS", api_type=api_type)
+    # Returns response when user's query is a greeting or nonsensical input
+    if validation_response != 'API prompt':
+        chat_history += [
+            {"user_input": user_input},
+            {"response to above user_input": validation_response}
+        ]
+        await update_task_data(session_id, chat_history=chat_history)
 
-        specification, paths = generate_spec(api_type, user_input, chat_history, None, None, None)
-        update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification, paths=paths)
-        
         return {
-            "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
-            "isSuggestions": False,                                                  # set to False so it does not display suggestions on UI
-            "typeOfApi": api_type,
-            "code": specification,
-            "paths": paths,
-            "apiTypeSuggestion": api_type_suggestion,
-            "missingValues": None,                                                   # set to None so it does not display two chat bubble on the UI
-            "state": "COMPLETE"
-        }, 200
-    
-    elif task_data['state'] == "COMPLETE":
-        answer_general_question, general_task = check_question_or_task(user_input, chat_history, specification)
-
-        response = {
             "backendResponse": None,
             "isSuggestions": False,
-            "typeOfApi": api_type,
-            "code": specification,
-            "paths": paths,
+            "typeOfApi": api_type if specification else '',
+            "code": specification if specification else '',
+            "paths": paths if specification else ['No Resources'],
+            "apiTypeSuggestion": validation_response,
             "missingValues": None,
-            "state": "COMPLETE"
+            "state": "COMPLETE" if specification else None
         }
         
-        if general_task is not None:
-            chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-            api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
 
-            chat_history.append({"user_input": user_input})
-            chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-            update_task_data(session_id, chat_history=chat_history, api_type=api_type)
-            
-            modification_check_result = check_for_modifications(user_input)
-            specification, paths = generate_spec(api_type, user_input, chat_history, specification, modification_check_result, None)
-            update_task_data(session_id, specification=specification, paths=paths)
-            
-            response["apiTypeSuggestion"] = (
-                answer_general_question
-                if answer_general_question
-                else api_type_suggestion
-            )
-            
-        if answer_general_question is not None:
-            answer_to_question = form_answer_general_question(user_input, chat_history, specification)
-            chat_history.extend([{"user's general question": user_input}, {"response to user's general question": answer_to_question}])
-            update_task_data(session_id, chat_history=chat_history)
-       
-            response["apiTypeSuggestion"] = answer_to_question
-            
+    # Determines whether the user's API related prompt requests for an API specification generation
+    is_spec_generation_requested = await check_for_spec_gen_request(user_input, chat_history, specification)
+
+    # Response template
+    response = {
+        "backendResponse": None,
+        "isSuggestions": False,
+        "missingValues": None
+    }
+
+    # Generates API spec and other details when user's prompt requests for an API specification generation
+    if is_spec_generation_requested == "spec generation required":
+        # Invokes LLM to suggest a suitable API type for the given use case and saves it in chat history
+        chat_history += [{"user_input": user_input}, {"API TYPE": f"Create this type of API: {api_type}"}]
+        api_type = await suggest_api_type(user_input, chat_history)
+        chat_history += [{"user_input": user_input}, {"API TYPE": f"Create this type of API: {api_type}"}]
+
+        # Invokes LLM to generate the API spec, paths and chat response according to the provided information
+        specification, paths, chat_response = await generate_spec(api_type, user_input, chat_history, specification)
+
+        # Adds specification, paths, api type and chat response to the response template
+        response["apiTypeSuggestion"] = chat_response
+        response["paths"] = paths
         response["typeOfApi"] = api_type
         response["code"] = specification
-        response["paths"] = paths
-        
-        return response, 200
-    
-    return {"error": "Invalid state or input"}, 400
 
+    # Generates an answer for user's prompt when it does not request for an API specification generation
+    else:
+        answer = await form_answer_general_question(user_input, chat_history, specification)
+        # Saves response to chat history and response template
+        chat_history += [{"user's general question": user_input}, {"response to user's general question": answer}]
+        response["apiTypeSuggestion"] = answer
 
-# Endpoint which calls relevant methods for creating the API payload
-@app.route('/generate-api-payload', methods=['POST'])
-def createapiinportal():
-    data = request.get_json()
-    session_id = str(data.get('sessionId', ''))
+    # Handles suitations when chat response is empty
+    if not response.get("apiTypeSuggestion"):
+        response["apiTypeSuggestion"] = "Apologies for the inconvenience. It seems that something went wrong with the API Design Assistant. Please try again with more detailed requirements."
 
-    task_data = get_task_data(session_id)
-    api_type = task_data["api_type"]
-    chat_history = task_data["chat_history"]
-    specification = task_data["specification"]
+    # Set response state to "COMPLETE" only if a valid specification was generated
+    response["state"] = "COMPLETE" if specification else None
 
-    generated_payload = generate_payload(api_type, chat_history, specification)
+    # Updates Redis with data if the session state is "COMPLETE"
+    if response["state"] == "COMPLETE":
+        await update_task_data(session_id, chat_history=chat_history, api_type=api_type, specification=specification, paths=paths, state="COMPLETE")
 
-    return json.loads(generated_payload)
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    # Returns response successfully
+    return response, 200

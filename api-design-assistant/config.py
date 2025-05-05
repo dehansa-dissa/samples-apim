@@ -9,7 +9,7 @@
   this license, please see the license as well as any agreement you’ve
   entered into with WSO2 governing the purchase of this software and any
 """
-import redis
+import redis.asyncio as redis
 import os
 import openai
 from dotenv import load_dotenv
@@ -36,40 +36,3 @@ r = redis.Redis(
     db=int(os.getenv("REDIS_DB")),
     ssl=True
 )
-
-required_properties = {
-    "REST": [
-        "name",
-        "version",
-        "context",
-        "endpoint",
-        "http methods and paths"
-    ],
-    "GraphQL": [
-        "name",
-        "version",
-        "paths",
-        "schema",
-        "queries"
-    ],
-    "WebSocket": [
-        "name",
-        "version",
-        "channel",
-        "endpoint",
-        "paths"
-    ],
-    "WebSub": [
-        "name",
-        "version",
-        "context",
-        "paths"
-    ],
-    "SSE": [
-        "name",
-        "version",
-        "context",
-        "endpoint",
-        "paths"
-    ]
-}
