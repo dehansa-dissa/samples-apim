@@ -218,6 +218,21 @@ async def count_tokens(text: str = Body(..., media_type="text/plain")):
     token_count = len(encoding.encode(text))
     return {"count": token_count}
 
+async def process_request(req: dict, headers: dict, service_url: str, orgID: str):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(service_url, headers=headers, json=req) as response:
+            if response.status in [200, 201]:
+                response_json = await response.json()
+                if 'usage' in response_json:
+                    usage = response_json.pop('usage', None)
+                    cache_key = "org:" + orgID + ":token_count"
+                    asyncio.create_task(update_redis_cache(
+                        cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
+                    ))
+                return response_json
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
+
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
 async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
     try:
@@ -226,31 +241,16 @@ async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
-    async with aiohttp.ClientSession() as session:
-        headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
-        if "openapi" in req:
-            async with session.post(api_chat_endpoint + "/prepare", headers=headers, json=req) as response:
-                if response.status == 201:
-                    response_json = await response.json()
-                    if 'usage' in response_json:
-                        usage = response_json.pop('usage', None)
-                        cache_key = "org:" + orgID + ":token_count"
-                        asyncio.create_task(update_redis_cache(
-                            cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
-                        ))
-                    return response_json
-                else:
-                    raise HTTPException(status_code=response.status, detail=await response.text())
-        elif "GRAPHQL_SCHEMA" in req:
-            async with session.post(graphql_api_chat_endpoint + "/prepare", headers=headers, json=req) as response:
-                if response.status == 200:
-                    response_json = await response.json()
-                    return response_json
-                else:
-                    raise HTTPException(status_code=response.status, detail=await response.text())
-        else:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request format. Please provide a valid OpenAPI or GraphQL schema.")
+    headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
 
+    if "openapi" in req:
+        service_url = api_chat_endpoint + "/prepare"
+    elif "GRAPHQL_SCHEMA" in req:
+        service_url = graphql_api_chat_endpoint + "/prepare"
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request format.")
+    
+    return await process_request(req, headers, service_url, orgID)
 
 @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
 async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
@@ -262,28 +262,16 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     if do_throttle == "true":
         await throttle(orgID)
-    async with aiohttp.ClientSession() as session:
-        headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
-        if req.get("apiType") == "HTTP":
-            async with session.post(api_chat_endpoint + "/chat", headers=headers, json=req) as response:
-                if response.status == 201:
-                    response_json = await response.json()
-                    if 'usage' in response_json:
-                        usage = response_json.pop('usage', None)
-                        cache_key = "org:" + orgID + ":token_count"
-                        asyncio.create_task(update_redis_cache(
-                            cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
-                        ))
-                    return response_json
-                else:
-                    raise HTTPException(status_code=response.status, detail=await response.text())
-        elif req.get("apiType") == "GRAPHQL":
-            async with session.post(graphql_api_chat_endpoint + "/chat", headers=headers, json=req) as response:
-                if response.status == 200:
-                    response_json = await response.json()
-                    return response_json
-                else:
-                    raise HTTPException(status_code=response.status, detail=await response.text())
+    headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
+    
+    if req.get("apiType") == "HTTP":
+        service_url = api_chat_endpoint + "/chat"
+    elif req.get("apiType") == "GRAPHQL":
+        service_url = graphql_api_chat_endpoint + "/chat"
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request format.")
+    
+    return await process_request(req, headers, service_url, orgID)
 
 @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
 async def chat(req: dict, x_jwt_assertion: str = Header(None)):
