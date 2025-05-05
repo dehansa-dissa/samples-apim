@@ -23,7 +23,6 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 openai.api_version = os.getenv("AZURE_CHAT_VERSION")
 openai.azure_endpoint = os.getenv("AZURE_ENDPOINT")
 
-
 llm = AzureChatOpenAI(
     model=deployment_name,
     temperature=0.1,

@@ -263,6 +263,7 @@ async def generate_spec(api_type, final_input, chat_history, specification=None,
         llm_response = await async_llm_invoke(prompt)
         answer_text = llm_response.content.strip()
 
+
         # Parses LLM response as JSON so the spec, resoures list and chat response can be extracted
         try:
             data = json.loads(answer_text)
