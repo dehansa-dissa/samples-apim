@@ -5,7 +5,7 @@ from app.utils.dev_tools import records_from_spec, rec
 
 api_router = APIRouter()
 
-@api_router.post('/ai/api-mock/generate-mocks', status_code=201)
+@api_router.post('/generate-mocks', status_code=201)
 async def generate_mock_scripts_endpoint(request: Request):
     try:
         data = await request.json()
@@ -20,7 +20,7 @@ async def generate_mock_scripts_endpoint(request: Request):
     mock_scripts = generate_mock_scripts(open_api_spec, config)
     return JSONResponse(content=mock_scripts, status_code=201)
 
-@api_router.post('/ai/api-mock/modify-method', status_code=201)
+@api_router.post('/modify-method', status_code=201)
 async def modify_method_endpoint(request: Request):
     try:
         data = await request.json()
