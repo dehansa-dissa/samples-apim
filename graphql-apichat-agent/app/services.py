@@ -1,11 +1,17 @@
 import re
+import json
 from typing import Union
 from app.models import *
 from app.cache import get_hashed_string, retrieve_cached_sdl, update_sdl_cache, retrieve_cached_graphql_test_case, update_graphql_test_case_cache
-from app.agent import GraphQLChatAgent, generate_text_with_llm
+from app.agent import GraphQLChatAgent, generate_text_with_llm, get_token_count
 
 def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQLTestPreparationResponse, ErrorInfo]:
     """Process GraphQL SDL by removing comments, descriptions, and minifying."""
+    token_counts = TokenCounts(
+        prompt_tokens=0,
+        completion_tokens=0,
+        total_tokens=0
+    )
     sdl = request["GRAPHQL_SCHEMA"]
     hashed_sdl = get_hashed_string(sdl)
     cached_sdl = retrieve_cached_sdl(hashed_sdl)
@@ -14,7 +20,8 @@ def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQL
         print("Returning cached SDL")
         return GraphQLTestPreparationResponse(
             apiSpec=SdlResponse(sdl=cached_sdl.apiSpec.sdl),
-            queries=cached_sdl.queries
+            queries=cached_sdl.queries,
+            usage=token_counts
         )
 
     # Minify SDL
@@ -27,6 +34,9 @@ def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQL
     # Generate sample queries
     query_prompt = get_query_generation_prompt(sdl)
     sample_queries = generate_text_with_llm(query_prompt)
+    token_counts.prompt_tokens = get_token_count(query_prompt)
+    token_counts.completion_tokens = get_token_count(sample_queries)
+    token_counts.total_tokens = token_counts.prompt_tokens + token_counts.completion_tokens
 
     if isinstance(sample_queries, ErrorInfo):
         return ErrorInfo(response="Error occurred during SDL processing.")
@@ -35,7 +45,8 @@ def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQL
 
     response = GraphQLTestPreparationResponse(
         apiSpec=SdlResponse(sdl=sdl),
-        queries=parsed_queries
+        queries=parsed_queries,
+        usage=token_counts
     )
     update_sdl_cache(hashed_sdl, response)
     return response
@@ -68,7 +79,11 @@ def get_query_generation_prompt(sdl: str) -> str:
 
 async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[GraphQLTestExecutionResponse, GraphQLTestCompletionResponse, InvalidResponse, ErrorInfo]:
     """Execute a single step of the GraphQL chat agent."""
-    
+    token_count = TokenCounts(
+        prompt_tokens=0,
+        completion_tokens=0,
+        total_tokens=0
+    )
     if "command" in payload and "sdl" in payload:
         payload_obj = GraphQLTestInitializationRequest(**payload)
         print("Agent Initialization Started.")
@@ -111,12 +126,14 @@ async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[Graph
     if isinstance(response, ErrorInfo):
         return InvalidResponse(
             taskStatus="TERMINATED",
-            result=response.response
+            result=response.response,
+            usage=token_count
         )
     elif isinstance(response, InvalidResponse):
         return InvalidResponse(
             taskStatus="TERMINATED",
-            result=response.result
+            result=response.result,
+            usage=response.usage
         )
     elif isinstance(response, TokenExpiredResponse):
         query= "Token expired. Please reinitialize the test case."
@@ -125,13 +142,15 @@ async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[Graph
             resource={
                 "method": "POST",
                 "path": "/",
-                "inputs": RequestBody(requestBody=ToolComponent(query=query))}
+                "inputs": RequestBody(requestBody=ToolComponent(query=query))},
+            usage=token_count
     )
     elif isinstance(response, GraphQLTestCompletionResponse):
         return GraphQLTestCompletionResponse(
             taskStatus="COMPLETED",
-            result=response.result
-    )
+            result=response.result,
+            usage=response.usage
+        )
     elif isinstance(response, TestStepResult):
         update_graphql_test_case_cache(apiChatRequestId, {
             "iteration": iteration,
@@ -145,8 +164,7 @@ async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[Graph
             resource={
                 "method": "POST",
                 "path": "/",
-                "inputs": RequestBody(requestBody=ToolComponent(query=response.result.inputs.requestBody.query))}
+                "inputs": RequestBody(requestBody=ToolComponent(query=response.result.inputs.requestBody.query))},
+            usage=response.usage
         )
-
-
-
+    

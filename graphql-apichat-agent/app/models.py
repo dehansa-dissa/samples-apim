@@ -1,7 +1,6 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Literal, Union, Any, Dict
+from pydantic import BaseModel
+from typing import Literal, Dict
 from enum import Enum
-import json
 
 class TaskStatus(str, Enum):
     IN_PROGRESS = "IN_PROGRESS"
@@ -27,9 +26,15 @@ class SampleQueryFormat(BaseModel):
     scenario: str
     query: str
 
+class TokenCounts(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
 class GraphQLTestPreparationResponse(BaseModel):
     apiSpec: SdlResponse
     queries: list[SampleQueryFormat]
+    usage: TokenCounts
 
 class ToolComponent(BaseModel):
     query: str
@@ -45,12 +50,12 @@ class GraphqlExecutionResult(BaseModel):
 class GraphQLTestExecutionResponse(BaseModel):
     taskStatus: Literal["IN_PROGRESS", "TERMINATED"]
     resource: GraphqlExecutionResult
-    # tokenCounts: TokenCounts
+    usage: TokenCounts
 
 class GraphQLTestCompletionResponse(BaseModel):
     taskStatus: Literal["COMPLETED"]
     result: str
-    # tokenCounts: TokenCounts
+    usage: TokenCounts
 
 class SdlCacheRecord(BaseModel):
     apiSpec: SdlResponse
@@ -88,6 +93,7 @@ class GraphqlToolResponse(BaseModel):
 
 class TestStepResult(BaseModel):
     result: GraphqlExecutionResult
+    usage: TokenCounts
 
 class GraphQLTestInvalidResponse(BaseModel):
     taskStatus: Literal["TERMINATED"]
@@ -99,9 +105,8 @@ class ErrorInfo(BaseModel):
 class InvalidResponse(BaseModel):
     taskStatus: Literal["TERMINATED"]
     result: str
+    usage: TokenCounts
 
 class TokenExpiredResponse(BaseModel):
     taskStatus: Literal["TOKEN_EXPIRED"]
-
- 
 
