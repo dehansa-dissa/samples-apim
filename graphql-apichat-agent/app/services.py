@@ -43,12 +43,17 @@ def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQL
     
     parsed_queries = [{"scenario": k, "query": v} for k, v in json.loads(sample_queries).items()]
 
+    cached_sdl = SdlCacheRecord(
+        apiSpec=SdlResponse(sdl=sdl),
+        queries=parsed_queries
+    )
+    update_sdl_cache(hashed_sdl, cached_sdl)
+
     response = GraphQLTestPreparationResponse(
         apiSpec=SdlResponse(sdl=sdl),
         queries=parsed_queries,
         usage=token_counts
     )
-    update_sdl_cache(hashed_sdl, response)
     return response
 
 def get_query_generation_prompt(sdl: str) -> str:
@@ -129,28 +134,8 @@ async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[Graph
             result=response.response,
             usage=token_count
         )
-    elif isinstance(response, InvalidResponse):
-        return InvalidResponse(
-            taskStatus="TERMINATED",
-            result=response.result,
-            usage=response.usage
-        )
-    elif isinstance(response, TokenExpiredResponse):
-        query= "Token expired. Please reinitialize the test case."
-        return GraphQLTestExecutionResponse(
-            taskStatus="TERMINATED",
-            resource={
-                "method": "POST",
-                "path": "/",
-                "inputs": RequestBody(requestBody=ToolComponent(query=query))},
-            usage=token_count
-    )
-    elif isinstance(response, GraphQLTestCompletionResponse):
-        return GraphQLTestCompletionResponse(
-            taskStatus="COMPLETED",
-            result=response.result,
-            usage=response.usage
-        )
+    elif isinstance(response, GraphQLTestCompletionResponse) or isinstance(response, InvalidResponse):
+        return response
     elif isinstance(response, TestStepResult):
         update_graphql_test_case_cache(apiChatRequestId, {
             "iteration": iteration,

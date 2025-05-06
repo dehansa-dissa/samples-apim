@@ -37,7 +37,7 @@ def retrieve_cached_sdl(sdl_hash: str) -> Union[SdlCacheRecord, None]:
         return SdlCacheRecord(**data)
     return None
 
-def update_sdl_cache(sdl_hash: str, cached_sdl: GraphQLTestPreparationResponse):
+def update_sdl_cache(sdl_hash: str, cached_sdl: SdlCacheRecord):
     """Update the SDL cache in Redis."""
     key = f"SDL_NAMESPACE:{sdl_hash}"
     redis_client.setex(key, REDIS_OPENAPI_KEY_EXPIRATION_TIME, cached_sdl.model_dump_json())

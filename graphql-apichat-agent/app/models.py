@@ -6,14 +6,12 @@ class TaskStatus(str, Enum):
     IN_PROGRESS = "IN_PROGRESS"
     TERMINATED = "TERMINATED"
     COMPLETED = "COMPLETED"
-    TOKEN_EXPIRED = "TOKEN_EXPIRED"
 
 class ToolType(str, Enum):
     QUERY = "QUERY"
     MUTATION = "MUTATION"
     SUBSCRIPTION = "SUBSCRIPTION"
 
-INVALID_AUTH_HTTP_CODE = 401
 APICHAT_RETRY_COUNT = 3
 
 class SdlResponse(BaseModel):
@@ -107,6 +105,4 @@ class InvalidResponse(BaseModel):
     result: str
     usage: TokenCounts
 
-class TokenExpiredResponse(BaseModel):
-    taskStatus: Literal["TOKEN_EXPIRED"]
 
