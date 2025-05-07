@@ -179,10 +179,6 @@ class GraphQLChatAgent:
             attempt += 1
 
         return ErrorInfo(response="Failed to correct query after multiple attempts.")
- 
-    def update_progress(self, step: GraphQLTestExecutionResponse):
-        """Updates the progress of the GraphQL API chat agent."""
-        self.executionHistory.append(step)
 
 def generate_text_with_llm(prompt: str):
     """Calls the Azure OpenAI GPT model to generate a response based on the given prompt."""
