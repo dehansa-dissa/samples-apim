@@ -16,6 +16,3 @@ venv/
 .idea/
 
 .env
-
-records.csv
-records_sim.csv
