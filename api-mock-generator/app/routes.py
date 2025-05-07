@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from app.services.ai_operations import generate_mock_scripts, modify_method
-from app.utils.dev_tools import records_from_spec, rec
 
 api_router = APIRouter()
 
