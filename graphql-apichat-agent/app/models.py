@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import Literal, Dict
 from enum import Enum
 
+APICHAT_RETRY_COUNT = 3
 class TaskStatus(str, Enum):
     IN_PROGRESS = "IN_PROGRESS"
     TERMINATED = "TERMINATED"
@@ -12,13 +13,11 @@ class ToolType(str, Enum):
     MUTATION = "MUTATION"
     SUBSCRIPTION = "SUBSCRIPTION"
 
-APICHAT_RETRY_COUNT = 3
+class GraphQLTestPreparationRequest(BaseModel):
+    GRAPHQL_SCHEMA: str
 
 class SdlResponse(BaseModel):
     sdl: str
-
-class GraphQLTestPreparationRequest(BaseModel):
-    GRAPHQL_SCHEMA: str
 
 class SampleQueryFormat(BaseModel):
     scenario: str
@@ -40,17 +39,17 @@ class ToolComponent(BaseModel):
 class RequestBody(BaseModel):
     requestBody: ToolComponent
 
-class GraphqlExecutionResult(BaseModel):
+class GraphQLExecutionResult(BaseModel):
     method: Literal["POST"]
     path: str="/"
     inputs: RequestBody
 
 class GraphQLTestExecutionResponse(BaseModel):
     taskStatus: Literal["IN_PROGRESS", "TERMINATED"]
-    resource: GraphqlExecutionResult
+    resource: GraphQLExecutionResult
     usage: TokenCounts
 
-class GraphQLTestCompletionResponse(BaseModel):
+class GraphQLTestCompletionResponse(BaseModel): 
     taskStatus: Literal["COMPLETED"]
     result: str
     usage: TokenCounts
@@ -90,7 +89,7 @@ class GraphqlToolResponse(BaseModel):
     query: str 
 
 class TestStepResult(BaseModel):
-    result: GraphqlExecutionResult
+    result: GraphQLExecutionResult
     usage: TokenCounts
 
 class GraphQLTestInvalidResponse(BaseModel):
@@ -105,4 +104,9 @@ class InvalidResponse(BaseModel):
     result: str
     usage: TokenCounts
 
+token_count = TokenCounts(
+    prompt_tokens=0,
+    completion_tokens=0,
+    total_tokens=0
+)
 

@@ -8,11 +8,9 @@ router = APIRouter()
 
 @router.post("/prepare", response_model=Union[GraphQLTestPreparationResponse, ErrorInfo])
 async def sdl_prepare( 
-    payload: Request,
-    apiChatRequestId: str = Header(...)
+    payload: Request
 ):
     """Handles SDL preparation requests."""
-    print("SdlPrepare called")
     payload = await payload.json()
     processed_sdl = process_graphql_sdl(payload)
     if isinstance(processed_sdl, ErrorInfo):
@@ -25,10 +23,9 @@ async def graphql_chat(
     apiChatRequestId: str = Header(...)
 ):
     """Handles GraphQL chat requests, either initializing or continuing execution."""
-    print("GraphQLChat called")
     payload = await response.json()
-    response = await create_chat_agent(payload, apiChatRequestId)
-    return response
+    response_data = await create_chat_agent(payload, apiChatRequestId)
+    return response_data
 
 @router.get("/health", status_code=200)
 async def health_check():
@@ -37,7 +34,6 @@ async def health_check():
         if not redis_client.ping():
             raise Exception("Redis ping failed.")
     except Exception as e:
-        print(f"Liveness probe failed: {e}")
         raise HTTPException(status_code=500, detail="Liveness probe failed.")
     return {"status": "ok"}
      

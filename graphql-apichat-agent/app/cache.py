@@ -8,13 +8,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Redis connection setup
 REDIS_HOST = os.getenv("REDIS_HOST")
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 REDIS_CONN_TIMEOUT = 2000
 REDIS_OPENAPI_KEY_EXPIRATION_TIME = 5000  
 REDIS_TESTCASE_KEY_EXPIRATION_TIME = 1000
-# CACHE_RETRY_COUNT = 2
 
 redis_client = redis.Redis(
     host=REDIS_HOST,  
@@ -60,3 +58,4 @@ def update_graphql_test_case_cache(test_case_id: str, value: dict):
     key = f"TESTCASE_NAMESPACE:{test_case_id}"
     redis_client.setex(key, REDIS_TESTCASE_KEY_EXPIRATION_TIME, json.dumps(value))
     print(f"Cache updated for key: {key}")
+

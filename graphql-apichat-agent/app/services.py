@@ -2,16 +2,13 @@ import re
 import json
 from typing import Union
 from app.models import *
-from app.cache import get_hashed_string, retrieve_cached_sdl, update_sdl_cache, retrieve_cached_graphql_test_case, update_graphql_test_case_cache
-from app.agent import GraphQLChatAgent, generate_text_with_llm, get_token_count
+from app.cache import *
+from app.agent import GraphQLChatAgent, generate_text_with_llm
+from app.prompts import get_query_generation_prompt
 
 def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQLTestPreparationResponse, ErrorInfo]:
     """Process GraphQL SDL by removing comments, descriptions, and minifying."""
-    token_counts = TokenCounts(
-        prompt_tokens=0,
-        completion_tokens=0,
-        total_tokens=0
-    )
+    global token_count
     sdl = request["GRAPHQL_SCHEMA"]
     hashed_sdl = get_hashed_string(sdl)
     cached_sdl = retrieve_cached_sdl(hashed_sdl)
@@ -21,22 +18,18 @@ def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQL
         return GraphQLTestPreparationResponse(
             apiSpec=SdlResponse(sdl=cached_sdl.apiSpec.sdl),
             queries=cached_sdl.queries,
-            usage=token_counts
+            usage=token_count
         )
 
-    # Minify SDL
-    sdl = re.sub(r"#.*", "", sdl)
-    sdl = re.sub(r'""".*?"""', "", sdl, flags=re.DOTALL)
-    sdl = re.sub(r'"[^"]*"', "", sdl)
-    sdl = re.sub(r"@deprecated([^\s}]*)*", "", sdl)
-    sdl = re.sub(r"\s+", " ", sdl).strip()
+    sdl = re.sub(r"#.*", "", sdl)                           # Remove single-line comments
+    sdl = re.sub(r'""".*?"""', "", sdl, flags=re.DOTALL)    # Remove multi-line comments
+    sdl = re.sub(r'"[^"]*"', "", sdl)                       # Remove string literals
+    sdl = re.sub(r"@deprecated([^\s}]*)*", "", sdl)         # Remove deprecated annotations
+    sdl = re.sub(r"\s+", " ", sdl).strip()                  # Minify whitespace
 
-    # Generate sample queries
-    query_prompt = get_query_generation_prompt(sdl)
-    sample_queries = generate_text_with_llm(query_prompt)
-    token_counts.prompt_tokens = get_token_count(query_prompt)
-    token_counts.completion_tokens = get_token_count(sample_queries)
-    token_counts.total_tokens = token_counts.prompt_tokens + token_counts.completion_tokens
+    # Generate sample queries 
+    query_prompt = get_query_generation_prompt(sdl)  
+    sample_queries, token_count = generate_text_with_llm(query_prompt)
 
     if isinstance(sample_queries, ErrorInfo):
         return ErrorInfo(response="Error occurred during SDL processing.")
@@ -52,53 +45,23 @@ def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQL
     response = GraphQLTestPreparationResponse(
         apiSpec=SdlResponse(sdl=sdl),
         queries=parsed_queries,
-        usage=token_counts
+        usage=token_count
     )
     return response
 
-def get_query_generation_prompt(sdl: str) -> str:
-    """Generate a prompt for query generation based on the SDL."""
-    return f'''You are a technical writer who understands GraphQL schemas. You are given the SDL (Schema Definition Language) of a GraphQL API below. Your task is to generate natural language tasks that users might ask, based on this schema.
-    The schema is as follows:
-    {sdl}
-
-    You must return THREE natural language requests:
-
-    1. **Simple Query** :A task that retrieves data from a single GraphQL type with minimal or no nested fields.
-    2. **Complex Query** :A task that retrieves data from a GraphQL type **with nested/related types**, or multiple levels of relationships.
-    3. **Mutation Task** :A task that **modifies** the data (e.g., creates, updates, deletes something), based on the mutations defined in the schema.
-
-    Use realistic example values for arguments like IDs, names, filters, or input payloads.
-
-    Do NOT include the actual GraphQL queries or mutations. Only return the **natural language task descriptions**.
-
-    The response must strictly follow this JSON format:
-
-    {{
-        "simpleQuery": {{A natural language query using basic fields from the schema}},
-        "complexQuery": {{A natural language query involving nested or related types}},
-        "mutationTask": {{A natural language description of a mutation action based on the schema (if available)}}
-    }}
-
-    If the schema does not define any mutations, leave "mutationTask" as empty string.'''
-
-async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[GraphQLTestExecutionResponse, GraphQLTestCompletionResponse, InvalidResponse, ErrorInfo]:
+async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[GraphQLTestExecutionResponse,            GraphQLTestCompletionResponse, InvalidResponse, ErrorInfo]:
     """Execute a single step of the GraphQL chat agent."""
-    token_count = TokenCounts(
-        prompt_tokens=0,
-        completion_tokens=0,
-        total_tokens=0
-    )
+    global token_count
     if "command" in payload and "sdl" in payload:
         payload_obj = GraphQLTestInitializationRequest(**payload)
-        print("Agent Initialization Started.")
+        print("Agent initialization started.")
         sdl = payload_obj.sdl
         command = payload_obj.command
         iteration = 1
         executionHistory = []
     elif "response" in payload:
         payload_obj = GraphQLTestExecutionRequest(**payload)
-        print("Agent Restoration Started.")
+        print("Agent restoration started.")
         cache_record = retrieve_cached_graphql_test_case(apiChatRequestId)
         if isinstance (cache_record, ErrorInfo):
             return ErrorInfo(response="Test case not found. Invalid or expired test case ID.")

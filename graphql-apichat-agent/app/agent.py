@@ -1,11 +1,11 @@
 import json
-import requests
 from graphql import build_schema, validate, parse
 from openai import AzureOpenAI
 import os
 from typing import Union
 from app.models import *
 from app.cache import clear_test_case_cache
+from app.prompts import get_next_tool_prediction_prompt, get_query_correction_prompt, get_apichat_context
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,11 +24,7 @@ class GraphQLChatAgent:
         self.iteration = iteration
         self.executionHistory = executionHistory
         self.isCompleted = False
-        self.tokenCount = TokenCounts(
-            prompt_tokens=0,
-            completion_tokens=0,
-            total_tokens=0
-        )
+        global token_count
 
         self.progress = {
             "query": command,
@@ -40,7 +36,7 @@ class GraphQLChatAgent:
                 }
                 for step in executionHistory
             ],
-            "context": getGraphQLApiChatContext()
+            "context": get_apichat_context()
         }
         print("Agent Initialization Completed.")
 
@@ -62,14 +58,14 @@ class GraphQLChatAgent:
                 return GraphQLTestCompletionResponse(
                     taskStatus=fixed_llm_response.taskStatus, 
                     result=fixed_llm_response.result,
-                    usage=self.tokenCount
+                    usage=token_count
                 )
             
             if isinstance(fixed_llm_response, GraphQLTestInvalidResponse):
                 result = InvalidResponse(
                     taskStatus="TERMINATED",
                     result=fixed_llm_response.query,
-                    usage=self.tokenCount
+                    usage=token_count
                 )
                 return result
             
@@ -78,10 +74,10 @@ class GraphQLChatAgent:
                 result = InvalidResponse(
                     taskStatus="TERMINATED",
                     result=validated_response.query,
-                    usage=self.tokenCount
+                    usage=token_count
                 )
                 return result
-            result = GraphqlExecutionResult(
+            result = GraphQLExecutionResult(
                 method="POST",
                 path="/",
                 inputs=RequestBody(
@@ -90,7 +86,7 @@ class GraphQLChatAgent:
             )
             return TestStepResult(
                 result=result,
-                usage=self.tokenCount
+                usage=token_count
             )
         return ErrorInfo(response="Max iterations reached without a valid response.")
     
@@ -103,103 +99,22 @@ class GraphQLChatAgent:
     
     def selectNextOperation(self) -> Union[GraphqlToolResponse, ErrorInfo]:
         """Determines the next GraphQL operation to execute based on schema, user query, execution history, and context."""
-        prompt = f"""
-        You are a GraphQL API assistant specializing in GRAPHQL QUERY GENERATION. Your job is to determine the NEXT OPERATION to execute based on:
-
-        - The provided GraphQL schema defining the API capabilities.
-        - A natural language user request that needs to be executed via GraphQL.
-        - The execution history tracking what has been done so far.
-        - The context that helps maintain continuity across turns.
-
-        TASK:
-
-        - Identify whether the next operation is a QUERY, MUTATION, or SUBSCRIPTION, or if the task should be marked as COMPLETED.
-        - You must distinguish between:
-            1. **Completely Invalid User Commands** — where the overall request is unrelated to the schema.
-            2. **Partially Invalid Steps** — where some parts of the request are valid, and others are not supported by the schema.
-            3. **Greetings and Introduction Requests** — where the user sends greetings like "hi", "hello", "who are you", "what can you do", etc.
-
-        STRICT INSTRUCTIONS:
-
-        - If the user input is a greeting or introduction request:
-            - Respond politely with a short assistant introduction, using:
-            {{
-                "operationType": "COMPLETED",
-                "query": "<Polite greeting or assistant introduction>"
-            }}
-
-        - If the **entire user query is invalid** (irrelevant to the schema and not a greeting):
-            - First, return an **IN_PROGRESS** response indicating no valid query can be generated.
-            - Then return a **COMPLETED** response summarizing the invalid attempt.
-
-        - If only **some steps** in a multi-step task are invalid:
-            - Mark those specific steps as FAILED immediately.
-            - You MUST NOT reattempt, regenerate, retry, fix, or modify failed steps in any way.
-            - Once a step fails, it is considered FINAL and permanently skipped.
-            - Any attempt to repair or retry a failed operation is strictly forbidden.
-            - Proceed only to the NEXT VALID step without making adjustments.
-
-        - All generated GraphQL operations must:
-            - Fully comply with the GraphQL specification.
-            - Strictly follow the provided schema.
-            - Be guaranteed to pass server-side validation if possible.
-
-        - Carefully review the execution history:
-            - If a previous operation has failed (any error, any non-200 status):
-                - DO NOT attempt that operation again.
-                - Consider it permanently failed.
-
-        RETURN FORMAT:
-        Respond STRICTLY as a JSON object WITHOUT markdown formatting or extra characters.
-
-        - If the user input is a greeting or introduction request:
-        {{
-            "operationType": "COMPLETED",
-            "query": "<Polite greeting or short assistant introduction>"
-        }}
-
-        - If the full user query is invalid:
-        {{
-            "operationType": "TERMINATED",
-            "query": "I'm unable to generate a valid query based on the given input."
-        }}
-
-        - If the task has been completed (e.g., all necessary operations have been executed, or the previous step marked it fully invalid):
-        {{
-            "operationType": "COMPLETED",
-            "query": "<A short summary of what was attempted or completed.>"
-        }}
-
-        - If the next valid step exists:
-        {{
-            "operationType": "<QUERY | MUTATION | SUBSCRIPTION>",
-            "query": "<Generated GraphQL operation as a string>"
-        }}
-
-        GraphQL Schema: {self.sdl}
-
-        User Query: {self.progress["query"]}
-
-        Execution History: {json.dumps(self.progress["history"])}
-
-        Context: {json.dumps(list(self.progress["context"]))}
-        """
-
-        response = generate_text_with_llm(prompt)
-        self.tokenCount.prompt_tokens += get_token_count(prompt)
-        self.tokenCount.completion_tokens += get_token_count(response)
-        self.tokenCount.total_tokens = self.tokenCount.prompt_tokens + self.tokenCount.completion_tokens
+        prompt = get_next_tool_prediction_prompt(self.sdl, self.progress)
+        response, tokens = generate_text_with_llm(prompt)
+        token_count.prompt_tokens += tokens["prompt_tokens"]
+        token_count.completion_tokens += tokens["completion_tokens"]
+        token_count.total_tokens += tokens["total_tokens"]
         return response
     
     def fix_response(self, response: json) -> Union[GraphQLTestCompletionResponse, GraphQLTestInvalidResponse, ErrorInfo]:
         """Processes and validates the response, determining whether it's a completed, invalid, or valid GraphQL function call."""
         response = json.loads(response)
         if response["operationType"] == "COMPLETED":
-            self.is_completed = True
-            return GraphQLTestCompletionResponse(taskStatus=response["operationType"], result=response["query"], usage=self.tokenCount)
+            self.isCompleted = True
+            return GraphQLTestCompletionResponse(taskStatus=response["operationType"], result=response["query"], usage=token_count)
         
         if response["operationType"] == "TERMINATED":
-            return GraphQLTestInvalidResponse(taskStatus="TERMINATED", query=response["query"], usage=self.tokenCount)
+            return GraphQLTestInvalidResponse(taskStatus="TERMINATED", query=response["query"], usage=token_count)
         
         if response["operationType"] not in {"QUERY", "MUTATION", "SUBSCRIPTION"}:
             return {"taskStatus": "TERMINATED", "error": "An invalid query was generated by LLM."}
@@ -227,20 +142,6 @@ class GraphQLChatAgent:
             return True
         except Exception as e:
             return ErrorInfo(response=f"Exception during schema validation: {e}")
-        
-    def create_prompt(self, schema: str, query: str, error_message: str) -> str:
-        """Creates a prompt for the LLM to correct the GraphQL query based on the schema and error message."""
-
-        prompt_template = '''You are given the GraphQL schema and the query generated based on that schema. And you are given an error message generated by the query validator.
-        TASK: Analyse the given query, Error message and the GraphQL schema and correct the errors in the generated query.
-        schema : {schema}
-        query : {query}
-        error_message : {error_message}
-
-        Give the response STRICTLY in the following format.
-        Corrected_query: <query>
-        '''.format(schema=schema, query=query, error_message=error_message)
-        return prompt_template
 
     def get_fixed_query_from_llm(self, llm_response: GraphqlToolResponse) -> Union[GraphqlToolResponse, ErrorInfo]:
         """Corrects the GraphQL query using the LLM based on the provided schema and error message."""
@@ -253,19 +154,17 @@ class GraphQLChatAgent:
             schema_validation_result = self.is_valid_against_schema(schema, query)
 
             if schema_validation_result is True:
-                # Return the successful result
                 return GraphqlToolResponse(operationType=llm_response.operationType, query=query)
             if isinstance(schema_validation_result, ErrorInfo):
-                return schema_validation_result  # Something went wrong outside validation
+                return schema_validation_result  
 
-            # Prepare the next prompt using the error message
             error_message = '\n'.join(str(e) for e in schema_validation_result)
-            prompt = self.create_prompt(schema, query, error_message)
+            prompt = get_query_correction_prompt(schema, query, error_message)
 
-            message_content = generate_text_with_llm(prompt)
-            self.tokenCount.prompt_tokens += get_token_count(prompt)
-            self.tokenCount.completion_tokens += get_token_count(message_content)
-            self.tokenCount.total_tokens = self.tokenCount.prompt_tokens + self.tokenCount.completion_tokens
+            message_content, tokens = generate_text_with_llm(prompt)
+            token_count.prompt_tokens += tokens["prompt_tokens"]
+            token_count.completion_tokens += tokens["completion_tokens"]
+            token_count.total_tokens += tokens["total_tokens"]
             if isinstance(message_content, ErrorInfo):
                 return message_content
 
@@ -285,44 +184,21 @@ class GraphQLChatAgent:
         """Updates the progress of the GraphQL API chat agent."""
         self.executionHistory.append(step)
 
-def getGraphQLApiChatContext():
-    """Returns the context for the GraphQL API chat agent."""
-    return {
-        "You are a GraphQL API testing assistant called 'API Chat'. Your capabilities are STRICTLY limited to the following.\n"
-            "- Introduce yourself as the API Chat; an Intelligent Agent that can engage with user's GraphQL APIs in natural language.\n"
-            "- Answer user's questions by invoking queries, mutations, or subscriptions provided, in order to test those APIs.\n"
-            "- You can invoke the functions with the appropriate input parameters to test the APIs. You are NOT allowed to ask for user input to invoke the API.\n"
-            "DO NOT respond to questions unrelated to the above capabilities. Respond appropriately to the invalid questions with proper feedback to improve, if needed."
-    }
-
-def generate_text_with_llm(prompt: str) -> Union[str, ErrorInfo]:
+def generate_text_with_llm(prompt: str):
     """Calls the Azure OpenAI GPT model to generate a response based on the given prompt."""
     try:
         response = llm_client.chat.completions.create(
-            model= "apim-4o-mini",
+            model=os.getenv("AZURE_CHAT_DEPLOYMENT"),
             messages=[
                 {"role": "system", "content": "You are an INTELLIGENT GRAPHQL QUERY GENERATOR and CORRECTOR."},
                 {"role": "user", "content": prompt}
             ]
         )
-        return response.choices[0].message.content
+        return response.choices[0].message.content, {
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+            "total_tokens": response.usage.total_tokens
+        }
     except Exception as e:
         return ErrorInfo(response=f"Error calling LLM: {str(e)}")
     
-def get_token_count(text: str) -> int:
-    """Extract token counts from the text."""
-    interceptor_service_url = os.getenv("INTERCEPTOR_SERVICE_URL")  
-    print("Interceptor Service URL:", interceptor_service_url)
-    try:
-        response = requests.post(
-            f"{interceptor_service_url}/ai/api-chat/count-tokens",
-            json={"text": text},
-            headers={"Content-Type": "text/plain"}
-        )
-        if response.status_code != 201:
-            return 0
-        payload = response.json()
-        token_count = payload.get("count", 0)
-        return int(token_count)
-    except Exception as e:
-        return 0
