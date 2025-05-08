@@ -9,7 +9,6 @@ def clean_openapi_spec(api_definition: dict) -> dict:
                 details.pop("security", None)
                 details.pop("x-auth-type", None)
                 details.pop("x-throttling-tier", None)
-                details.pop("x-mediation-script", None)
                 details.pop("x-wso2-application-security", None)
                 details.pop("externalDocs", None)
 
