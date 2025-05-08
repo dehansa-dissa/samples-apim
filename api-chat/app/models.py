@@ -3,6 +3,7 @@ from typing import Literal, Dict
 from enum import Enum
 
 APICHAT_RETRY_COUNT = 3
+
 class TaskStatus(str, Enum):
     IN_PROGRESS = "IN_PROGRESS"
     TERMINATED = "TERMINATED"
@@ -49,7 +50,7 @@ class GraphQLTestExecutionResponse(BaseModel):
     resource: GraphQLExecutionResult
     usage: TokenCounts
 
-class GraphQLTestCompletionResponse(BaseModel): 
+class TestCompletionResponse(BaseModel): 
     taskStatus: Literal["COMPLETED"]
     result: str
     usage: TokenCounts
@@ -87,15 +88,7 @@ class GraphQLCacheRecord(BaseModel):
 class GraphqlToolResponse(BaseModel):
     operationType: ToolType
     query: str 
-
-class TestStepResult(BaseModel):
-    result: GraphQLExecutionResult
-    usage: TokenCounts
-
-class GraphQLTestInvalidResponse(BaseModel):
-    taskStatus: Literal["TERMINATED"]
-    query: str
-    
+   
 class ErrorInfo(BaseModel):
     response: str
 

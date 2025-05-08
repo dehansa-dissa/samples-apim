@@ -12,12 +12,13 @@ async def sdl_prepare(
 ):
     """Handles SDL preparation requests."""
     payload = await payload.json()
-    processed_sdl = process_graphql_sdl(payload)
+    processed_sdl = await process_graphql_sdl(payload)
     if isinstance(processed_sdl, ErrorInfo):
         return processed_sdl
     return GraphQLTestPreparationResponse(**processed_sdl.dict())
 
-@router.post("/chat", response_model=Union[GraphQLTestExecutionResponse, GraphQLTestCompletionResponse, InvalidResponse, ErrorInfo])
+@router.post("/chat", response_model=Union[GraphQLTestExecutionResponse, TestCompletionResponse, 
+                                           InvalidResponse, ErrorInfo])
 async def graphql_chat(
     response: Request,
     apiChatRequestId: str = Header(...)

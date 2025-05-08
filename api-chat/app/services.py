@@ -6,17 +6,18 @@ from app.cache import *
 from app.agent import GraphQLChatAgent, generate_text_with_llm
 from app.prompts import get_query_generation_prompt
 
-def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQLTestPreparationResponse, ErrorInfo]:
+async def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[
+    GraphQLTestPreparationResponse, ErrorInfo]:
     """Process GraphQL SDL by removing comments, descriptions, and minifying."""
     global token_count
     sdl = request["GRAPHQL_SCHEMA"]
-    hashed_sdl = get_hashed_string(sdl)
-    cached_sdl = retrieve_cached_sdl(hashed_sdl)
+    hashed_sdl = await get_hashed_string(sdl)
+    cached_sdl = await retrieve_cached_sdl(hashed_sdl)
 
     if cached_sdl:
         print("Returning cached SDL")
         return GraphQLTestPreparationResponse(
-            apiSpec=SdlResponse(sdl=cached_sdl.apiSpec.sdl),
+            apiSpec=cached_sdl.apiSpec,
             queries=cached_sdl.queries,
             usage=token_count
         )
@@ -28,8 +29,8 @@ def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQL
     sdl = re.sub(r"\s+", " ", sdl).strip()                  # Minify whitespace
 
     # Generate sample queries 
-    query_prompt = get_query_generation_prompt(sdl)  
-    sample_queries, token_count = generate_text_with_llm(query_prompt)
+    query_prompt = await get_query_generation_prompt(sdl)  
+    sample_queries, token_count = await generate_text_with_llm(query_prompt)
 
     if isinstance(sample_queries, ErrorInfo):
         return ErrorInfo(response="Error occurred during SDL processing.")
@@ -40,7 +41,7 @@ def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQL
         apiSpec=SdlResponse(sdl=sdl),
         queries=parsed_queries
     )
-    update_sdl_cache(hashed_sdl, cached_sdl)
+    await update_sdl_cache(hashed_sdl, cached_sdl)
 
     response = GraphQLTestPreparationResponse(
         apiSpec=SdlResponse(sdl=sdl),
@@ -49,7 +50,8 @@ def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[GraphQL
     )
     return response
 
-async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[GraphQLTestExecutionResponse,            GraphQLTestCompletionResponse, InvalidResponse, ErrorInfo]:
+async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[
+    GraphQLTestExecutionResponse, TestCompletionResponse, InvalidResponse, ErrorInfo]:
     """Execute a single step of the GraphQL chat agent."""
     global token_count
     if "command" in payload and "sdl" in payload:
@@ -62,12 +64,12 @@ async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[Graph
     elif "response" in payload:
         payload_obj = GraphQLTestExecutionRequest(**payload)
         print("Agent restoration started.")
-        cache_record = retrieve_cached_graphql_test_case(apiChatRequestId)
+        cache_record = await retrieve_cached_graphql_test_case(apiChatRequestId)
         if isinstance (cache_record, ErrorInfo):
-            return ErrorInfo(response="Test case not found. Invalid or expired test case ID.")
+            return cache_record
         sdl = cache_record["sdl"]
         command = cache_record["command"]
-        iteration = cache_record["iteration"]+1
+        iteration = cache_record["iteration"] + 1
         executionHistory = cache_record["executionHistory"]
         executionHistory.append(CacheStep(
             query=cache_record["previousResponse"],
@@ -97,22 +99,19 @@ async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[Graph
             result=response.response,
             usage=token_count
         )
-    elif isinstance(response, GraphQLTestCompletionResponse) or isinstance(response, InvalidResponse):
+    elif isinstance(response, TestCompletionResponse) or isinstance(response, InvalidResponse):
         return response
-    elif isinstance(response, TestStepResult):
-        update_graphql_test_case_cache(apiChatRequestId, {
+    elif isinstance(response, GraphQLExecutionResult):
+        await update_graphql_test_case_cache(apiChatRequestId, {
             "iteration": iteration,
             "command": command,
             "sdl": sdl,
             "executionHistory": [step if isinstance(step, dict) else step.dict() for step in executionHistory],
-            "previousResponse": response.result.inputs.requestBody.query
+            "previousResponse": response.inputs.requestBody.query
         })
         return GraphQLTestExecutionResponse(
             taskStatus="IN_PROGRESS",
-            resource={
-                "method": "POST",
-                "path": "/",
-                "inputs": RequestBody(requestBody=ToolComponent(query=response.result.inputs.requestBody.query))},
-            usage=response.usage
+            resource=response,
+            usage=token_count
         )
     
