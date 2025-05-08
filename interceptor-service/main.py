@@ -140,7 +140,7 @@ app = FastAPI(
     description="Backend for WSO2 APIM AI Features",
     version="0.1.0",
     license_info={"name": "Apache 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
-    # lifespan=lifespan
+    lifespan=lifespan
 )
 
 
@@ -447,7 +447,6 @@ async def api_mock_generate_mocks(req: dict, x_jwt_assertion: str = Header(None)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
     async with aiohttp.ClientSession() as session:
-        #sessionId = req["sessionId"]
         async with session.post(api_mock_endpoint + "generate-mocks", 
                                 json=req) as response:
             if response.status == 201:
@@ -463,7 +462,6 @@ async def api_mock_modify_method(req: dict, x_jwt_assertion: str = Header(None))
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
     async with aiohttp.ClientSession() as session:
-        #sessionId = req["sessionId"]
         async with session.post(api_mock_endpoint + "modify-method", 
                                 json=req) as response:
             if response.status == 201:
