@@ -97,7 +97,7 @@ components:
         GRAPHQL_SCHEMA:
           type: string
           title: Graphqlschema
-        type: object
+      type: object
     GraphQLTestInitializationRequest:
       properties:
         command:
