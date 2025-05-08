@@ -59,4 +59,3 @@ async def update_graphql_test_case_cache(test_case_id: str, value: dict):
     key = f"TESTCASE_NAMESPACE:{test_case_id}"
     await redis_client.setex(key, REDIS_TESTCASE_KEY_EXPIRATION_TIME, json.dumps(value))
     print(f"Cache updated for key: {key}")
-    

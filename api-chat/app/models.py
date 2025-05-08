@@ -102,4 +102,3 @@ token_count = TokenCounts(
     completion_tokens=0,
     total_tokens=0
 )
-

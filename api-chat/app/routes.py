@@ -37,4 +37,3 @@ async def health_check():
     except Exception as e:
         raise HTTPException(status_code=500, detail="Liveness probe failed.")
     return {"status": "ok"}
-     

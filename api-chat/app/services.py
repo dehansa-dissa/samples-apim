@@ -114,4 +114,6 @@ async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[
             resource=response,
             usage=token_count
         )
-    
+    else:
+        return ErrorInfo(response="Error while processing the request.")
+
