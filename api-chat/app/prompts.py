@@ -134,4 +134,3 @@ def get_apichat_context():
             "- You can invoke the functions with the appropriate input parameters to test the APIs. You are NOT allowed to ask for user input to invoke the API.\n"
             "DO NOT respond to questions unrelated to the above capabilities. Respond appropriately to the invalid questions with proper feedback to improve, if needed."
     }
-
