@@ -1,7 +1,7 @@
 import json
 import jsonref
 
-def clean_openapi_spec(api_definition: dict) -> dict:
+def clean_openapi_spec(api_definition: dict, use_previous_scripts) -> dict:
     paths = api_definition.get("paths", {})
     for path, methods in paths.items():
         for method, details in methods.items():
@@ -9,6 +9,8 @@ def clean_openapi_spec(api_definition: dict) -> dict:
                 details.pop("security", None)
                 details.pop("x-auth-type", None)
                 details.pop("x-throttling-tier", None)
+                if not use_previous_scripts:
+                    details.pop("x-mediation-script", None)
                 details.pop("x-wso2-application-security", None)
                 details.pop("externalDocs", None)
 
@@ -79,7 +81,7 @@ def batch_paths_by_method_count(paths: dict, batch_size: int) -> list[list[str]]
 
     return batches
 
-def get_simplified_spec(spec):
+def get_simplified_spec(spec, use_previous_scripts = False):
     #if string convert to json
     if isinstance(spec, str):
         spec = json.loads(spec)
@@ -87,7 +89,7 @@ def get_simplified_spec(spec):
         spec = jsonref.replace_refs(spec)  # contains fully resolved specs as a dict
     except Exception as e:
         pass
-    spec = clean_openapi_spec(spec)
+    spec = clean_openapi_spec(spec, use_previous_scripts)
     return spec
 
 def validate_schema(response, output_schema):

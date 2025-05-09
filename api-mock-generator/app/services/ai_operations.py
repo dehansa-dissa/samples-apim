@@ -5,8 +5,7 @@ import time
 import json
 
 def generate_mock_scripts(open_api_spec, config, batch_size = 15):
-    def generate_mock_scripts_at_once(open_api_spec, config):
-        simplified_spec = get_simplified_spec(open_api_spec)
+    def generate_mock_scripts_at_once(simplified_spec, config):
         output_json_schema = output_json_schema_generate_mocks(simplified_spec)
         prompt_messages = [{"role": "system", "content": generate_mocks_sys_msg(simplified_spec,config)},
                         {"role": "user", "content": generate_mocks_prompt(config)}]
@@ -55,7 +54,7 @@ def generate_mock_scripts(open_api_spec, config, batch_size = 15):
         else:
             return fix_schema(json.dumps(final_response),final_output_schema)
 
-    simplified_spec = get_simplified_spec(open_api_spec)
+    simplified_spec = get_simplified_spec(open_api_spec, config.get("usePreviousScripts", False))
     batched_paths = batch_paths_by_method_count(simplified_spec.get("paths"), batch_size)
     print(batched_paths)
     if len(batched_paths) <= 1:
