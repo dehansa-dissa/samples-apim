@@ -223,6 +223,8 @@ ensure the data is parsed into the correct format before comparing (e.g., >=). H
 to avoid runtime exceptions.
 - Accept type can be /*/ as well then default to application/json. And always set the accept type.
 - Generate scripts for all methods (e.g., GET, POST, PUT, DELETE) that are defined in the given path.
+- Consider the x-mediation-script in each method if available as an inspiration for the script 
+because its the existing script for that method.
 
 Expected Output Example:
 {{ "/pets": {{"post": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
@@ -265,4 +267,5 @@ While making sure the Functionality is 100% correct as the first priority
       Try to Do it according to the following Instructions as well:
       {config.get('instructions')}
       """ 
+    
   return prompt
