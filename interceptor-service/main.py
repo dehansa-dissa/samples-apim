@@ -234,7 +234,7 @@ async def process_request(req: dict, headers: dict, service_url: str, orgID: str
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
-async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
+async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None), apiType: str = None):
     try:
         await validate_backend_jwt(x_jwt_assertion)
     except Exception as e:
@@ -243,9 +243,9 @@ async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
 
-    if "openapi" in req:
+    if apiType == "HTTP":
         service_url = api_chat_endpoint + "/prepare"
-    elif "GRAPHQL_SCHEMA" in req:
+    elif apiType == "GRAPHQL":
         service_url = graphql_api_chat_endpoint + "/prepare"
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request format.")
@@ -253,7 +253,7 @@ async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
     return await process_request(req, headers, service_url, orgID)
 
 @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
-async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
+async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None), apiType: str = None):
     try:
         await validate_backend_jwt(x_jwt_assertion)
     except Exception as e:
@@ -264,9 +264,9 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
         await throttle(orgID)
     headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
     
-    if req.get("apiType") == "HTTP":
+    if apiType == "HTTP":
         service_url = api_chat_endpoint + "/chat"
-    elif req.get("apiType") == "GRAPHQL":
+    elif apiType == "GRAPHQL":
         service_url = graphql_api_chat_endpoint + "/chat"
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request format.")
