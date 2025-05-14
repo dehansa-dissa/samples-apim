@@ -1,8 +1,10 @@
 import json
 import jsonref
+import traceback
+from app.utils.logger import logger
 
 def clean_openapi_spec(api_definition: dict, use_previous_scripts) -> dict:
-    paths = api_definition.get("paths", {})
+    paths = api_definition.get("paths", {}) # sanitize newlines etc/ cleanin in carbon
     for path, methods in paths.items():
         for method, details in methods.items():
             if isinstance(details, dict):
@@ -23,7 +25,7 @@ def clean_openapi_spec(api_definition: dict, use_previous_scripts) -> dict:
     return cleaned_swagger
 
 def output_json_schema_generate_mocks(api_definition: dict) -> dict:
-    json_schema = {
+    json_schema = { # use mockDataSet
         "mockDB": "The prepopulated MockDB in the format {collectionName:[...]}",
         "paths": {}
     }
@@ -84,11 +86,19 @@ def batch_paths_by_method_count(paths: dict, batch_size: int) -> list[list[str]]
 def get_simplified_spec(spec, use_previous_scripts = False):
     #if string convert to json
     if isinstance(spec, str):
-        spec = json.loads(spec)
+        try:
+            spec = json.loads(spec)
+        except json.JSONDecodeError as e:
+            error_msg = f"Failed to decode JSON spec: {e}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
     try:
         spec = jsonref.replace_refs(spec)  # contains fully resolved specs as a dict
     except Exception as e:
-        pass
+        tb = traceback.format_exc()
+        error_msg = f"Error processing JSON references: {e}\\nTraceback:\\n{tb}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
     spec = clean_openapi_spec(spec, use_previous_scripts)
     return spec
 

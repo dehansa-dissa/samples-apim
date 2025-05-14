@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from app.services.ai_operations import generate_mock_scripts, modify_method
+from app.utils.logger import logger
 
 api_router = APIRouter()
 
@@ -29,15 +30,24 @@ class ModifyMethodRequest(BaseModel):
 @api_router.post('/generate-mocks', status_code=201)
 async def generate_mock_scripts_endpoint(payload: GenerateMocksRequest):
     if not payload.swagger:
-        raise HTTPException(status_code=400, detail={"error": "Open API Spec is required"})
+        logger.warning("Open API Spec is required for generate-mocks endpoint")
+        raise HTTPException(status_code=400, detail={
+            "type": "BadRequest",
+            "message": "Open API Spec is required"
+        })
 
-    mock_scripts = generate_mock_scripts(payload.swagger, payload.config.dict() if payload.config else {})
+    mock_scripts = generate_mock_scripts(payload.swagger, payload.config if payload.config else {})
+    # Removed info log to reduce noise
     return JSONResponse(content=mock_scripts, status_code=201)
 
 @api_router.post('/modify-method', status_code=201)
 async def modify_method_endpoint(payload: ModifyMethodRequest):
     if not (payload.swagger and payload.config and payload.config.modify and payload.config.script and payload.config.instructions):
-        raise HTTPException(status_code=400, detail={"error": "Open API Spec, path, method, script, and instructions are required"})
+        logger.warning("Missing required fields for modify-method endpoint")
+        raise HTTPException(status_code=400, detail={
+            "type": "BadRequest",
+            "message": "Open API Spec, path, method, script, and instructions are required"
+        })
 
     modify_config = payload.config.modify
     mock_script = modify_method(

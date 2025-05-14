@@ -5,13 +5,13 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import time
 import json
 
-def generate_structured_output(messages, retry_count=1, retry_delay=1, timeout=60):
+def generate_structured_output(messages, retry_count=1, retry_delay=1, timeout=60): # configurables
     def call_api():
         return client.chat.completions.create(
             model=deployment_name,
             response_format={"type": "json_object"},
             messages=messages,
-            temperature=0.7
+            temperature=0.7 # configurable
         )
 
     last_exception = None
@@ -47,17 +47,25 @@ def fix_schema(response,schema,retry_count = 1):
         retries += 1
     return
 
+from app.utils.logger import logger
+import json
+
 def get_structured_output_with_validation(prompt_messages, schema):
     try:
         prompt_messages.append({"role": "user", "content": f"Use the following schema for the output: '{schema}'"})
-        print("Generating structured output...")
+        logger.info("Generating structured output...")
         response = generate_structured_output(prompt_messages)
         response_json = json.loads(response)
         if validate_schema(response_json, schema):
-            print("Schema Valid.")
+            logger.info("Schema validation successful.")
             return response_json
         else: 
-            return fix_schema(response,schema)
+            fixed_response = fix_schema(response,schema)
+            if fixed_response is None:
+                logger.error("Schema validation failed after retries.")
+                raise ValueError("Schema validation failed after retries.")
+            return fixed_response
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error in get_structured_output_with_validation: {e}")
+        raise
         

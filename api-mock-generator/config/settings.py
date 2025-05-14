@@ -1,7 +1,6 @@
 import os
 import openai
 from dotenv import load_dotenv
-#from langchain_openai import AzureChatOpenAI
 from openai import AzureOpenAI
 
 load_dotenv()
