@@ -47,7 +47,7 @@ class GraphQLChatAgent:
             llm_response = await self.reason()
 
             if isinstance(llm_response, ErrorInfo):
-                return ErrorInfo(response=llm_response)
+                return ErrorInfo(response="An error occurred while generating the response.")
 
             fixed_llm_response = await self.fix_response(llm_response) 
             if isinstance(fixed_llm_response, ErrorInfo) or isinstance(fixed_llm_response, InvalidResponse):
@@ -59,7 +59,6 @@ class GraphQLChatAgent:
                 return fixed_llm_response
             
             validated_response = await self.get_fixed_query_from_llm(fixed_llm_response)
-            print(f"Validated response: {validated_response}")
             if isinstance(validated_response, ErrorInfo):
                 result = InvalidResponse(
                     taskStatus="TERMINATED",
@@ -152,7 +151,7 @@ class GraphQLChatAgent:
                 return errors
             return True
         except Exception as e:
-            return ErrorInfo(response=f"Exception during schema validation: {e}")
+            return ErrorInfo(response="Exception during schema validation")
 
     async def get_fixed_query_from_llm(self, llm_response: GraphqlToolResponse) -> Union[GraphqlToolResponse, ErrorInfo]:
         """Corrects the GraphQL query using the LLM based on the provided schema and error message."""
@@ -189,7 +188,7 @@ class GraphQLChatAgent:
             query = corrected_query
             attempt += 1
 
-        return ErrorInfo(response="Failed to correct query after multiple attempts.")
+        return ErrorInfo(response="Failed to generate a correct query after multiple attempts.")
 
 async def generate_text_with_llm(prompt: str):
     """Calls the Azure OpenAI GPT model to generate a response based on the given prompt."""
@@ -207,4 +206,4 @@ async def generate_text_with_llm(prompt: str):
             "total_tokens": response.usage.total_tokens
         }
     except Exception as e:
-        return ErrorInfo(response=f"Error calling LLM: {str(e)}"), token_count
+        return ErrorInfo(response="Error calling LLM"), token_count
