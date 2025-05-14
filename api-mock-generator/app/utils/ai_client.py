@@ -53,11 +53,9 @@ import json
 def get_structured_output_with_validation(prompt_messages, schema):
     try:
         prompt_messages.append({"role": "user", "content": f"Use the following schema for the output: '{schema}'"})
-        logger.info("Generating structured output...")
         response = generate_structured_output(prompt_messages)
         response_json = json.loads(response)
         if validate_schema(response_json, schema):
-            logger.info("Schema validation successful.")
             return response_json
         else: 
             fixed_response = fix_schema(response,schema)

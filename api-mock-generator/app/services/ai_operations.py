@@ -24,7 +24,6 @@ def generate_mock_scripts(open_api_spec, config, batch_size = 15): # add configu
 
             # Generate mockDB first
             def generate_mockDB():
-                logger.info("Generating mockDB...")
                 prompt_messages = [{"role": "system", "content": sys_msg},
                                 {"role": "user", "content": generate_mocks_batch_prompt(config, ["mockDB"])}]
                 mockDB_json = get_structured_output_with_validation(prompt_messages,
@@ -39,16 +38,15 @@ def generate_mock_scripts(open_api_spec, config, batch_size = 15): # add configu
 
             # Function to process each paths_batch
             def process_resource(paths_batch):
-                logger.info(f"Generating mock script for paths: {paths_batch}")
                 prompt_messages = [{"role": "system", "content": sys_msg},
                                 {"role": "user", "content": generate_mocks_batch_prompt(config, paths_batch, mockDB_json)}]
                 response_json = get_structured_output_with_validation(prompt_messages,
                                                                     output_json_schema_generate_mocks_sim_resource(paths, paths_batch))
-                time.sleep(1)
                 paths_response.update(response_json)
 
             for paths_batch in batched_paths:
                 process_resource(paths_batch)
+                time.sleep(1)
 
             # Finalize response
             final_response["paths"] = paths_response
@@ -64,7 +62,6 @@ def generate_mock_scripts(open_api_spec, config, batch_size = 15): # add configu
 
         simplified_spec = get_simplified_spec(open_api_spec, config.get("usePreviousScripts", False))
         batched_paths = batch_paths_by_method_count(simplified_spec.get("paths"), batch_size)
-        # print(batched_paths)
         if len(batched_paths) <= 1:
             return generate_mock_scripts_at_once(simplified_spec, config)
         else:
@@ -83,12 +80,10 @@ def modify_method(open_api_spec,script, path, method, instructions, is_default_s
             raise KeyError(f"Missing key {e} in simplified_spec paths for path '{path}' and method '{method}'")
         prompt_messages = [{"role": "system", "content": modify_method_sys_msg(method,path,required_method)},
                            {"role": "user", "content": modify_method_prompt(script,instructions, is_default_script)}]
-        logger.info(f"Calling get_structured_output_with_validation for modify_method with prompts: {prompt_messages}")
         response_json = get_structured_output_with_validation(prompt_messages,output_json_schema_modify_method())
         if not response_json or "modified_script" not in response_json:
             logger.error("Invalid response received from get_structured_output_with_validation in modify_method")
             raise ValueError("Invalid response received from modify_method operation")
-        logger.info("modify_method response received successfully")
         return response_json
     except Exception as e:
         logger.error(f"Error in modify_method: {e}")
