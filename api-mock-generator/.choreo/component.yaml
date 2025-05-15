@@ -1,0 +1,11 @@
+schemaVersion: "1.2"
+endpoints:
+    - name: api-design-assistant-api-be2
+      displayName: API Design Assistant API
+      service:
+        basePath: /
+        port: 8000
+      type: REST
+      networkVisibilities:
+        - Project
+      schemaFilePath: openapi.yaml
