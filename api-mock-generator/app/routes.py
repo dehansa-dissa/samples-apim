@@ -53,7 +53,6 @@ async def generate_mock_scripts_endpoint(payload: GenerateMocksRequest):
         })
 
     mock_scripts = generate_mock_scripts(payload.swagger, payload.config.model_dump() if payload.config else {})
-    # Removed info log to reduce noise
     return JSONResponse(content=mock_scripts, status_code=201)
 
 @api_router.post('/modify-method', status_code=201)
