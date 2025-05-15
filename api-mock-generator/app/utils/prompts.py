@@ -5,8 +5,8 @@ Instructions:
 - Use mc.getProperty() and mc.getPayloadJSON() for request data.
 - Get path params via mc.getProperty('uri.var.{paramName}').
 - Get Query Parameters via mc.getProperty('query.param.{paramName}').
-- Prepopulate mockDB with 3+ records.
-- Always Load and persist mockDB using mc.getProperty('mockDB') and mc.setProperty('mockDB', JSON.stringify(db)).
+- Prepopulate mockDataset with 3+ records.
+- Always Load and persist mockDataset using mc.getProperty('mockDataset') and mc.setProperty('mockDataset', JSON.stringify(db)).
 - Handle all status codes, support JSON/XML.
 - Do not use try catch error handling
 - Do not use break; other than inside loops
@@ -19,26 +19,26 @@ Instructions:
 - Ensure mock server behaves like a real one and the implementation is simple.
 - Comparisons should use == instead of ===.
 - The output must strictly follow the schema given in the example.
-- All data (e.g., in queries, params, and mockDB) is treated as strings. For comparisons (e.g., dates or other types), 
+- All data (e.g., in queries, params, and mockDataset) is treated as strings. For comparisons (e.g., dates or other types), 
 ensure the data is parsed into the correct format before comparing (e.g., >=). Handle parsing errors gracefully 
 to avoid runtime exceptions.
 - Accept type can be /*/ as well then default to application/json. And always set the accept type
-- {{mockDB:" ....", paths:{{/pets:{{get:{{code:" ...."}}}}, /pets/{{petId}}:{{get:{{code:" ...."}}}}}}}}
+- {{mockDataset:" ....", paths:{{/pets:{{get:{{code:" ...."}}}}, /pets/{{petId}}:{{get:{{code:" ...."}}}}}}}}
 
 Expected Output Example:
-{{ "mockDB": "{{\\"pets\\":[{{\\"id\\":1,\\"name\\":\\"Whiskers\\"}},{{\\"id\\":2,\\"name\\":\\"Buddy\\"}},{{\\"id\\":3,\\"name\\":\\"Mittens\\"}}]}}", "paths": {{
+{{ "mockDataset": "{{\\"pets\\":[{{\\"id\\":1,\\"name\\":\\"Whiskers\\"}},{{\\"id\\":2,\\"name\\":\\"Buddy\\"}},{{\\"id\\":3,\\"name\\":\\"Mittens\\"}}]}}", "paths": {{
   "/pets": {{
     "get": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
 if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   mc.setProperty('CONTENT_TYPE', accept);\\n
-  var db = JSON.parse(mc.getProperty('mockDB') || '{{}}');\\n
+  var db = JSON.parse(mc.getProperty('mockDataset') || '{{}}');\\n
   mc.setPayloadJSON(db.pets || []);\\n
   mc.setProperty('HTTP_SC', '200');\\n
 "}},\n
     "post": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
 if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   mc.setProperty('CONTENT_TYPE', accept);\\n
-  var db = JSON.parse(mc.getProperty('mockDB') || '{{}}');\\n
+  var db = JSON.parse(mc.getProperty('mockDataset') || '{{}}');\\n
   var body = mc.getPayloadJSON();\\n
   if (body && body.id && body.name) {{\\n
     db.pets = db.pets || [];\\n
@@ -47,7 +47,7 @@ if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   }} else {{\\n
     mc.setProperty('HTTP_SC', '400');\\n
     mc.setPayloadJSON({{ message: 'Invalid request, must contain id and name' }});\\n
-  mc.setProperty('mockDB', JSON.stringify(db));\\n
+  mc.setProperty('mockDataset', JSON.stringify(db));\\n
 "}}\n
   }},\n
   "/pets/{{petId}}": {{
@@ -55,7 +55,7 @@ if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
 if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   mc.setProperty('CONTENT_TYPE', accept);\\n
   var id = parseInt(mc.getProperty('uri.var.petId'), 10);\\n
-  var db = JSON.parse(mc.getProperty('mockDB') || '{{}}');\\n
+  var db = JSON.parse(mc.getProperty('mockDataset') || '{{}}');\\n
   var pet = null;\\n
   for (var i = 0; i < (db.pets || []).length; i++) {{\\n
     if (db.pets[i].id == id) {{\\n
@@ -108,7 +108,7 @@ Instructions:
   - Use mc.getProperty() and mc.getPayloadJSON() for request data.
   - Access path params via mc.getProperty('uri.var.{paramName}').
   - Get Query Parameters via mc.getProperty('query.param.{paramName}').
-  - Persist changes to mockDB using mc.getProperty('mockDB') and mc.setProperty('mockDB', JSON.stringify(db)).
+  - Persist changes to mockDataset using mc.getProperty('mockDataset') and mc.setProperty('mockDataset', JSON.stringify(db)).
   - Handle all status codes and support both JSON/XML responses.
   - Use only loops (never use find, filter, map, reduce, or spread like {{...orders.id}}).
   - Avoid return; use break to exit loops when necessary, ensuring payload and HTTP_SC are set correctly.
@@ -125,7 +125,7 @@ Example Output:
 if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   mc.setProperty('CONTENT_TYPE', accept);\\n
   var id = parseInt(mc.getProperty('uri.var.petId'), 10);\\n
-  var db = JSON.parse(mc.getProperty('mockDB') || '{{}}');\\n
+  var db = JSON.parse(mc.getProperty('mockDataset') || '{{}}');\\n
   var pet = null;\\n
   for (var i = 0; i < (db.pets || []).length; i++) {{\\n
     if (db.pets[i].id == id) {{\\n
@@ -181,20 +181,20 @@ Expected Output:
 def modify_method_sys_msg(method, path, method_spec):
   return f"Modify the script for the {method.upper()} method at the {path} endpoint based on the OpenAPI Specification part {method_spec}. Ensure the script is functional, secure, and behaves like a real API, while supporting scalability and maintainability."
 
-def generate_mocks_batch_prompt(config, paths_batch, mockDB=None):
-  if len(paths_batch) == 1 and paths_batch[0] == "mockDB":
-    # Generate prompt specifically for mockDB
-    prompt = """Generate ES3 JavaScript for rhinojs to create and manage a mockDB.
+def generate_mocks_batch_prompt(config, paths_batch, mock_dataset=None):
+  if len(paths_batch) == 1 and paths_batch[0] == "mockDataset":
+    # Generate prompt specifically for mockDataset
+    prompt = """Generate ES3 JavaScript for rhinojs to create and manage a mockDataset.
 
 Instructions:
-- Prepopulate mockDB with 3+ records to match the given openAPI spec.
-- Always Load and persist mockDB using mc.getProperty('mockDB') and mc.setProperty('mockDB', JSON.stringify(db)).
-- Ensure mockDB is structured as a JSON object and supports CRUD operations.
+- Prepopulate mockDataset with 3+ records to match the given openAPI spec.
+- Always Load and persist mockDataset using mc.getProperty('mockDataset') and mc.setProperty('mockDataset', JSON.stringify(db)).
+- Ensure mockDataset is structured as a JSON object and supports CRUD operations.
 - Validate the data structure and ensure it is consistent.
-- All data in mockDB are treated as strings.
+- All data in mockDataset are treated as strings.
 
 Expected Output Example:
-{{ "mockDB": "{{\\"pets\\":[{{\\"id\\":1,\\"name\\":\\"Whiskers\\"}},{{\\"id\\":2,\\"name\\":\\"Buddy\\"}},{{\\"id\\":3,\\"name\\":\\"Mittens\\"}}]}}" }}
+{{ "mockDataset": "{{\\"pets\\":[{{\\"id\\":1,\\"name\\":\\"Whiskers\\"}},{{\\"id\\":2,\\"name\\":\\"Buddy\\"}},{{\\"id\\":3,\\"name\\":\\"Mittens\\"}}]}}" }}
 """
     return prompt
 
@@ -206,8 +206,8 @@ Instructions:
 - Use mc.getProperty() and mc.getPayloadJSON() for request data.
 - Get path params via mc.getProperty('uri.var.{{paramName}}').
 - Get Query Parameters via mc.getProperty('query.param.{{paramName}}').
-- Prepopulate mockDB with 3+ records.
-- Always Load and persist mockDB using mc.getProperty('mockDB') and mc.setProperty('mockDB', JSON.stringify(db)).
+- Prepopulate mockDataset with 3+ records.
+- Always Load and persist mockDataset using mc.getProperty('mockDataset') and mc.setProperty('mockDataset', JSON.stringify(db)).
 - Handle all status codes, support JSON/XML.
 - Do not use try catch error andlings
 - Do not use break; other than inside loops
@@ -219,12 +219,12 @@ Instructions:
 - Generate scripts only for all the methods available in the respective paths and keep the implementation simple
 """
   prompt = prompt + f"""
-- Make sure the script handles the data in {mockDB} which is the current mockDB correctly with correct structure.
+- Make sure the script handles the data in {mock_dataset} which is the current mockDataset correctly with correct structure.
 - Assign responses via mc.setProperty() and mc.setPayloadJSON().
 - Ensure mock server behaves like a real one.
 - Comparisons should use == instead of ===.
 - The output must strictly follow the schema given in the example.
-- All data (e.g., in queries, params, and mockDB) is treated as strings. For comparisons (e.g., dates or other types), 
+- All data (e.g., in queries, params, and mockDataset) is treated as strings. For comparisons (e.g., dates or other types), 
 ensure the data is parsed into the correct format before comparing (e.g., >=). Handle parsing errors gracefully 
 to avoid runtime exceptions.
 - Accept type can be /*/ as well then default to application/json. And always set the accept type.
@@ -234,7 +234,7 @@ Expected Output Example:
 {{ "/pets": {{"post": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
 if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   mc.setProperty('CONTENT_TYPE', accept);\\n
-  var db = JSON.parse(mc.getProperty('mockDB') || '{{}}');\\n
+  var db = JSON.parse(mc.getProperty('mockDataset') || '{{}}');\\n
   var body = mc.getPayloadJSON();\\n
   if (body && body.id && body.name) {{\\n
     db.pets = db.pets || [];\\n
@@ -243,14 +243,14 @@ if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   }} else {{\\n
     mc.setProperty('HTTP_SC', '400');\\n
     mc.setPayloadJSON({{ message: 'Invalid request, must contain id and name' }});\\n
-  mc.setProperty('mockDB', JSON.stringify(db));\\n
+  mc.setProperty('mockDataset', JSON.stringify(db));\\n
 "}}\n
   "/pets/{{petId}}": {{
     "get": "var accept = mc.getProperty('AcceptHeader') || 'application/json';\\n
 if (accept == null || accept == '/*/') {{ accept = 'application/json'; }}\\n
   mc.setProperty('CONTENT_TYPE', accept);\\n
   var id = parseInt(mc.getProperty('uri.var.petId'), 10);\\n
-  var db = JSON.parse(mc.getProperty('mockDB') || '{{}}');\\n
+  var db = JSON.parse(mc.getProperty('mockDataset') || '{{}}');\\n
   var pet = null;\\n
   for (var i = 0; i < (db.pets || []).length; i++) {{\\n
     if (db.pets[i].id == id) {{\\n

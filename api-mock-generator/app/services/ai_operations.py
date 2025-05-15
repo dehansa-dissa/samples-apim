@@ -22,7 +22,7 @@ def generate_mock_scripts(open_api_spec, config, batch_size = BATCH_SIZE): # add
         dict: JSON response containing generated mock scripts.
 
     Raises:
-        ValueError: If mockDB generation or schema validation fails.
+        ValueError: If mock dataset generation or schema validation fails.
         Exception: For other unexpected errors during generation.
     """
     try:
@@ -39,24 +39,24 @@ def generate_mock_scripts(open_api_spec, config, batch_size = BATCH_SIZE): # add
             paths_response = {}
             sys_msg = generate_mocks_sys_msg(simplified_spec, config)
 
-            # Generate mockDB first
-            def generate_mockDB():
+            # Generate mock dataset first
+            def generate_mock_dataset():
                 prompt_messages = [{"role": "system", "content": sys_msg},
-                                {"role": "user", "content": generate_mocks_batch_prompt(config, ["mockDB"])}]
-                mockDB_json = get_structured_output_with_validation(prompt_messages,
-                                                                    output_json_schema_generate_mocks_sim_resource(paths, ["mockDB"]))
-                if not mockDB_json:
-                    logger.error("Failed to generate mockDB.")
-                    raise ValueError("Failed to generate mockDB.")
-                return mockDB_json
+                                {"role": "user", "content": generate_mocks_batch_prompt(config, ["mockDataset"])}]
+                mock_dataset_json = get_structured_output_with_validation(prompt_messages,
+                                                                    output_json_schema_generate_mocks_sim_resource(paths, ["mockDataset"]))
+                if not mock_dataset_json:
+                    logger.error("Failed to generate mock dataset.")
+                    raise ValueError("Failed to generate mock dataset.")
+                return mock_dataset_json
 
-            mockDB_json = generate_mockDB()
-            final_response.update(mockDB_json)
+            mock_dataset_json = generate_mock_dataset()
+            final_response.update(mock_dataset_json)
 
             # Function to process each paths_batch
             def process_resource(paths_batch):
                 prompt_messages = [{"role": "system", "content": sys_msg},
-                                {"role": "user", "content": generate_mocks_batch_prompt(config, paths_batch, mockDB_json)}]
+                                {"role": "user", "content": generate_mocks_batch_prompt(config, paths_batch, mock_dataset_json)}]
                 response_json = get_structured_output_with_validation(prompt_messages,
                                                                     output_json_schema_generate_mocks_sim_resource(paths, paths_batch))
                 paths_response.update(response_json)
