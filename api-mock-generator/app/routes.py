@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional
 from app.services.ai_operations import generate_mock_scripts, modify_method
 from app.utils.logger import logger
 
