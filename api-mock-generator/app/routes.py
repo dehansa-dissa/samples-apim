@@ -21,9 +21,11 @@ class ModifyConfig(BaseModel):
     script: str = 'No Script'
     modify: ConfigModify
 
+
 class GenerateMocksRequest(BaseModel):
     swagger: str
     config: Optional["GenerateMockConfig"] = None
+
 class ModifyMethodRequest(BaseModel):
     swagger: str
     config: ModifyConfig
