@@ -33,6 +33,18 @@ class ModifyMethodRequest(BaseModel):
 # Updated endpoints with request body models
 @api_router.post('/generate-mocks', status_code=201)
 async def generate_mock_scripts_endpoint(payload: GenerateMocksRequest):
+    """
+    Endpoint to generate mock scripts based on an OpenAPI specification.
+
+    Request:
+        payload (GenerateMocksRequest): Contains the OpenAPI spec as a string and optional configuration.
+
+    Response:
+        JSONResponse: Returns generated mock scripts as JSON with HTTP status 201.
+
+    Raises:
+        HTTPException: If the OpenAPI spec is missing in the request payload.
+    """
     if not payload.swagger:
         logger.warning("Open API Spec is required for generate-mocks endpoint")
         raise HTTPException(status_code=400, detail={
@@ -46,6 +58,18 @@ async def generate_mock_scripts_endpoint(payload: GenerateMocksRequest):
 
 @api_router.post('/modify-method', status_code=201)
 async def modify_method_endpoint(payload: ModifyMethodRequest):
+    """
+    Endpoint to modify a method's mock script based on instructions and OpenAPI spec.
+
+    Request:
+        payload (ModifyMethodRequest): Contains the OpenAPI spec, modification config including path, method, script, and instructions.
+
+    Response:
+        JSONResponse: Returns the modified mock script as JSON with HTTP status 201.
+
+    Raises:
+        HTTPException: If required fields are missing in the request payload.
+    """
     if not (payload.swagger and payload.config and payload.config.modify and payload.config.script and payload.config.instructions):
         logger.warning("Missing required fields for modify-method endpoint")
         raise HTTPException(status_code=400, detail={

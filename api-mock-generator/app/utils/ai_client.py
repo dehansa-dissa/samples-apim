@@ -8,6 +8,22 @@ import json
 from app.utils.constants import RETRY_COUNT, RETRY_DELAY, TIMEOUT, TEMPERATURE
 
 def generate_structured_output(messages, retry_count=RETRY_COUNT, retry_delay=RETRY_DELAY, timeout=TIMEOUT):
+    """
+    Generate structured output from the AI client with retries and timeout.
+
+    Args:
+        messages (list): List of message dicts to send to the AI client.
+        retry_count (int, optional): Number of retry attempts. Defaults to RETRY_COUNT.
+        retry_delay (int, optional): Delay between retries in seconds. Defaults to RETRY_DELAY.
+        timeout (int, optional): Timeout for each attempt in seconds. Defaults to TIMEOUT.
+
+    Returns:
+        str: The content of the AI client's response.
+
+    Raises:
+        TimeoutError: If all retry attempts time out.
+        Exception: For other errors during API calls.
+    """
     def call_api():
         return client.chat.completions.create(
             model=deployment_name,
@@ -35,6 +51,17 @@ def generate_structured_output(messages, retry_count=RETRY_COUNT, retry_delay=RE
     raise last_exception
     
 def fix_schema(response,schema,retry_count = 1):
+    """
+    Attempt to fix a response to match a given schema by retrying with prompts.
+
+    Args:
+        response (str): The response string to fix.
+        schema (str): The JSON schema to validate against.
+        retry_count (int, optional): Number of retry attempts. Defaults to 1.
+
+    Returns:
+        dict or None: The fixed response as a JSON dict if successful, else None.
+    """
     retries = 0
     print(f"Validation failed")
     while retry_count > retries:
@@ -53,6 +80,20 @@ from app.utils.logger import logger
 import json
 
 def get_structured_output_with_validation(prompt_messages, schema):
+    """
+    Generate structured output from the AI client and validate against a schema.
+
+    Args:
+        prompt_messages (list): List of prompt message dicts.
+        schema (str): JSON schema string to validate the response.
+
+    Returns:
+        dict: Validated JSON response.
+
+    Raises:
+        ValueError: If schema validation fails after retries.
+        Exception: For other unexpected errors.
+    """
     try:
         prompt_messages.append({"role": "user", "content": f"Use the following schema for the output: '{schema}'"})
         response = generate_structured_output(prompt_messages)
@@ -68,4 +109,3 @@ def get_structured_output_with_validation(prompt_messages, schema):
     except Exception as e:
         logger.error(f"Unexpected error in get_structured_output_with_validation: {e}")
         raise
-        

@@ -4,6 +4,16 @@ import traceback
 from app.utils.logger import logger
 
 def clean_openapi_spec(api_definition: dict, use_previous_scripts) -> dict:
+    """
+    Clean the OpenAPI specification by removing unnecessary fields.
+
+    Args:
+        api_definition (dict): The OpenAPI specification as a dictionary.
+        use_previous_scripts (bool): Flag to determine if previous scripts should be retained.
+
+    Returns:
+        dict: Cleaned OpenAPI specification with sensitive or unnecessary fields removed.
+    """
     paths = api_definition.get("paths", {}) # sanitize newlines etc/ cleanin in carbon
     for path, methods in paths.items():
         for method, details in methods.items():
@@ -25,6 +35,15 @@ def clean_openapi_spec(api_definition: dict, use_previous_scripts) -> dict:
     return cleaned_swagger
 
 def output_json_schema_generate_mocks(api_definition: dict) -> dict:
+    """
+    Generate a JSON schema template for mock generation based on the API definition.
+
+    Args:
+        api_definition (dict): The OpenAPI specification as a dictionary.
+
+    Returns:
+        dict: JSON schema template describing mockDB and inline scripts for each path and method.
+    """
     json_schema = { # use mockDataSet
         "mockDB": "The prepopulated MockDB in the format {collectionName:[...]}",
         "paths": {}
@@ -41,11 +60,27 @@ def output_json_schema_generate_mocks(api_definition: dict) -> dict:
     return json_schema
 
 def output_json_schema_modify_method() -> dict:
+    """
+    Generate a JSON schema template for the modify method operation.
+
+    Returns:
+        dict: JSON schema template with a modified_script field.
+    """
     return {
         "modified_script": "The modified script..." 
     }
 
 def output_json_schema_generate_mocks_sim_resource(paths: dict, paths_batch: list) -> dict:
+    """
+    Generate a JSON schema template for mock generation for a batch of paths.
+
+    Args:
+        paths (dict): Dictionary of API paths and their methods.
+        paths_batch (list): List of paths to include in the batch.
+
+    Returns:
+        dict: JSON schema template for the specified batch of paths.
+    """
     json_schema = {}
     if len(paths_batch) == 1 and paths_batch[0] == 'mockDB':
         json_schema["mockDB"] = "The prepopulated MockDB in the format {collectionName:[...]}"
@@ -62,6 +97,16 @@ def output_json_schema_generate_mocks_sim_resource(paths: dict, paths_batch: lis
     return json_schema
 
 def batch_paths_by_method_count(paths: dict, batch_size: int) -> list[list[str]]:
+    """
+    Batch API paths by the count of methods to limit batch size.
+
+    Args:
+        paths (dict): Dictionary of API paths and their methods.
+        batch_size (int): Maximum number of methods per batch.
+
+    Returns:
+        list[list[str]]: List of batches, each batch is a list of path strings.
+    """
     batches = []
     current_batch = []
     op_count = 0
@@ -84,6 +129,20 @@ def batch_paths_by_method_count(paths: dict, batch_size: int) -> list[list[str]]
     return batches
 
 def get_simplified_spec(spec, use_previous_scripts = False):
+    """
+    Simplify and clean an OpenAPI specification, resolving JSON references.
+
+    Args:
+        spec (str or dict): The OpenAPI specification as a JSON string or dictionary.
+        use_previous_scripts (bool, optional): Flag to retain previous scripts. Defaults to False.
+
+    Returns:
+        dict: Simplified and cleaned OpenAPI specification.
+
+    Raises:
+        ValueError: If JSON decoding fails.
+        RuntimeError: If JSON reference processing fails.
+    """
     #if string convert to json
     if isinstance(spec, str):
         try:
@@ -103,6 +162,16 @@ def get_simplified_spec(spec, use_previous_scripts = False):
     return spec
 
 def validate_schema(response, output_schema):
+    """
+    Recursively validate if a response matches the output schema.
+
+    Args:
+        response (any): The response object to validate.
+        output_schema (any): The expected schema to validate against.
+
+    Returns:
+        bool: True if the response matches the schema, False otherwise.
+    """
     if not isinstance(response, dict):
         if isinstance(response, str) and isinstance(output_schema, str):
             return True

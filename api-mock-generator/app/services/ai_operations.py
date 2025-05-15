@@ -10,6 +10,21 @@ import json
 from app.utils.constants import BATCH_SIZE, PROCESS_RESOURCE_DELAY
 
 def generate_mock_scripts(open_api_spec, config, batch_size = BATCH_SIZE): # add configurable
+    """
+    Generate mock scripts based on an OpenAPI specification.
+
+    Args:
+        open_api_spec (str): The OpenAPI specification as a string.
+        config (dict): Configuration options for mock script generation.
+        batch_size (int, optional): Number of paths to process in each batch. Defaults to BATCH_SIZE.
+
+    Returns:
+        dict: JSON response containing generated mock scripts.
+
+    Raises:
+        ValueError: If mockDB generation or schema validation fails.
+        Exception: For other unexpected errors during generation.
+    """
     try:
         def generate_mock_scripts_at_once(simplified_spec, config):
             output_json_schema = output_json_schema_generate_mocks(simplified_spec)
@@ -73,6 +88,25 @@ def generate_mock_scripts(open_api_spec, config, batch_size = BATCH_SIZE): # add
         raise
 
 def modify_method(open_api_spec,script, path, method, instructions, is_default_script = False):
+    """
+    Modify a method's mock script based on instructions and OpenAPI specification.
+
+    Args:
+        open_api_spec (str): The OpenAPI specification as a string.
+        script (str): The existing mock script to be modified.
+        path (str): The API endpoint path to modify.
+        method (str): The HTTP method (e.g., 'get', 'post') to modify.
+        instructions (str): Instructions for modifying the script.
+        is_default_script (bool, optional): Flag indicating if the script is a default script. Defaults to False.
+
+    Returns:
+        dict: JSON response containing the modified script.
+
+    Raises:
+        KeyError: If the specified path or method is not found in the OpenAPI spec.
+        ValueError: If the response from the modification operation is invalid.
+        Exception: For other unexpected errors during modification.
+    """
     try:
         simplified_spec = get_simplified_spec(open_api_spec)
         try:
