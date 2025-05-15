@@ -481,4 +481,3 @@ async def api_mock_modify_method(req: dict, x_jwt_assertion: str = Header(None))
                 return await response.json()
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
-            
