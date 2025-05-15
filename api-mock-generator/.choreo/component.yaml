@@ -1,0 +1,11 @@
+schemaVersion: "1.2"
+endpoints:
+    - name: api-mock-generator-api-be2
+      displayName: AI Assisted API Mocking
+      service:
+        basePath: /
+        port: 8000
+      type: REST
+      networkVisibilities:
+        - Public
+      schemaFilePath: openapi.yaml

@@ -22,6 +22,7 @@ api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
 graphql_api_chat_endpoint = os.getenv("GRAPHQL_API_CHAT_ENDPOINT")
 marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
 api_design_assistant_endpoint = os.getenv("API_DA_ENDPOINT")
+api_mock_endpoint = os.getenv("API_MOCK_ENDPOINT")
 api_publisher_endpoint = os.getenv("API_PUBLISHER_ENDPOINT")
 api_chat_access_token = os.getenv("API_CHAT_ENDPOINT_ACCESS_TOKEN")
 introspect_endpoint = os.getenv("INTROSPECTION_ENDPOINT")
@@ -447,6 +448,36 @@ async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(
         async with session.post(api_design_assistant_endpoint + "/generate-api-payload", 
                                 json={'sessionId': sessionId}) as response:
             if response.status == 200:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
+
+@app.post("/ai/api-mock/generate-mocks", status_code=status.HTTP_201_CREATED)
+async def api_mock_generate_mocks(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(api_mock_endpoint + "generate-mocks", 
+                                json=req) as response:
+            if response.status == 201:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
+
+@app.post("/ai/api-mock/modify-method", status_code=status.HTTP_201_CREATED)
+async def api_mock_modify_method(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(api_mock_endpoint + "modify-method", 
+                                json=req) as response:
+            if response.status == 201:
                 return await response.json()
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
