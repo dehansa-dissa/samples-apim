@@ -5,13 +5,15 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import time
 import json
 
-def generate_structured_output(messages, retry_count=1, retry_delay=1, timeout=60): # configurables
+from app.utils.constants import RETRY_COUNT, RETRY_DELAY, TIMEOUT, TEMPERATURE
+
+def generate_structured_output(messages, retry_count=RETRY_COUNT, retry_delay=RETRY_DELAY, timeout=TIMEOUT):
     def call_api():
         return client.chat.completions.create(
             model=deployment_name,
             response_format={"type": "json_object"},
             messages=messages,
-            temperature=0.7 # configurable
+            temperature=TEMPERATURE
         )
 
     last_exception = None

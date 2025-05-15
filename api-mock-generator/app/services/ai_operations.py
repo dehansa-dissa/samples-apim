@@ -7,7 +7,9 @@ import json
 from app.utils.logger import logger
 import json
 
-def generate_mock_scripts(open_api_spec, config, batch_size = 15): # add configurable
+from app.utils.constants import BATCH_SIZE, PROCESS_RESOURCE_DELAY
+
+def generate_mock_scripts(open_api_spec, config, batch_size = BATCH_SIZE): # add configurable
     try:
         def generate_mock_scripts_at_once(simplified_spec, config):
             output_json_schema = output_json_schema_generate_mocks(simplified_spec)
@@ -46,7 +48,7 @@ def generate_mock_scripts(open_api_spec, config, batch_size = 15): # add configu
 
             for paths_batch in batched_paths:
                 process_resource(paths_batch)
-                time.sleep(1)
+                time.sleep(PROCESS_RESOURCE_DELAY)
 
             # Finalize response
             final_response["paths"] = paths_response
