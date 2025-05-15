@@ -1,7 +1,7 @@
 schemaVersion: "1.2"
 endpoints:
-    - name: interceptor-service-be2
-      displayName: Interceptor Service
+    - name: api-chat
+      displayName: API Chat
       service:
         basePath: /
         port: 8000

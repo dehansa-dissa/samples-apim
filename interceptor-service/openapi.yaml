@@ -11,6 +11,12 @@ paths:
         - required: false
           schema:
             type: string
+            title: Apitype
+          name: apiType
+          in: query
+        - required: false
+          schema:
+            type: string
             title: Apichatrequestid
           name: apiChatRequestId
           in: header
@@ -44,6 +50,12 @@ paths:
       summary: Execute
       operationId: execute_ai_api_chat_execute_post
       parameters:
+        - required: false
+          schema:
+            type: string
+            title: Apitype
+          name: apiType
+          in: query
         - required: false
           schema:
             type: string
