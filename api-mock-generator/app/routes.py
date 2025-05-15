@@ -7,24 +7,26 @@ from app.utils.logger import logger
 
 api_router = APIRouter()
 
-# Define Pydantic models for request payloads
+class GenerateMockConfig(BaseModel):
+    instructions: Optional[str] = None
+    usePreviousScripts: bool = False
+
 class ConfigModify(BaseModel):
     path: str
     method: str
-    defaultScript: Optional[bool] = None
+    defaultScript: bool = False
 
-class Config(BaseModel):
-    modify: Optional[ConfigModify] = None
-    script: Optional[str] = None
-    instructions: Optional[str] = None
+class ModifyConfig(BaseModel):
+    instructions: str = 'Generate mock scripts for the specified endpoint'
+    script: str = 'No Script'
+    modify: ConfigModify
 
 class GenerateMocksRequest(BaseModel):
     swagger: str
-    config: Optional[Config] = None
-
+    config: Optional["GenerateMockConfig"] = None
 class ModifyMethodRequest(BaseModel):
     swagger: str
-    config: Config
+    config: ModifyConfig
 
 # Updated endpoints with request body models
 @api_router.post('/generate-mocks', status_code=201)
