@@ -17,6 +17,3 @@ client = AzureOpenAI(
   api_key=openai.api_key,  
   api_version=openai.api_version
 )
-
-class Config:
-  DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")

@@ -1,7 +1,7 @@
 schemaVersion: "1.2"
 endpoints:
-    - name: api-design-assistant-api-be2
-      displayName: API Design Assistant API
+    - name: api-mock-generator-api-be2
+      displayName: AI Assisted API Mocking
       service:
         basePath: /
         port: 8000

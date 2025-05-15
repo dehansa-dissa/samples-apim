@@ -18,21 +18,21 @@ from oauth2_client import OAuth2Client
 import tiktoken
 from jwt_validation import validate_backend_jwt
 
-# api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
-# marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
-# api_design_assistant_endpoint = os.getenv("API_DA_ENDPOINT")
-api_mock_endpoint = 'http://127.0.0.1:3000/' # os.getenv("API_MOCK_ENDPOINT")
-# api_publisher_endpoint = os.getenv("API_PUBLISHER_ENDPOINT")
-# api_chat_access_token = os.getenv("API_CHAT_ENDPOINT_ACCESS_TOKEN")
-# introspect_endpoint = os.getenv("INTROSPECTION_ENDPOINT")
-# marketplace_chat_access_token = os.getenv("MARKETPLACE_CHAT_ENDPOINT_TOKEN")
-# api_publisher_endpoint_access_token = os.getenv("API_PUBLISHER_ENDPOINT_ACCESS_TOKEN")
-# redis_uri = os.getenv("REDIS_URI")
-# do_throttle = os.getenv("DO_THROTTLE", "true")
+api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
+marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
+api_design_assistant_endpoint = os.getenv("API_DA_ENDPOINT")
+api_mock_endpoint = os.getenv("API_MOCK_ENDPOINT")
+api_publisher_endpoint = os.getenv("API_PUBLISHER_ENDPOINT")
+api_chat_access_token = os.getenv("API_CHAT_ENDPOINT_ACCESS_TOKEN")
+introspect_endpoint = os.getenv("INTROSPECTION_ENDPOINT")
+marketplace_chat_access_token = os.getenv("MARKETPLACE_CHAT_ENDPOINT_TOKEN")
+api_publisher_endpoint_access_token = os.getenv("API_PUBLISHER_ENDPOINT_ACCESS_TOKEN")
+redis_uri = os.getenv("REDIS_URI")
+do_throttle = os.getenv("DO_THROTTLE", "true")
 
-# client_id = os.getenv("onprem_client_id")
-# client_secret = os.getenv("onprem_client_secret")
-# token_url = os.getenv("onprem_token_url")
+client_id = os.getenv("onprem_client_id")
+client_secret = os.getenv("onprem_client_secret")
+token_url = os.getenv("onprem_token_url")
 
 def convert_to_int(s):
     try:
@@ -91,48 +91,48 @@ caches.set_config({
 })
 
 
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     global lua_script_sha, redis_client, oauth_client
-#     try:
-#         oauth_client = OAuth2Client(client_id, client_secret, token_url)
-#         redis_client = redis.from_url(
-#             redis_uri, retry_on_error=[ConnectionError, TimeoutError] # Delay between retry attempts (1 second)
-#         )
-#         lua_script_sha = None
-#         await test_connection()
-#         lua_script_sha = await redis_client.script_load(lua_script)
-#         yield
-#     except Exception as e:
-#         print(f"Error initializing Redis connection: {e}")
-#         raise Exception("Error initializing Redis connection")
-#     finally:
-#         await redis_client.aclose()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global lua_script_sha, redis_client, oauth_client
+    try:
+        oauth_client = OAuth2Client(client_id, client_secret, token_url)
+        redis_client = redis.from_url(
+            redis_uri, retry_on_error=[ConnectionError, TimeoutError] # Delay between retry attempts (1 second)
+        )
+        lua_script_sha = None
+        await test_connection()
+        lua_script_sha = await redis_client.script_load(lua_script)
+        yield
+    except Exception as e:
+        print(f"Error initializing Redis connection: {e}")
+        raise Exception("Error initializing Redis connection")
+    finally:
+        await redis_client.aclose()
 
 
-# lua_script = """
-#     local json_value = redis.call('GET', KEYS[1])
-#     local data
-#     if json_value then
-#         data = cjson.decode(json_value)
-#     else
-#         data = {
-#             prompt_tokens = 0,
-#             completion_tokens = 0,
-#             total_tokens = 0
-#         }
-#     end
-#     data["prompt_tokens"] = data["prompt_tokens"] + ARGV[2]
-#     data["completion_tokens"] = data["completion_tokens"] + ARGV[3]
-#     data["total_tokens"] = data["total_tokens"] + ARGV[4]
+lua_script = """
+    local json_value = redis.call('GET', KEYS[1])
+    local data
+    if json_value then
+        data = cjson.decode(json_value)
+    else
+        data = {
+            prompt_tokens = 0,
+            completion_tokens = 0,
+            total_tokens = 0
+        }
+    end
+    data["prompt_tokens"] = data["prompt_tokens"] + ARGV[2]
+    data["completion_tokens"] = data["completion_tokens"] + ARGV[3]
+    data["total_tokens"] = data["total_tokens"] + ARGV[4]
     
-#     if not json_value then
-#         redis.call('SET', KEYS[1], cjson.encode(data), 'EX', ARGV[1])
-#     else
-#         redis.call('SET', KEYS[1], cjson.encode(data), 'KEEPTTL')
-#     end
-#     return cjson.encode(data)
-#     """
+    if not json_value then
+        redis.call('SET', KEYS[1], cjson.encode(data), 'EX', ARGV[1])
+    else
+        redis.call('SET', KEYS[1], cjson.encode(data), 'KEEPTTL')
+    end
+    return cjson.encode(data)
+    """
 
 
 app = FastAPI(
@@ -140,311 +140,311 @@ app = FastAPI(
     description="Backend for WSO2 APIM AI Features",
     version="0.1.0",
     license_info={"name": "Apache 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
-    # lifespan=lifespan
+    lifespan=lifespan
 )
 
 
-# async def update_redis_cache(key, increment_value):
-#     global lua_script_sha
-#     result = await redis_client.evalsha(lua_script_sha, 1, key, expire_time, *increment_value)
-#     return
+async def update_redis_cache(key, increment_value):
+    global lua_script_sha
+    result = await redis_client.evalsha(lua_script_sha, 1, key, expire_time, *increment_value)
+    return
 
 
-# async def test_connection():
-#     try:
-#         await redis_client.ping()
-#         await redis_client.set('test', 'Hello world!')
-#         res = await redis_client.get('test')
-#         print(res)
-#         await redis_client.delete('test')
-#     except Exception as e:
-#         raise Exception("Error testing Redis connection")
+async def test_connection():
+    try:
+        await redis_client.ping()
+        await redis_client.set('test', 'Hello world!')
+        res = await redis_client.get('test')
+        print(res)
+        await redis_client.delete('test')
+    except Exception as e:
+        raise Exception("Error testing Redis connection")
 
-# @cached(ttl=900, key=lambda x_jwt_assertion: f"jwt_org_info:{x_jwt_assertion}")
-# async def decode_jwt(x_jwt_assertion: str):
-#     payload = jwt.decode(x_jwt_assertion, options={"verify_signature": False})
+@cached(ttl=900, key=lambda x_jwt_assertion: f"jwt_org_info:{x_jwt_assertion}")
+async def decode_jwt(x_jwt_assertion: str):
+    payload = jwt.decode(x_jwt_assertion, options={"verify_signature": False})
     
-#     org_id = payload.get("org_id")
-#     aud = payload.get("aud")
+    org_id = payload.get("org_id")
+    aud = payload.get("aud")
 
-#     if org_id is None or aud is None:
-#         raise HTTPException(
-#             status_code=status.HTTP_401_UNAUTHORIZED,
-#             detail="Organization details not found in token"
-#         )
-#     return org_id, aud
+    if org_id is None or aud is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Organization details not found in token"
+        )
+    return org_id, aud
 
-# async def get_org_info_from_token(x_jwt_assertion: str = Header(None)):
-#     try:
-#         return await decode_jwt(x_jwt_assertion)
+async def get_org_info_from_token(x_jwt_assertion: str = Header(None)):
+    try:
+        return await decode_jwt(x_jwt_assertion)
 
-#     except PyJWTError:
-#         raise HTTPException(
-#             status_code=status.HTTP_401_UNAUTHORIZED,
-#             detail="Invalid token"
-#         )
+    except PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
 
-# async def throttle(orgID):
-#     cache_key = "org:" + orgID + ":token_count"
-#     current_counts_json = await redis_client.get(cache_key)
-#     if current_counts_json is not None:
-#         current_counts = json.loads(current_counts_json)
-#         total_count = int(current_counts["total_tokens"])
-#         if total_count >= openai_token_count_per_org:
-#             raise HTTPException(status_code=429, detail="Maximum token limit reached")
+async def throttle(orgID):
+    cache_key = "org:" + orgID + ":token_count"
+    current_counts_json = await redis_client.get(cache_key)
+    if current_counts_json is not None:
+        current_counts = json.loads(current_counts_json)
+        total_count = int(current_counts["total_tokens"])
+        if total_count >= openai_token_count_per_org:
+            raise HTTPException(status_code=429, detail="Maximum token limit reached")
 
-# @cached(ttl=60, key=lambda orgID: f"api_count:{orgID}")
-# async def fetch_api_count(orgID):
-#     async with aiohttp.ClientSession() as session:
-#         async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID}) as response:
-#             if response.status == 200:
-#                 count = (await response.json())['count']
-#                 return count
-#             else:
-#                 raise HTTPException(status_code=response.status, detail=await response.text())
+@cached(ttl=60, key=lambda orgID: f"api_count:{orgID}")
+async def fetch_api_count(orgID):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID}) as response:
+            if response.status == 200:
+                count = (await response.json())['count']
+                return count
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
-# async def fetch_api_count_for_upload(orgID):
-#     async with aiohttp.ClientSession() as session:
-#         async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID}) as response:
-#             if response.status == 200:
-#                 count = (await response.json())['count']
-#                 return count
-#             else:
-#                 raise HTTPException(status_code=response.status, detail=await response.text())
+async def fetch_api_count_for_upload(orgID):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID}) as response:
+            if response.status == 200:
+                count = (await response.json())['count']
+                return count
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
-# @app.post("/ai/api-chat/count-tokens", status_code=status.HTTP_201_CREATED)
-# async def count_tokens(text: str = Body(..., media_type="text/plain")):
-#     encoding = tiktoken.encoding_for_model("gpt-35-turbo")
-#     token_count = len(encoding.encode(text))
-#     return {"count": token_count}
+@app.post("/ai/api-chat/count-tokens", status_code=status.HTTP_201_CREATED)
+async def count_tokens(text: str = Body(..., media_type="text/plain")):
+    encoding = tiktoken.encoding_for_model("gpt-35-turbo")
+    token_count = len(encoding.encode(text))
+    return {"count": token_count}
 
-# @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
-# async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
-#     try:
-#         await validate_backend_jwt(x_jwt_assertion)
-#     except Exception as e:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+@app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
+async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
-#     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
-#     async with aiohttp.ClientSession() as session:
-#         headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
-#         async with session.post(api_chat_endpoint + "/prepare", headers=headers, json=req) as response:
-#             if response.status == 201:
-#                 response_json = await response.json()
-#                 if 'usage' in response_json:
-#                     usage = response_json.pop('usage', None)
-#                     cache_key = "org:" + orgID + ":token_count"
-#                     asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-#                 return response_json
-#             else:
-#                 raise HTTPException(status_code=response.status, detail=await response.text())
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    async with aiohttp.ClientSession() as session:
+        headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
+        async with session.post(api_chat_endpoint + "/prepare", headers=headers, json=req) as response:
+            if response.status == 201:
+                response_json = await response.json()
+                if 'usage' in response_json:
+                    usage = response_json.pop('usage', None)
+                    cache_key = "org:" + orgID + ":token_count"
+                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                return response_json
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
 
-# @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
-# async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
-#     try:
-#         await validate_backend_jwt(x_jwt_assertion)
-#     except Exception as e:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+@app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
+async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
-#     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
-#     if do_throttle == "true":
-#         await throttle(orgID)
-#     async with aiohttp.ClientSession() as session:
-#         headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
-#         async with session.post(api_chat_endpoint + "/chat", headers=headers, json=req) as response:
-#             if response.status == 201:
-#                 response_json = await response.json()
-#                 if 'usage' in response_json:
-#                     usage = response_json.pop('usage', None)
-#                     cache_key = "org:" + orgID + ":token_count"
-#                     asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-#                 return response_json
-#             else:
-#                 raise HTTPException(status_code=response.status, detail=await response.text())
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    if do_throttle == "true":
+        await throttle(orgID)
+    async with aiohttp.ClientSession() as session:
+        headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
+        async with session.post(api_chat_endpoint + "/chat", headers=headers, json=req) as response:
+            if response.status == 201:
+                response_json = await response.json()
+                if 'usage' in response_json:
+                    usage = response_json.pop('usage', None)
+                    cache_key = "org:" + orgID + ":token_count"
+                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                return response_json
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
-# @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
-# async def chat(req: dict, x_jwt_assertion: str = Header(None)):
-#     try:
-#         await validate_backend_jwt(x_jwt_assertion)
-#     except Exception as e:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+@app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
+async def chat(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
-#     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
-#     if do_throttle == "true":
-#         await throttle(orgID)
-#     history_string = req["history"]
-#     data_list = json.loads(history_string)
-#     objects_list = []
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    if do_throttle == "true":
+        await throttle(orgID)
+    history_string = req["history"]
+    data_list = json.loads(history_string)
+    objects_list = []
 
-#     for item in data_list:
-#         role = item['role']
-#         content = item['content']
-#         obj = {"role": role, "content": content}
-#         objects_list.append(obj)
+    for item in data_list:
+        role = item['role']
+        content = item['content']
+        obj = {"role": role, "content": content}
+        objects_list.append(obj)
 
-#     payload = {
-#             "query": req['query'],
-#             "history": objects_list,
-#             "tenant_domain": req['tenant_domain'],
-#             "user_roles" : ''
-#         }
+    payload = {
+            "query": req['query'],
+            "history": objects_list,
+            "tenant_domain": req['tenant_domain'],
+            "user_roles" : ''
+        }
 
-#     if 'user_roles' in req:
-#         payload['user_roles'] = req['user_roles']
+    if 'user_roles' in req:
+        payload['user_roles'] = req['user_roles']
 
-#     async with aiohttp.ClientSession() as session:
-#         headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
-#         async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'keyID': handle[0]},
-#                                 json=payload, headers=headers) as response:
-#             if response.status == 200:
-#                 response_json = await response.json()
-#                 if 'usage' in response_json:
-#                     usage = response_json.pop('usage', None)
-#                     cache_key = "org:" + orgID + ":token_count"
-#                     asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-#                 return response_json
-#             else:
-#                 raise HTTPException(status_code=response.status, detail=await response.text())
+    async with aiohttp.ClientSession() as session:
+        headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
+        async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'keyID': handle[0]},
+                                json=payload, headers=headers) as response:
+            if response.status == 200:
+                response_json = await response.json()
+                if 'usage' in response_json:
+                    usage = response_json.pop('usage', None)
+                    cache_key = "org:" + orgID + ":token_count"
+                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                return response_json
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
 
-# @app.post("/ai/spec-populator/publish-api", status_code=status.HTTP_201_CREATED)
-# async def publish_api(req: dict, x_jwt_assertion: str = Header(None)):
-#     try:
-#         await validate_backend_jwt(x_jwt_assertion)
-#     except Exception as e:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+@app.post("/ai/spec-populator/publish-api", status_code=status.HTTP_201_CREATED)
+async def publish_api(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
-#     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
-#     count = await fetch_api_count(orgID)
-#     if count <= 1000:
-#         async with aiohttp.ClientSession() as session:
-#             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-#             async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req,
-#                                     params={'orgID': orgID, 'keyID': handle[0]}, headers=headers) as response:
-#                 if response.status == 200:
-#                     return await response.json()
-#                 else:
-#                     raise HTTPException(status_code=response.status, detail=await response.text())
-#     else:
-#         raise HTTPException(status_code=429, detail="You have reached your api limit")
+    count = await fetch_api_count(orgID)
+    if count <= 1000:
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+            async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req,
+                                    params={'orgID': orgID, 'keyID': handle[0]}, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
+    else:
+        raise HTTPException(status_code=429, detail="You have reached your api limit")
 
 
-# @app.delete("/ai/spec-populator/remove-api/{uuid}")
-# async def remove_api(uuid: str, x_jwt_assertion: str = Header(None)):
-#     try:
-#         await validate_backend_jwt(x_jwt_assertion)
-#     except Exception as e:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+@app.delete("/ai/spec-populator/remove-api/{uuid}")
+async def remove_api(uuid: str, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
-#     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
-#     async with aiohttp.ClientSession() as session:
-#         headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-#         async with session.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'keyID': handle[0]},
-#                                     headers=headers) as response:
-#             if response.status == 200:
-#                 return await response.json()
-#             else:
-#                 raise HTTPException(status_code=response.status, detail=await response.text())
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    async with aiohttp.ClientSession() as session:
+        headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+        async with session.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'keyID': handle[0]},
+                                    headers=headers) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
-# @app.get("/ai/spec-populator/api-count")
-# async def api_count(x_jwt_assertion: str = Header(None)):
-#     try:
-#         await validate_backend_jwt(x_jwt_assertion)
-#     except Exception as e:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+@app.get("/ai/spec-populator/api-count")
+async def api_count(x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
-#     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
-#     count = await fetch_api_count(orgID)
-#     return {"count": count, "limit": 1000}
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    count = await fetch_api_count(orgID)
+    return {"count": count, "limit": 1000}
 
 
-# @app.post("/ai/spec-populator/bulk-upload")
-# async def upload_bulk_apis(req: dict, x_jwt_assertion: str = Header(None)):
-#     try:
-#         await validate_backend_jwt(x_jwt_assertion)
-#     except Exception as e:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+@app.post("/ai/spec-populator/bulk-upload")
+async def upload_bulk_apis(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
-#     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
-#     count = await fetch_api_count_for_upload(orgID)
-#     if count < 1000:
-#         req["apis"] = req["apis"][:1000-count]
-#         async with aiohttp.ClientSession() as session:
-#             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-#             async with session.post(api_publisher_endpoint + '/bulk_add_vector', json=req,
-#                                     params={'orgID': orgID, 'keyID': handle[0]}, headers=headers) as response:
-#                 if response.status == 200:
-#                     return await response.json()
-#                 else:
-#                     raise HTTPException(status_code=response.status, detail=await response.text())
-#     else:
-#         raise HTTPException(status_code=429, detail="You have reached your api limit")
+    count = await fetch_api_count_for_upload(orgID)
+    if count < 1000:
+        req["apis"] = req["apis"][:1000-count]
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+            async with session.post(api_publisher_endpoint + '/bulk_add_vector', json=req,
+                                    params={'orgID': orgID, 'keyID': handle[0]}, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    raise HTTPException(status_code=response.status, detail=await response.text())
+    else:
+        raise HTTPException(status_code=429, detail="You have reached your api limit")
 
-# @app.delete("/ai/spec-populator/bulk-remove")
-# async def remove_bulk_apis(x_jwt_assertion: str = Header(None), TENANT_DOMAIN: str = Header(None)):
-#     try:
-#         await validate_backend_jwt(x_jwt_assertion)
-#     except Exception as e:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+@app.delete("/ai/spec-populator/bulk-remove")
+async def remove_bulk_apis(x_jwt_assertion: str = Header(None), TENANT_DOMAIN: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
-#     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
-#     async with aiohttp.ClientSession() as session:
-#         headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-#         async with session.delete(api_publisher_endpoint + '/bulk_remove_vector',
-#                                 params={'orgID': orgID, 'keyID': handle[0], "tenantDomain": TENANT_DOMAIN}, headers=headers) as response:
-#             if response.status == 200:
-#                 return await response.json()
-#             else:
-#                 raise HTTPException(status_code=response.status, detail=await response.text())
+    async with aiohttp.ClientSession() as session:
+        headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+        async with session.delete(api_publisher_endpoint + '/bulk_remove_vector',
+                                params={'orgID': orgID, 'keyID': handle[0], "tenantDomain": TENANT_DOMAIN}, headers=headers) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
 
-# @app.post("/ai/api-design-assistant/chat", status_code=status.HTTP_201_CREATED)
-# async def design_assistant_chat(req: dict, x_jwt_assertion: str = Header(None)):
-#     try:
-#         await validate_backend_jwt(x_jwt_assertion)
-#     except Exception as e:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+@app.post("/ai/api-design-assistant/chat", status_code=status.HTTP_201_CREATED)
+async def design_assistant_chat(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
 
-#     text = req["text"]
-#     sessionId = req["sessionId"]
+    text = req["text"]
+    sessionId = req["sessionId"]
 
-#     async with aiohttp.ClientSession() as session:
-#         async with session.post(
-#             api_design_assistant_endpoint + "/chat",
-#             json={"text": text, "sessionId": sessionId}
-#         ) as response:
-#             if response.status == 200:
-#                 return await response.json()
-#             else:
-#                 raise HTTPException(status_code=response.status, detail=await response.text())
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            api_design_assistant_endpoint + "/chat",
+            json={"text": text, "sessionId": sessionId}
+        ) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
     
         
-# @app.post("/ai/api-design-assistant/generate-api-payload", status_code=status.HTTP_201_CREATED)
-# async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(None)):
-#     try:
-#         await validate_backend_jwt(x_jwt_assertion)
-#     except Exception as e:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+@app.post("/ai/api-design-assistant/generate-api-payload", status_code=status.HTTP_201_CREATED)
+async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
-#     async with aiohttp.ClientSession() as session:
-#         sessionId = req["sessionId"]
-#         async with session.post(api_design_assistant_endpoint + "/generate-api-payload", 
-#                                 json={'sessionId': sessionId}) as response:
-#             if response.status == 200:
-#                 return await response.json()
-#             else:
-#                 raise HTTPException(status_code=response.status, detail=await response.text())
+    async with aiohttp.ClientSession() as session:
+        sessionId = req["sessionId"]
+        async with session.post(api_design_assistant_endpoint + "/generate-api-payload", 
+                                json={'sessionId': sessionId}) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
 @app.post("/ai/api-mock/generate-mocks", status_code=status.HTTP_201_CREATED)
 async def api_mock_generate_mocks(req: dict, x_jwt_assertion: str = Header(None)):
-    # try:
-    #     await validate_backend_jwt(x_jwt_assertion)
-    # except Exception as e:
-    #     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
     async with aiohttp.ClientSession() as session:
         async with session.post(api_mock_endpoint + "generate-mocks", 
@@ -456,10 +456,10 @@ async def api_mock_generate_mocks(req: dict, x_jwt_assertion: str = Header(None)
 
 @app.post("/ai/api-mock/modify-method", status_code=status.HTTP_201_CREATED)
 async def api_mock_modify_method(req: dict, x_jwt_assertion: str = Header(None)):
-    # try:
-    #     await validate_backend_jwt(x_jwt_assertion)
-    # except Exception as e:
-    #     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
     async with aiohttp.ClientSession() as session:
         async with session.post(api_mock_endpoint + "modify-method", 
@@ -468,3 +468,4 @@ async def api_mock_modify_method(req: dict, x_jwt_assertion: str = Header(None))
                 return await response.json()
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
+            
