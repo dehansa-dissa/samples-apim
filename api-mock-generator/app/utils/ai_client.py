@@ -2,6 +2,7 @@ from config.settings import client, deployment_name
 from app.utils.helpers import validate_schema
 from app.utils.prompts import fix_schema_prompt
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from app.utils.logger import logger
 import time
 import json
 
@@ -38,16 +39,15 @@ def generate_structured_output(messages, retry_count=RETRY_COUNT, retry_delay=RE
             future = executor.submit(call_api)
             try:
                 response = future.result(timeout=timeout)
-                print("response:\n", response.choices[0].message.content, "\n")
                 return response.choices[0].message.content
             except TimeoutError:
-                print(f"Attempt {attempt + 1} timed out after {timeout} seconds.")
+                logger.warning(f"Attempt {attempt + 1} timed out after {timeout} seconds.")
                 last_exception = TimeoutError(f"Timeout after {timeout} seconds")
             except Exception as e:
-                print(f"Attempt {attempt + 1} failed with error: {e}")
+                logger.warning(f"Attempt {attempt + 1} failed with error: {e}")
                 last_exception = e
             time.sleep(retry_delay)
-    print(f"All {retry_count} attempts failed.")
+    logger.error(f"All {retry_count} attempts failed.")
     raise last_exception
     
 def fix_schema(response,schema,retry_count = 1):
@@ -63,15 +63,15 @@ def fix_schema(response,schema,retry_count = 1):
         dict or None: The fixed response as a JSON dict if successful, else None.
     """
     retries = 0
-    print(f"Validation failed")
+    logger.warning(f"Validation failed")
     while retry_count > retries:
-        print(f"Retrying validation {retries+1}.")
+        logger.info(f"Retrying validation {retries+1}.")
         fix_schema_messages = [{"role": "user", "content": fix_schema_prompt(response)},
                                {"role": "user", "content": f"Use the following schema for the output: '{schema}'"}]
         response = generate_structured_output(fix_schema_messages)
         response_json = json.loads(response)
         if validate_schema(response_json, schema):
-            print(f"Validation successful after {retries+1} retries.")
+            logger.info(f"Validation successful after {retries+1} retries.")
             return response_json
         retries += 1
     return

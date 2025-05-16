@@ -14,7 +14,7 @@ class GenerateMockConfig(BaseModel):
 class ConfigModify(BaseModel):
     path: str
     method: str
-    defaultScript: bool = False
+    isDefaultScript: bool = False
 
 class ModifyConfig(BaseModel):
     instructions: str = 'Generate mock scripts for the specified endpoint'
@@ -53,7 +53,6 @@ async def generate_mock_scripts_endpoint(payload: GenerateMocksRequest):
         })
 
     mock_scripts = generate_mock_scripts(payload.swagger, payload.config.model_dump() if payload.config else {})
-    # Removed info log to reduce noise
     return JSONResponse(content=mock_scripts, status_code=201)
 
 @api_router.post('/modify-method', status_code=201)
@@ -84,6 +83,6 @@ async def modify_method_endpoint(payload: ModifyMethodRequest):
         modify_config.path,
         modify_config.method,
         payload.config.instructions,
-        modify_config.defaultScript
+        modify_config.isDefaultScript
     )
     return JSONResponse(content=mock_script, status_code=201)

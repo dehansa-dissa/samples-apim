@@ -359,7 +359,176 @@ paths:
                   error:
                     type: string
                     description: Error message
-
+  /ai/api-mock/generate-mocks:
+    post:
+      summary: Generate Mock Scripts Endpoint
+      operationId: generate_mock_scripts_endpoint_generate_mocks_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - swagger
+              properties:
+                swagger:
+                  type: string
+                  example: '{ "openapi": "3.0.0", "info": { "title": "Petstore", "version": "1.0.0" }, "paths": { "/pets": { "get": { "summary": "List all pets", "responses": { "200": { "description": "A list of pets." } } } } } }'
+                config:
+                  anyOf:
+                    - type: object
+                      properties:
+                        instructions:
+                          anyOf:
+                            - type: string
+                          example: Generate mocks for listing all pets
+                        usePreviousScripts:
+                          type: boolean
+                          default: false
+                          example: false
+            example:
+              swagger: '{ "openapi": "3.0.0", "info": { "title": "Petstore", "version":
+                "1.0.0" }, "paths": { "/pets": { "get": { "summary": "List all pets",
+                "responses": { "200": { "description": "A list of pets." } } } } }
+                }'
+              config:
+                instructions: Generate mocks for listing all pets
+                usePreviousScripts: false
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                title: HTTPValidationError
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - loc
+                        - msg
+                        - type
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            anyOf:
+                              - type: string
+                              - type: integer
+                          example:
+                            - body
+                            - swagger
+                        msg:
+                          type: string
+                          example: field required
+                        type:
+                          type: string
+                          example: value_error.missing
+  /ai/api-mock/modify-method:
+    post:
+      summary: Modify Method Endpoint
+      operationId: modify_method_endpoint_modify_method_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - swagger
+                - config
+              properties:
+                swagger:
+                  type: string
+                  example: '{ "openapi": "3.0.0", "info": { "title": "Petstore", "version": "1.0.0" }, "paths": { "/pets": { "get": { "summary": "List all pets", "responses": { "200": { "description": "A list of pets." } } } } } }'
+                config:
+                  type: object
+                  required:
+                    - modify
+                  properties:
+                    instructions:
+                      type: string
+                      default: Generate mock scripts for the specified endpoint
+                      example: change the name Doggo to Sky
+                    script:
+                      type: string
+                      default: No Script
+                      example: 'mc.setProperty(''CONTENT_TYPE'', ''application/json''); var response = [{ id: 1, name: ''Doggo'' }]; mc.setPayloadJSON(response); mc.setProperty(''HTTP_SC'', ''200'');'
+                    modify:
+                      type: object
+                      required:
+                        - path
+                        - method
+                      properties:
+                        path:
+                          type: string
+                          example: "/pets"
+                        method:
+                          type: string
+                          example: get
+                        isDefaultScript:
+                          type: boolean
+                          default: false
+                          example: false
+            example:
+              swagger: '{ "openapi": "3.0.0", "info": { "title": "Petstore", "version":
+                "1.0.0" }, "paths": { "/pets": { "get": { "summary": "List all pets",
+                "responses": { "200": { "description": "A list of pets." } } } } }
+                }'
+              config:
+                instructions: change the name Doggo to Sky
+                script: 'mc.setProperty(''CONTENT_TYPE'', ''application/json''); var response = [{ id: 1, name: ''Doggo'' }]; mc.setPayloadJSON(response); mc.setProperty(''HTTP_SC'', ''200'');'
+                modify:
+                  path: "/pets"
+                  method: get
+                  isDefaultScript: false
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                title: HTTPValidationError
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - loc
+                        - msg
+                        - type
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            anyOf:
+                              - type: string
+                              - type: integer
+                          example:
+                            - body
+                            - swagger
+                        msg:
+                          type: string
+                          example: field required
+                        type:
+                          type: string
+                          example: value_error.missing
 components:
   schemas:
     HTTPValidationError:

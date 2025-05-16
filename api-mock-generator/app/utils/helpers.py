@@ -42,10 +42,10 @@ def output_json_schema_generate_mocks(api_definition: dict) -> dict:
         api_definition (dict): The OpenAPI specification as a dictionary.
 
     Returns:
-        dict: JSON schema template describing mockDB and inline scripts for each path and method.
+        dict: JSON schema template describing mock dataset and inline scripts for each path and method.
     """
     json_schema = { # use mockDataSet
-        "mockDB": "The prepopulated MockDB in the format {collectionName:[...]}",
+        "mockDataset": "The prepopulated MockDataset in the format {collectionName:[...]}",
         "paths": {}
     }
 
@@ -82,8 +82,8 @@ def output_json_schema_generate_mocks_sim_resource(paths: dict, paths_batch: lis
         dict: JSON schema template for the specified batch of paths.
     """
     json_schema = {}
-    if len(paths_batch) == 1 and paths_batch[0] == 'mockDB':
-        json_schema["mockDB"] = "The prepopulated MockDB in the format {collectionName:[...]}"
+    if len(paths_batch) == 1 and paths_batch[0] == 'mockDataset':
+        json_schema["mockDataset"] = "The prepopulated MockDataset in the format {collectionName:[...]}"
         return json_schema
 
     if len(paths_batch) >= 1:
