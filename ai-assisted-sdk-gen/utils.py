@@ -10,16 +10,6 @@
   entered into with WSO2 governing the purchase of this software and any
 """
 import json
-import yaml
-
-# Loads OpenAPI specification from file
-def load_openapi_specification_from_file(file):
-    if file.filename.endswith('.json'):
-        return json.load(file)
-    elif file.filename.endswith('.yaml') or file.filename.endswith('.yml'):
-        return yaml.safe_load(file)
-    else:
-        raise ValueError("Unsupported file type. Please upload a .json or a .yaml file.")
 
 # Loads multiple OpenAPI specifications from a single JSON string
 def load_openapi_specifications_from_json(data):

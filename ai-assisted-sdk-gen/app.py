@@ -11,16 +11,17 @@
 """
 import openai
 from flask import Flask, request, jsonify, Response
+from flask_cors import CORS
 from config import API_TYPE, API_VERSION, API_KEY, AZURE_ENDPOINT
 from utils import (
-    load_openapi_specification_from_file,
     load_openapi_specifications_from_json,
     combine_openapi_specs_to_text
 )
-from prompts import create_merge_prompt
+from prompts import create_merge_specs_prompt
 from llm import create_llm
 
 app = Flask(__name__)
+CORS(app)
 
 openai.api_type = API_TYPE
 openai.api_version = API_VERSION
@@ -31,41 +32,45 @@ openai.azure_endpoint = AZURE_ENDPOINT
 @app.route("/merge-openapi-specs", methods=["POST"])
 def merge_openapi_specs():
     api_specifications = []
+    
+    # Handle case where the JSON string is provided in the request body
+    try:
+        # Check if the request body is a valid JSON in the expected structure
+        if request.is_json:
+            json_payload = request.get_json()
+            
+            # Extract specifications
+            if "specifications" in json_payload:
+                json_data = json_payload["specifications"]
 
-    # Check if files are included in the POST request
-    if 'files' in request.files:
-        uploaded_files = request.files.getlist("files")
-        if not uploaded_files:
-            return jsonify({"error": "No files uploaded"}), 400
-
-        # Process each uploaded file and load its OpenAPI specification
-        for file in uploaded_files:
-            try:
-                spec = load_openapi_specification_from_file(file)
-                api_specifications.append(spec)
-            except ValueError as e:
-                return jsonify({"error": str(e)}), 400
-    else:
-        # Handle case where the JSON string is provided in the request body
-        json_data = request.get_data(as_text=True)
-        if not json_data:
-            return jsonify({"error": "No JSON string provided"}), 400
-        
-        # Parse and load specifications from the JSON string
-        try:
+                # Parse and load specifications from the JSON data
+                specs = load_openapi_specifications_from_json(json_data)
+                api_specifications.extend(specs)
+            else:
+                return jsonify({"error": "No specifications provided in JSON payload"}), 400
+            
+            # Extract contexts
+            if "contexts" in json_payload:
+                api_contexts = json_payload["contexts"]
+        else:
+            json_data = request.get_data(as_text=True)
+            if not json_data:
+                return jsonify({"error": "No JSON string provided"}), 400
+                
+            # Parse and load specifications from the JSON string
             specs = load_openapi_specifications_from_json(json_data)
             api_specifications.extend(specs)
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 400
-
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    
     # Combine the loaded OpenAPI specifications into a single text representation
     combined_api_specs_text = combine_openapi_specs_to_text(api_specifications)
-    
-    prompt_template = create_merge_prompt(combined_api_specs_text)
+
+    prompt_template = create_merge_specs_prompt(combined_api_specs_text, api_contexts)
     llm = create_llm()
     llm_chain = prompt_template | llm
 
-    response = llm_chain.invoke({'specs_text': combined_api_specs_text})
+    response = llm_chain.invoke({'specs_text': combined_api_specs_text, 'api_contexts': api_contexts})
     answer_text = response.content
 
     return Response(answer_text, content_type='text/plain')

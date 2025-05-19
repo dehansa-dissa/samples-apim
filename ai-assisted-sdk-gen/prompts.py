@@ -11,24 +11,43 @@
 """
 from langchain.prompts import PromptTemplate
 
-MERGE_SPECS_TEMPLATE = """
+merge_specs_prompt = """
+
+Api Specifications :
 {specs_text}
 
-You are given either two or more API specifications. Your task is to merge these specifications into a single specification. 
-You will also have to add a prefix to each of the paths in the merged specification. 
+Api Names and their respective contexts:
+{api_contexts}
 
-For example, this is the server url of an api : https://localhost:8243/pizzashack/1.0.0 , where pizzashack is the api context, and 1.0.0 is the api version. 
-You will have to extract the context and the version (pizzashack/1.0.0) and this will be considered as the prefix to include in front of each path. 
+PRIMARY OBJECTIVES: 
+1. Merge the provided API specifications into a single cohesive specification.
+2. Prefix all resource paths with their corresponding API context and version.
+3. Create an appropriate title and description for the merged API.
+4. The server URL of the merged API should always be given as :
+    servers:
+    - url: https://localhost:8243
+    - url: http://localhost:8280
 
-The prefix MUST be extracted from the server url of each api and added to their respective paths in the merged api. 
-You MUST give a suitable title and a brief description for the merged api. The server url of the merged api shall consist of the part before the api context.
-DO NOT include 'Merged api' as the title or description.
+CRITICAL REQUIREMENTS:
+- EVERY endpoint path MUST be prefixed with its corresponding API context and version.
+- Preserve the EXACT case sensitivity of all identifiers (paths, parameters, schemas, etc.).
+- Maintain all security definitions, schemas, and other components.
+- Resolve any conflicts between duplicate operations or schemas.
+- Ensure the output is valid OpenAPI/Swagger specification.
 
-STRICT CONDITION: DO NOT specify the language (json) when providing the answer.
+STRICT CONSTRAINTS:
+- DO NOT modify the original API contexts or versions in any way.
+- DO NOT use generic titles like "Merged API" - create a meaningful title that reflects the combined functionality.
+- DO NOT include any markdown code block formatting or language indicators in your response.
+- DO NOT include any explanations or comments outside the specification.
+- DO NOT include any text before or after the specification.
+
+OUTPUT FORMAT
+Provide ONLY the complete merged OpenAPI specification as valid JSON without any surrounding text, explanations, or markdown formatting.
 """
 
-def create_merge_prompt(specs_text):
+def create_merge_specs_prompt(specs_text, api_contexts):
     return PromptTemplate(
-        input_variables=["specs_text"],
-        template=MERGE_SPECS_TEMPLATE
+        input_variables=["specs_text", "api_contexts"],
+        template=merge_specs_prompt
     )
