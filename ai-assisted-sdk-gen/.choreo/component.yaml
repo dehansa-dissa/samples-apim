@@ -1,0 +1,11 @@
+schemaVersion: "1.2"
+endpoints:
+    - name: ai-assisted-sdk-generation
+      displayName: AI Assisted SDK Generation
+      service:
+        basePath: /
+        port: 5000
+      type: REST
+      networkVisibilities:
+        - Project
+      schemaFilePath: openapi.yaml
