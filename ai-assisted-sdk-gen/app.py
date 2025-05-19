@@ -15,7 +15,12 @@ from flask_cors import CORS
 from config import API_TYPE, API_VERSION, API_KEY, AZURE_ENDPOINT
 from utils import (
     load_openapi_specifications_from_json,
-    combine_openapi_specs_to_text
+    combine_openapi_specs_to_text,
+    extract_method_info,
+    format_methods_for_llm,
+    summarize_api_specification,
+    map_methods_to_endpoints,
+    generate_code_response 
 )
 from prompts import create_merge_specs_prompt
 from llm import create_llm
@@ -75,5 +80,36 @@ def merge_openapi_specs():
 
     return Response(answer_text, content_type='text/plain')
 
+# Flask route to generate application code based on use case and language
+@app.route('/generate-application-code', methods=['POST'])
+def process_java_file():
+    try:
+        # Extract JSON data from request body
+        data = request.get_json()
+        use_case = data.get("useCase", "")
+        methods_file = data.get("sdkMethodsFile", "")
+        merged_spec = data.get("mergedAPISpecification", "")
+        language = data.get("language", "")
+
+        # Extract and format SDK method names and its associated comments
+        methods = extract_method_info(methods_file, language)
+        formatted_methods = format_methods_for_llm(methods)
+
+        # Extract relevant endpoints from spec based on usecase and map relevant SDK methods to endpoints
+        summarized_spec = summarize_api_specification(use_case, merged_spec)
+        extracted_methods = map_methods_to_endpoints(summarized_spec, formatted_methods)
+
+        # Generate final code based on use case and language
+        application_code = generate_code_response(use_case, summarized_spec, extracted_methods, language)
+        return Response (application_code, content_type='text/plain')
+        
+    except Exception as e:
+        error_response = {
+            "status": "error",
+            "message": "Failed to generate application code",
+        }
+        print(error_response)
+        return jsonify(error_response), 500
+    
 if __name__ == "__main__":
     app.run(debug=True)
