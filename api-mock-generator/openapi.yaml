@@ -3,7 +3,7 @@ info:
   title: FastAPI
   version: 0.1.0
 paths:
-  "/generate-mocks":
+  "/generate-mock-scripts":
     post:
       summary: Generate Mock Scripts Endpoint
       operationId: generate_mock_scripts_endpoint_generate_mocks_post
@@ -79,7 +79,7 @@ paths:
                         type:
                           type: string
                           example: value_error.missing
-  "/modify-method":
+  "/modify-resource-script":
     post:
       summary: Modify Method Endpoint
       operationId: modify_method_endpoint_modify_method_post
