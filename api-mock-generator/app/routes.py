@@ -31,7 +31,7 @@ class ModifyMethodRequest(BaseModel):
     config: ModifyConfig
 
 # Updated endpoints with request body models
-@api_router.post('/generate-mocks', status_code=201)
+@api_router.post('/generate-mock-scripts', status_code=201)
 async def generate_mock_scripts_endpoint(payload: GenerateMocksRequest):
     """
     Endpoint to generate mock scripts based on an OpenAPI specification.
@@ -55,7 +55,7 @@ async def generate_mock_scripts_endpoint(payload: GenerateMocksRequest):
     mock_scripts = generate_mock_scripts(payload.swagger, payload.config.model_dump() if payload.config else {})
     return JSONResponse(content=mock_scripts, status_code=201)
 
-@api_router.post('/modify-method', status_code=201)
+@api_router.post('/modify-resource-script', status_code=201)
 async def modify_method_endpoint(payload: ModifyMethodRequest):
     """
     Endpoint to modify a method's mock script based on instructions and OpenAPI spec.
