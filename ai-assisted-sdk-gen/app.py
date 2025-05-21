@@ -88,7 +88,7 @@ def process_java_file():
         data = request.get_json()
         use_case = data.get("useCase", "")
         methods_file = data.get("sdkMethodsFile", "")
-        merged_spec = data.get("mergedAPISpecification", "")
+        api_spec = data.get("APISpecification", "")
         language = data.get("language", "")
 
         # Extract and format SDK method names and its associated comments
@@ -96,7 +96,7 @@ def process_java_file():
         formatted_methods = format_methods_for_llm(methods)
 
         # Extract relevant endpoints from spec based on usecase and map relevant SDK methods to endpoints
-        summarized_spec = summarize_api_specification(use_case, merged_spec)
+        summarized_spec = summarize_api_specification(use_case, api_spec)
         extracted_methods = map_methods_to_endpoints(summarized_spec, formatted_methods)
 
         # Generate final code based on use case and language

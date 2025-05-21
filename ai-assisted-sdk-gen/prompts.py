@@ -254,7 +254,7 @@ def get_language_specific_content(language):
         public class Example {
             
             private static final String TOKEN_ENDPOINT = "https://localhost:9443/oauth2/token";
-            private static final String CONSUMER_ID = "YOUR_CONSUMER_ID";
+            private static final String CONSUMER_KEY = "YOUR_CONSUMER_KEY";
             private static final String CONSUMER_SECRET = "YOUR_CONSUMER_SECRET";
             private static final String USERNAME = "YOUR_USERNAME";
             private static final String PASSWORD = "YOUR_PASSWORD";
@@ -293,7 +293,7 @@ def get_language_specific_content(language):
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 
                 connection.setRequestMethod("POST");
-                String auth = CONSUMER_ID + ":" + CONSUMER_SECRET;
+                String auth = CONSUMER_KEY + ":" + CONSUMER_SECRET;
                 String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
                 connection.setRequestProperty("Authorization", "Basic " + encodedAuth);
                 connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
@@ -371,14 +371,14 @@ def get_language_specific_content(language):
     elif language.lower() in ["javascript", "js"]:
 
         example_code = """
-        const CONSUMER_ID = 'YOUR_CONSUMER_ID';
+        const CONSUMER_KEY = 'YOUR_CONSUMER_KEY';
         const CONSUMER_SECRET = 'YOUR_CONSUMER_SECRET';
         const USERNAME = 'YOUR_USERNAME';
         const PASSWORD = 'YOUR_PASSWORD';
         const TOKEN_ENDPOINT = 'https://localhost:9443/oauth2/token';
 
         async function getOAuth2AccessToken() {
-        const authString = `${CONSUMER_ID}:${CONSUMER_SECRET}`;
+        const authString = `${CONSUMER_KEY}:${CONSUMER_SECRET}`;
         const base64Auth = Buffer.from(authString).toString('base64');
 
         const params = new URLSearchParams();

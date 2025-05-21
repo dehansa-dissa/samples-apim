@@ -29,7 +29,6 @@ def load_openapi_specifications_from_json(data):
 
             parsed_spec = json.loads(spec)
             api_specs.append(parsed_spec)
-            api_specs.append(parsed_spec)
 
         return api_specs
     except json.JSONDecodeError:
@@ -77,7 +76,7 @@ def extract_method_info(content: str, language: str) -> List[Dict]:
                 ]):
                     methods.append({
                         'methodName': method_name,
-                        'javadoc': javadoc
+                        'comments': javadoc
                     })
                 current_pos += method_match.end()
             else:
@@ -110,7 +109,7 @@ def extract_method_info(content: str, language: str) -> List[Dict]:
                     not method_name.endswith('Callback')):
                     methods.append({
                         'methodName': method_name,
-                        'javadoc': jsdoc
+                        'comments': jsdoc
                     })
                 current_pos += method_match.end()
             else:
@@ -125,7 +124,7 @@ def format_methods_for_llm(methods: List[Dict]) -> str:
     if not methods:
         return "No methods found."
     
-    formatted_output = "# API METHODS REFERENCE\n\n"
+    formatted_output = "# SDK METHODS \n\n"
     
     # Group methods by HTTP verb for better organization
     http_verbs = ["Get", "Post", "Put", "Delete", "Patch"]
@@ -138,22 +137,22 @@ def format_methods_for_llm(methods: List[Dict]) -> str:
         formatted_output += f"## {verb.upper()} Methods\n\n"
         
         for method in verb_methods:
-            formatted_output += f"### `{method['methodName']}`\n\n"
-            formatted_javadoc = method['javadoc'].replace('\n', '\n> ').strip()
-            formatted_output += f"> {formatted_javadoc}\n\n"
+            formatted_output += f" `{method['methodName']}`\n\n"
+            formatted_comments = method['comments'].replace('\n', '\n> ').strip()
+            formatted_output += f" {formatted_comments}\n\n"
             
         formatted_output += "---\n\n"
     
     return formatted_output
 
 # Generate a summarized version of the API specification based on use case
-def summarize_api_specification(use_case, merged_spec):
+def summarize_api_specification(use_case, api_spec):
 
     prompt_template = create_summarization_prompt()
     
     prompt = prompt_template.format(
         use_case=use_case,
-        merged_spec=merged_spec,
+        merged_spec=api_spec,
     )
     
     summary_response = chat.invoke(prompt)
