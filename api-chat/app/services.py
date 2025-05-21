@@ -17,7 +17,7 @@ async def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[
     if cached_sdl:
         print("Returning cached SDL")
         return GraphQLTestPreparationResponse(
-            apiSpec=cached_sdl.apiSpec,
+            schemaDefinition=cached_sdl.schemaDefinition,
             queries=cached_sdl.queries,
             usage=token_count
         )
@@ -38,13 +38,13 @@ async def process_graphql_sdl(request: GraphQLTestPreparationRequest) -> Union[
     parsed_queries = [{"scenario": k, "query": v} for k, v in json.loads(sample_queries).items()]
 
     cached_sdl = SdlCacheRecord(
-        apiSpec=SdlResponse(sdl=sdl),
+        schemaDefinition=sdl,
         queries=parsed_queries
     )
     await update_sdl_cache(hashed_sdl, cached_sdl)
 
     response = GraphQLTestPreparationResponse(
-        apiSpec=SdlResponse(sdl=sdl),
+        schemaDefinition=sdl,
         queries=parsed_queries,
         usage=token_count
     )
@@ -54,10 +54,10 @@ async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[
     GraphQLTestExecutionResponse, TestCompletionResponse, InvalidResponse, ErrorInfo]:
     """Execute a single step of the GraphQL chat agent."""
     global token_count
-    if "command" in payload and "sdl" in payload:
+    if "command" in payload and "schemaDefinition" in payload:
         payload_obj = GraphQLTestInitializationRequest(**payload)
         print("Agent initialization started.")
-        sdl = payload_obj.sdl
+        sdl = payload_obj.schemaDefinition.get("schemaDefinition")
         command = payload_obj.command
         iteration = 1
         executionHistory = []
@@ -84,7 +84,7 @@ async def create_chat_agent(payload: json, apiChatRequestId: str) -> Union[
 
     chat_agent = GraphQLChatAgent(
         apiChatRequestId,
-        sdl["sdl"],
+        sdl,
         command,
         iteration,
         executionHistory

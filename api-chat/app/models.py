@@ -17,9 +17,6 @@ class ToolType(str, Enum):
 class GraphQLTestPreparationRequest(BaseModel):
     GRAPHQL_SCHEMA: str
 
-class SdlResponse(BaseModel):
-    sdl: str
-
 class SampleQueryFormat(BaseModel):
     scenario: str
     query: str
@@ -30,7 +27,7 @@ class TokenCounts(BaseModel):
     total_tokens: int
 
 class GraphQLTestPreparationResponse(BaseModel):
-    apiSpec: SdlResponse
+    schemaDefinition: str
     queries: list[SampleQueryFormat]
     usage: TokenCounts
 
@@ -56,13 +53,13 @@ class TestCompletionResponse(BaseModel):
     usage: TokenCounts
 
 class SdlCacheRecord(BaseModel):
-    apiSpec: SdlResponse
+    schemaDefinition: str
     queries: list[SampleQueryFormat]
 
 class GraphQLTestInitializationRequest(BaseModel):
     command: str
     apiSpec: None
-    sdl: dict
+    schemaDefinition: dict
 
 class PreviousResponse(BaseModel):
     code: int
