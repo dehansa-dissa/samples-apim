@@ -9,9 +9,9 @@ async def get_query_generation_prompt(sdl: str) -> str:
 
         You must return THREE natural language requests:
 
-        1. **Simple Query** :A task that retrieves data from a single GraphQL type with minimal or no nested fields.
-        2. **Complex Query** :A task that retrieves data from a GraphQL type **with nested/related types**, or multiple levels of relationships.
-        3. **Mutation Task** :A task that **modifies** the data (e.g., creates, updates, deletes something), based on the mutations defined in the schema.
+        1. **Basic data retrieval operation** :A task that retrieves data from a single GraphQL type with minimal or no nested fields.
+        2. **Nested data retrieval operation** :A task that retrieves data from a GraphQL type **with nested/related types**, or multiple levels of relationships.
+        3. **Data modification operation** :A task that **modifies** the data (e.g., creates, updates, deletes something), based on the mutations defined in the schema.
 
         Use realistic example values for arguments like IDs, names, filters, or input payloads.
 
@@ -20,9 +20,9 @@ async def get_query_generation_prompt(sdl: str) -> str:
         The response must strictly follow this JSON format:
 
         {{
-            "simpleQuery": {{A natural language query using basic fields from the schema}},
-            "complexQuery": {{A natural language query involving nested or related types}},
-            "mutationTask": {{A natural language description of a mutation action based on the schema (if available)}}
+            "Basic data retrieval operation": {{A natural language query using basic fields from the schema}},
+            "Nested data retrieval operation": {{A natural language query involving nested or related types}},
+            "Data modification operation": {{A natural language description of a mutation action based on the schema (if available)}}
         }}
 
         If the schema does not define any mutations, leave "mutationTask" as empty string.
@@ -31,7 +31,7 @@ async def get_query_generation_prompt(sdl: str) -> str:
 async def get_next_tool_prediction_prompt(sdl: str, progress: dict) -> str:
     """Generate a prompt for predicting the next tool to use based on the SDL and execution history."""
     return f"""
-        You are a GraphQL API assistant specializing in GRAPHQL QUERY GENERATION. Your job is to determine the immediate NEXT OPERATION to execute in order complete the given task based on:
+        You are a GraphQL API assistant specializing in GRAPHQL QUERY GENERATION. Your job is to determine the immediate NEXT OPERATION to execute in order to complete the given task based on:
 
         - The provided GraphQL schema defining the API capabilities.
         - A natural language user request that needs to be executed via GraphQL.
@@ -40,6 +40,8 @@ async def get_next_tool_prediction_prompt(sdl: str, progress: dict) -> str:
 
         TASK:
 
+        - Your primary goal is to process the user's request IN THE EXACT ORDER of steps mentioned.
+        - Use ONLY the parameters specifically mentioned by the user. If the user didn't specify required parameters, use suitable assumed values that make sense in the context.
         - Identify whether the next operation is a QUERY, MUTATION, or SUBSCRIPTION, or if the task should be marked as COMPLETED.
         - You must distinguish between:
             1. **Completely Invalid User Commands** — where the overall request is unrelated to the schema.
@@ -48,33 +50,60 @@ async def get_next_tool_prediction_prompt(sdl: str, progress: dict) -> str:
 
         STRICT INSTRUCTIONS:
 
+        - For parameter-based requests:
+            - ONLY use the exact parameters specified by the user (e.g., if they ask for "JEDI", only generate content for "JEDI").
+            - DO NOT generate content for parameters that weren't explicitly requested (e.g., don't generate "NEWHOPE" if only "JEDI" was requested).
+            - If the user didn't specify a required parameter value, use suitable assumed values that make sense in the context.
+            - Use meaningful default values rather than asking the user for input when parameters are missing.
+
         - If the user input is a greeting or introduction request:
-            - Respond politely with a short assistant introduction:
-            {{
-                "operationType": "COMPLETED",
-                "query": "<Polite greeting or assistant introduction>"
-            }}
+            - Respond politely with a short assistant introduction.
+            - Mark the operation as COMPLETED.
 
         - If the **entire user query is invalid** (irrelevant to the schema and not a greeting):
-            - First, return an **IN_PROGRESS** response indicating no valid query can be generated.
-            - Then return a **COMPLETED** response summarizing the invalid attempt.
+            - Return a **TERMINATED** response indicating no valid query can be generated.
 
-        - If only **some steps** in a multi-step task are invalid:
-            - Mark those specific steps as FAILED immediately.
-            - You MUST NOT reattempt, regenerate, retry, fix, or modify failed steps in any way.
-            - Once a step fails, it is considered FINAL and permanently skipped.
-            - Any attempt to repair or retry a failed operation is strictly forbidden.
-            - Proceed only to the NEXT VALID step without making adjustments.
+        - For SINGLE-STEP OPERATIONS:
+            - If the user request requires only ONE operation (e.g., "Get all users", "Submit a review for X", "Create a new item"):
+              - Execute that one operation ONCE
+              - After ONE execution, IMMEDIATELY mark the task as COMPLETED
+              - DO NOT attempt the same operation more than once
+              - Common examples of single-step operations include:
+                * Submitting/creating a review
+                * Adding a rating
+                * Creating a new item
+                * Deleting a record
+                * Any simple fetch operation
+
+        - For MULTI-STEP OPERATIONS:
+            - NEVER attempt to retry or fix failed steps.
+            - Instead, ALWAYS move to the next step mentioned in the user request.
+            - Mark as COMPLETED only after ALL requested steps (valid or invalid) have been processed.
+
+        - EXECUTION ORDER:
+            - You MUST follow the EXACT order of operations as mentioned in the user request.
+            - NEVER reorder, shuffle or rearrange the steps.
+            - Process one step at a time, in sequence, moving forward only.
+
+        - FAILED STEPS HANDLING:
+            - If a step fails (for any reason), IMMEDIATELY SKIP it and move to the next step.
+            - NEVER retry a failed step, even if you believe it could be fixed.
+            - Treat every operation as "one attempt only".
+
+        - COMPLETION CRITERIA:
+            - For single-step requests: Mark as COMPLETED after ONE successful execution
+            - For multi-step requests: Mark as COMPLETED only when ALL steps have been attempted
+            - The final step should be a COMPLETED operation with a summary.
 
         - All generated GraphQL operations must:
             - Fully comply with the GraphQL specification.
             - Strictly follow the provided schema.
             - Be guaranteed to pass server-side validation if possible.
 
-        - Carefully review the execution history:
-            - If a previous operation has failed (any error, any non-200 status):
-                - DO NOT attempt that operation again.
-                - Consider it permanently failed.
+        - Execution History Review:
+            - Use the execution history to determine which steps have already been executed.
+            - If you see that a step has been executed in history, DO NOT execute it again.
+            - If history shows a successful operation for a single-step task, the task is COMPLETED.
 
         RETURN FORMAT:
         Respond STRICTLY as a JSON object WITHOUT markdown formatting or extra characters.
@@ -91,13 +120,19 @@ async def get_next_tool_prediction_prompt(sdl: str, progress: dict) -> str:
             "query": "I'm unable to generate a valid query based on the given input."
         }}
 
-        - If the task has been completed (e.g., all necessary operations have been executed, or the previous step marked it fully invalid):
+        - If a single-step operation has been successfully executed (status 200):
         {{
             "operationType": "COMPLETED",
-            "query": "<A short summary of what was attempted or completed>"
+            "query": "<A summary of what was executed and the results>"
         }}
 
-        - If the next valid step exists:
+        - If all steps in a multi-step operation have been processed:
+        {{
+            "operationType": "COMPLETED",
+            "query": "<A summary of what was executed and the results obtained>"
+        }}
+
+        - Only if a next step is genuinely needed and hasn't been executed yet:
         {{
             "operationType": "<QUERY | MUTATION | SUBSCRIPTION>",
             "query": "<Generated GraphQL operation as a string>"
