@@ -4,9 +4,9 @@
 Included the source code for
 
 - Deployments made on Choreo Control Plane to serve AI features of the on-prem API manager.
-- Deployments related to Choreo marcKketplace assistant
+- Deployments related to Choreo marketplace assistant
 
-## milvus_proxy_service
+## Milvus Proxy Service
 
 This service is deployed in choreo control plane, this is used as a proxy to connect to milvus vectorDB. Currently this is being used by Marketplace assistant and docs assistant
 
@@ -14,19 +14,12 @@ This service is deployed in choreo control plane, this is used as a proxy to con
 
 ### Configs
 
-- MILVERSE_URL = Public URL from the cluster details in zilliz ([Reference: How to setup zilliz milvus vectorDB](#how-to-setup-zilliz-milvus-vectordb))
-- LOG_LEVEL = Define the log level (default is INFO) - Not mandotory
+- MILVERSE_URL = "localhost" - Public URL from the cluster details in zilliz ([Reference: How to setup zilliz milvus vectorDB](#how-to-setup-zilliz-milvus-vectordb-this-was-setup-by-the-digiops-team))
+- LOG_LEVEL = "INFO" - Define the log level, This is Not mandotory
 
 ### Secrets
 
-- MILVERSE_API_KEY = Token from the cluster details in zilliz ([Reference: How to setup zilliz milvus vectorDB](#how-to-setup-zilliz-milvus-vectordb))
-
-### How to setup zilliz milvus vectorDB (This was setup by the digiops team)
-
-1. Go to - https://cloud.zilliz.com/
-2. Login and create a project.
-3. Create a cluster providing the required informtion
-4. Under the cluster details you can get the public URL and custer APIkey
+- MILVERSE_API_KEY = Token from the cluster details in zilliz ([Reference: How to setup zilliz milvus vectorDB](#how-to-setup-zilliz-milvus-vectordb-this-was-setup-by-the-digiops-team))
 
 ## spec_populator_service
 
@@ -39,16 +32,18 @@ This service is deployed in choreo control plane. This is used to populate the v
 - AZURE_DEPLOYMENT = Azure model deployment name (i.e - choreo-ai-embedding) ([Reference: Set up zure openAI service](#set-up-zure-openai-service-this-was-setup-by-the-sre))
 - AZURE_ENDPOINT = Azure openAI service endpoint ([Reference: Set up zure openAI service](#set-up-zure-openai-service-this-was-setup-by-the-sre))
 - COLLECTION_NAME = Name of the milvuz zillis collection (i.e DevChoreoMarketplace)
-- CREATE_COLLECTION = 'True' if you have not created collection manually. It is recommened to create the collection through code.
-- MILVERSE_URL=Public URL from the cluster details in zilliz ([Reference: How to setup zilliz milvus vectorDB](#how-to-setup-zilliz-milvus-vectordb))
-- SOURCE_PLATFORM=
+- CREATE_COLLECTION = True - if you have not created collection manually. It is recommened to create the collection through code.
+- MILVERSE_URL = Public URL from the cluster details in zilliz ([Reference: How to setup zilliz milvus vectorDB](#how-to-setup-zilliz-milvus-vectordb))
+- SOURCE_PLATFORM = 'Choreo'
 - EXCLUDED_ORG_LIST=List of organization uuids which has opt out from AI features (default "")
 - LOG_LEVEL=Define the log level (default is INFO) - Not mandotory
 
 ### Secrets
 - AZURE_OPENAI_API_KEY - Azure OpenAI service key ([Reference: Set up zure openAI service](#set-up-zure-openai-service-this-was-setup-by-the-sre))
-- MILVERSE_API_KEY = Token from the cluster details in zilliz ([Reference: How to setup zilliz milvus vectorDB](#how-to-setup-zilliz-milvus-vectordb)) 
+- MILVERSE_API_KEY = Token from the cluster details in zilliz ([Reference: How to setup zilliz milvus vectorDB](#how-to-setup-zilliz-milvus-vectordb-this-was-setup-by-the-digiops-team)) 
 
+
+## External resource creation
 ### How to setup zilliz milvus vectorDB (This was setup by the digiops team)
 
 1. Go to - https://cloud.zilliz.com/
