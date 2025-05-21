@@ -1,6 +1,6 @@
 # AI-Assisted SDK Generation for Developer Portal APIs
 
-API service that merges multiple OpenAPI specifications into a single specification.
+API service that helps merge multiple OpenAPI specifications into single specification and generate application code in the preferred programming language (Java/JavaScript) based on the use case, API specification and SDK methods.
 
 This service is specifically designed to facilitate SDK generation that supports multiple APIs.
 
@@ -33,25 +33,53 @@ cd ai-assisted-sdk-gen
   API_TYPE = # API Type
   API_VERSION= # API Version
   AZURE_ENDPOINT= # API URL
+  ANTHROPIC_API_KEY = # Your Anthropic API Key
+  ANTHROPIC_MODEL_NAME = # Model Name
   ```
 
-> **Note**: Replace the placeholders with your actual API credentials.
+  > **Note**: Replace the placeholders with your actual API credentials.
 
 ### 3. Run the Application
-- Start the Flask server by running the following command:
+- To run the service, execute the following command:
   ```bash
   python app.py
   ```
-- The server will start on `http://localhost:5000` by default.
 
-- You can interact with the API using either of these methods:
+- Once the service is running, it will be accessible at the following URL:
+  ```arduino
+  http://localhost:5000/{PATH}
+  ```
+- Replace {PATH} with the appropriate endpoint path (`merge-openapi-specs` or `/generate-application-code`) for the specific API functionality you want to access.
 
-   1. Upload OpenAPI specification files (JSON or YAML):
-   ```bash
-   curl -X POST -F "files=@spec1.json" -F "files=@spec2.json" http://localhost:5000/merge-openapi-specs
-   ```
+## API Endpoints
 
-   2. Send OpenAPI specifications as JSON string in the request body:
-   ```bash
-   curl -X POST -H "Content-Type: application/json" --data-binary @specs.json http://localhost:5000/merge-openapi-specs
+### 1. **POST `/merge-openapi-specs`**
+
+Merges multiple OpenAPI specifications into a single specification.
+
+#### Request Body:
+
+  ```json
+  {
+    "specifications": "/* JSON string containing OpenAPI specs seperated by newline characters */",
+    "contexts": {
+      "spec1": "/apicontext1/version",
+      "spec2": "/apicontext2/version"
+    }
+  }
+  ```
 ---
+
+### 2. **POST `/generate-application-code`**
+
+Generates sample application code in the preferred language (Java/JavaScript) based on the use case, methods available in the SDK and API specification
+#### Request Body:
+
+```json
+{
+  "useCase": "Description of the use case",
+  "sdkMethodsFile": "content of the SDK Methods File",
+  "APISpecification": "{ ... }",
+  "language": "java"
+}
+``` 
