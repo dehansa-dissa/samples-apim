@@ -1,0 +1,7 @@
+dotenv==0.9.9
+fastapi==0.115.12
+graphql-core==3.2.6
+langchain==0.3.22
+langchain-openai==0.3.12
+redis[async]==5.0.4
+uvicorn==0.34.0

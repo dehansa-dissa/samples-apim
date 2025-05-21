@@ -11,22 +11,19 @@ paths:
     post:
       summary: Generate API specifications based on user input
       description: Generates API specifications based on user input and tracks session state.
-      operationId: generateApiSpec
+      operationId: designAssistantChat
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
-              required:
-                - text
-                - session_id
               properties:
                 text:
                   type: string
                   description: Natural language description of the API to be created
                   example: "create an API for a banking transaction."
-                session_id:
+                sessionId:
                   type: string
                   description: Unique identifier for the user session
                   example: "1234567890"
@@ -51,8 +48,10 @@ paths:
                     type: string
                     description: Generated API specification
                   paths:
-                    type: object
+                    type: array
                     description: API endpoint paths and operations
+                    items:
+                      type: string
                   apiTypeSuggestion:
                     type: string
                     description: Suggested API type based on user input
@@ -62,7 +61,6 @@ paths:
                   state:
                     type: string
                     description: Current state of the API generation process
-                    enum: [START, IN_PROGRESS, COMPLETE]
         "400":
           description: Invalid request
           content:
@@ -85,19 +83,16 @@ paths:
                     example: "Request body must be in JSON format."
   /generate-api-payload:
     post:
-      summary: Create API Payload
-      description: Creates an API payload using the stored specification.
-      operationId: createApiInPortal
+      summary: Generate API Payload
+      description: Generate an API payload using the stored specification.
+      operationId: designAssistantApiPayloadGen
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - session_id
               properties:
-                session_id:
+                sessionId:
                   type: string
                   description: Session ID to retrieve the generated API specification
                   example: "1234567890"
@@ -119,11 +114,3 @@ paths:
                   error:
                     type: string
                     description: Error message
-components:
-  schemas:
-    Error:
-      type: object
-      properties:
-        error:
-          type: string
-          description: Error message

@@ -12,7 +12,11 @@
 from flask import Flask, request
 from flask_cors import CORS
 import json
+import yaml
 from prompts import (
+    prompt_template_to_validate_query,
+    check_for_general_questions_prompt,
+    answer_general_questions_prompt,
     prompt_template_to_generate_spec,
     chatbot_prompt_template_generate_suggestions,
     identify_modifications_prompt,
@@ -38,9 +42,9 @@ def validate_user_input(data):
     if not data.get('text', '').strip():
         return {"error": "Please provide the details of the API you would like to create."}, 400
 
-    if 'session_id' not in data or not data['session_id']:
-        return {"error": "Invalid request. The 'session_id' field is missing or incorrectly named."}, 400
-    if not data.get('session_id', '').strip():
+    if 'sessionId' not in data or not data['sessionId']:
+        return {"error": "Invalid request. The 'sessionId' field is missing or incorrectly named."}, 400
+    if not data.get('sessionId', '').strip():
         return {"error": "Please enter a Session ID."}, 400
 
     return None, 200
@@ -49,11 +53,11 @@ def validate_user_input(data):
 # Retrieves data stored in Redis for a given task ID
 def get_task_data(session_id):
     task_data = r.get(session_id)
-    return json.loads(task_data) if task_data else {"state": "START", "chat_history": [], "specification": "", "api_type": ""}
+    return json.loads(task_data) if task_data else {"state": "START", "chat_history": [], "specification": "", "api_type": "", "paths":['No resources']}
 
 
 # Updates data stored in Redis for a given task ID  
-def update_task_data(session_id, state=None, chat_history=None, specification=None, api_type=None):
+def update_task_data(session_id, state=None, chat_history=None, specification=None, api_type=None, paths=None):
     task_data = get_task_data(session_id)
     
     if state:
@@ -64,8 +68,22 @@ def update_task_data(session_id, state=None, chat_history=None, specification=No
         task_data["specification"] = specification
     if api_type is not None:
         task_data["api_type"] = api_type
+    if paths is not None:
+        task_data["paths"] = paths
     
     r.setex(session_id, 900, json.dumps(task_data))
+
+
+# Invokes LLM to check user's query's validity'
+def validate_query_content(user_input, chat_history):
+    prompt_to_validate_query = prompt_template_to_validate_query.format(user_input=user_input, chat_history=chat_history)
+    llm_response = llm.invoke(prompt_to_validate_query)
+    response = llm_response.content.strip()
+
+    if response == "None":
+        response = None
+
+    return response
 
 
 # Invokes LLM to suggest a type of API for the given use case
@@ -104,12 +122,12 @@ def generate_missing_values_prompt(api_type, chat_history):
 
 
 # Invokes LLM to generate the spec according to API type and provided information
-def generate_spec(api_type, final_input, chat_history, specification=None, modification_statements=None):
+def generate_spec(api_type, final_input, chat_history, specification=None, modification_statements=None, yaml_validation_error = None):
     if api_type == "REST":
-        prompt_with_history = chatbot_prompt_template_modify_openapi.format(history=chat_history, specification = specification, modification_statements=modification_statements)
+        prompt_with_history = chatbot_prompt_template_modify_openapi.format(final_input=final_input, history=chat_history, specification = specification, modification_statements=modification_statements, yaml_validation_error=yaml_validation_error)
 
     elif api_type == "GraphQL":
-        prompt_with_history = chatbot_prompt_template_graphql.format(history=chat_history, specification = specification, modification_statements=modification_statements)
+        prompt_with_history = chatbot_prompt_template_graphql.format(final_input=final_input, history=chat_history, specification = specification, modification_statements=modification_statements)
 
     else:
         prompt_with_history = prompt_template_to_generate_spec.format(
@@ -117,7 +135,8 @@ def generate_spec(api_type, final_input, chat_history, specification=None, modif
             final_input=final_input, 
             history=chat_history, 
             specification = specification,
-            modification_statements=modification_statements
+            modification_statements=modification_statements,
+            yaml_validation_error=yaml_validation_error
         )
     
     response = llm.invoke(prompt_with_history)
@@ -127,6 +146,12 @@ def generate_spec(api_type, final_input, chat_history, specification=None, modif
         data = json.loads(answer_text)
         generated_spec = data.get("generated_spec", "")
         resources = data.get("resources", [])
+
+        if api_type != "GraphQL":
+            try:
+                yaml.safe_load(generated_spec)
+            except yaml.YAMLError as e:
+                generate_spec(api_type, final_input, chat_history, specification, modification_statements, e)
 
         return generated_spec, resources
     
@@ -159,6 +184,36 @@ def check_for_modifications(user_input):
     return modification_statements
 
 
+# Invokes LLM to check user's query for any general questions or modifications
+def check_question_or_task(user_input, chat_history, specification):
+    prompt_to_check_for_generalQuestions = check_for_general_questions_prompt.format(user_input=user_input, chat_history=chat_history, specification=specification)
+    response = llm.invoke(prompt_to_check_for_generalQuestions)
+    question_or_task_data = response.content.strip()
+
+    question_or_task = json.loads(question_or_task_data)
+    answer_general_question = None
+    if question_or_task.get('answer') == "None":
+        answer_general_question = None
+    else:
+        answer_general_question = question_or_task.get('answer')
+
+    general_task = None
+    if question_or_task.get('task_assigned') == "None":
+        general_task = None
+    else:
+        general_task = question_or_task.get('task_assigned')
+
+    return answer_general_question, general_task
+
+
+# Invokes LLM to answer user's general question
+def form_answer_general_question(user_input, chat_history, specification):
+    prompt_to_answer_general_questions = answer_general_questions_prompt.format(user_input=user_input, chat_history=chat_history, specification=specification)
+    response = llm.invoke(prompt_to_answer_general_questions)
+    answer_to_question = response.content.strip()
+    return answer_to_question
+
+
 # Method to read the payload example text file
 def read_file(file_path):
     try:
@@ -179,20 +234,20 @@ def generate_payload(api_type, chat_history, specification):
         api_type = str(api_type)
 
     if api_type.upper() == "REST":
-        file_path = 'api-design-assistant/restPayloadExample.txt'
+        file_path = 'restPayloadExample.txt'
 
     elif api_type == "GraphQL":
-        file_path = 'api-design-assistant/graphqlPayloadExample.txt'
+        file_path = 'graphqlPayloadExample.txt'
 
     elif api_type == "WebSocket":
-        file_path = 'api-design-assistant/websocketPayloadExample.txt'
+        file_path = 'websocketPayloadExample.txt'
 
     elif api_type == "WebSub":
-        file_path = 'api-design-assistant/websubPayloadExample.txt'
+        file_path = 'websubPayloadExample.txt'
 
     elif api_type == "SSE":
-        # file_path = 'api-design-assistant/ssePayloadExample.txt'
-        file_path = 'api-design-assistant/restPayloadExample.txt'
+        # file_path = 'ssePayloadExample.txt'
+        file_path = 'restPayloadExample.txt'
 
     content = read_file(file_path)
 
@@ -229,68 +284,106 @@ def generate():
         return error_response, status_code
     
     user_input = data.get('text', '').strip()
-    session_id = data.get('session_id', '')
+    session_id = data.get('sessionId', '')
     
     task_data = get_task_data(session_id)
+    api_type = task_data.get("api_type", "")
+    specification = task_data["specification"]
+    paths = task_data["paths"]
     chat_history = task_data["chat_history"]
+    
     update_task_data(session_id, chat_history=chat_history)
+
+    response = validate_query_content(user_input, chat_history)
+    if response is not None:
+        chat_history.append({"user_input": user_input})
+        chat_history.append({"response to above user_input": response})
+
+        if specification == "":
+            return {
+                "backendResponse": None,
+                "isSuggestions": False,
+                "typeOfApi": '',
+                "code": '',
+                "paths": ['No Resources'],
+                "apiTypeSuggestion": response,
+                "missingValues": None,
+                "state": None
+            }, 200
+        else:
+            return {
+                "backendResponse": None,
+                "isSuggestions": False,
+                "typeOfApi": api_type,
+                "code": specification,
+                "paths": paths,
+                "apiTypeSuggestion": response,
+                "missingValues": None,
+                "state": "COMPLETE"
+            }, 200
     
     if task_data['state'] == "START":
         api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
         chat_history.append({"user_input": user_input})
         chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-
         update_task_data(session_id, chat_history=chat_history, state="IN_PROGRESS", api_type=api_type)
 
-        specification, paths = generate_spec(api_type, user_input, chat_history, None, None)
-        update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification)
-        
-        suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = True
-        missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
+        specification, paths = generate_spec(api_type, user_input, chat_history, None, None, None)
+        update_task_data(session_id, chat_history=chat_history, state="COMPLETE", specification=specification, paths=paths)
         
         return {
-            "backendResponse": suggestions,
-            "isSuggestions": isSuggestions,
+            "backendResponse": None,                                                 # set to None so it does not display suggestions on UI
+            "isSuggestions": False,                                                  # set to False so it does not display suggestions on UI
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,
             "apiTypeSuggestion": api_type_suggestion,
-            "missingValues": missing_values_prompt,
+            "missingValues": None,                                                   # set to None so it does not display two chat bubble on the UI
             "state": "COMPLETE"
         }, 200
     
     elif task_data['state'] == "COMPLETE":
-        api_type = task_data.get("api_type", "")
-        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
+        answer_general_question, general_task = check_question_or_task(user_input, chat_history, specification)
 
-        api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
-        chat_history.append({"user_input": user_input})
-        chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
-
-        update_task_data(session_id, chat_history=chat_history, api_type=api_type)
-
-        modification_check_result = check_for_modifications(user_input)
-
-        last_specification = task_data["specification"]
-        specification, paths = generate_spec(api_type, user_input, chat_history, last_specification, modification_check_result)
-
-        update_task_data(session_id, specification=specification)
-        
-        suggestions = generate_suggestions(api_type, chat_history)
-        isSuggestions = True
-        missing_values_prompt = generate_missing_values_prompt(api_type, chat_history)
-        
-        return {
-            "backendResponse": suggestions,
-            "isSuggestions": isSuggestions,
+        response = {
+            "backendResponse": None,
+            "isSuggestions": False,
             "typeOfApi": api_type,
             "code": specification,
             "paths": paths,
-            "apiTypeSuggestion": api_type_suggestion,
-            "missingValues": missing_values_prompt,
+            "missingValues": None,
             "state": "COMPLETE"
-        }, 200
+        }
+        
+        if general_task is not None:
+            chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
+            api_type, api_type_suggestion = suggest_api_type(user_input, chat_history)
+
+            chat_history.append({"user_input": user_input})
+            chat_history.append({"API TYPE": f"Create this type of API: {api_type}"})
+            update_task_data(session_id, chat_history=chat_history, api_type=api_type)
+            
+            modification_check_result = check_for_modifications(user_input)
+            specification, paths = generate_spec(api_type, user_input, chat_history, specification, modification_check_result, None)
+            update_task_data(session_id, specification=specification, paths=paths)
+            
+            response["apiTypeSuggestion"] = (
+                answer_general_question
+                if answer_general_question
+                else api_type_suggestion
+            )
+            
+        if answer_general_question is not None:
+            answer_to_question = form_answer_general_question(user_input, chat_history, specification)
+            chat_history.append(answer_to_question)
+       
+            response["apiTypeSuggestion"] = answer_to_question
+            
+        response["typeOfApi"] = api_type
+        response["code"] = specification
+        response["paths"] = paths
+        
+        return response, 200
     
     return {"error": "Invalid state or input"}, 400
 
@@ -299,7 +392,7 @@ def generate():
 @app.route('/generate-api-payload', methods=['POST'])
 def createapiinportal():
     data = request.get_json()
-    session_id = data.get('session_id', '')
+    session_id = str(data.get('sessionId', ''))
 
     task_data = get_task_data(session_id)
     api_type = task_data["api_type"]

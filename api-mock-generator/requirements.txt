@@ -1,0 +1,5 @@
+fastapi[standard]==0.115.12
+jsonref==1.1.0
+openai==1.66.3
+python-dotenv==1.0.1
+uvicorn==0.34.2

@@ -11,6 +11,12 @@ paths:
         - required: false
           schema:
             type: string
+            title: Apitype
+          name: apiType
+          in: query
+        - required: false
+          schema:
+            type: string
             title: Apichatrequestid
           name: apiChatRequestId
           in: header
@@ -44,6 +50,12 @@ paths:
       summary: Execute
       operationId: execute_ai_api_chat_execute_post
       parameters:
+        - required: false
+          schema:
+            type: string
+            title: Apitype
+          name: apiType
+          in: query
         - required: false
           schema:
             type: string
@@ -240,7 +252,283 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-
+  /ai/api-design-assistant/chat:
+    post:
+      summary: Generate API specifications based on user input
+      description: Generates API specifications based on user input and tracks session state.
+      operationId: designAssistantChat
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: Natural language description of the API to be created
+                  example: "create an API for a banking transaction."
+                sessionId:
+                  type: string
+                  description: Unique identifier for the user session
+                  example: "1234567890"
+      responses:
+        "200":
+          description: Successful response with API specification.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backendResponse:
+                    type: string
+                    description: List of suggestions for API improvements
+                  isSuggestions:
+                    type: boolean
+                    description: Indicates if there are suggestions available
+                  typeOfApi:
+                    type: string
+                    description: Detected type of API to be created
+                  code:
+                    type: string
+                    description: Generated API specification
+                  paths:
+                    type: array
+                    description: API endpoint paths and operations
+                    items:
+                      type: string
+                  apiTypeSuggestion:
+                    type: string
+                    description: Suggested API type based on user input
+                  missingValues:
+                    type: string
+                    description: Prompts for any required missing information
+                  state:
+                    type: string
+                    description: Current state of the API generation process
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid request. The 'text' field is missing or incorrectly named."
+        "415":
+          description: Unsupported Media Type (Invalid JSON format)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Request body must be in JSON format."
+  /ai/api-design-assistant/generate-api-payload:
+    post:
+      summary: Generate API Payload
+      description: Generate an API payload using the stored specification.
+      operationId: designAssistantApiPayloadGen
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                  description: Session ID to retrieve the generated API specification
+                  example: "1234567890"
+      responses:
+        "200":
+          description: API payload successfully created.
+          content:
+            application/json:
+              schema:
+                type: string
+                description: Generated payload for API
+        "400":
+          description: Invalid request or session ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message
+  /ai/api-mock/generate-mock-scripts:
+    post:
+      summary: Generate Mock Scripts Endpoint
+      operationId: generate_mock_scripts_endpoint_generate_mocks_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - swagger
+              properties:
+                swagger:
+                  type: string
+                  example: '{ "openapi": "3.0.0", "info": { "title": "Petstore", "version": "1.0.0" }, "paths": { "/pets": { "get": { "summary": "List all pets", "responses": { "200": { "description": "A list of pets." } } } } } }'
+                config:
+                  anyOf:
+                    - type: object
+                      properties:
+                        instructions:
+                          anyOf:
+                            - type: string
+                          example: Generate mocks for listing all pets
+                        usePreviousScripts:
+                          type: boolean
+                          default: false
+                          example: false
+            example:
+              swagger: '{ "openapi": "3.0.0", "info": { "title": "Petstore", "version":
+                "1.0.0" }, "paths": { "/pets": { "get": { "summary": "List all pets",
+                "responses": { "200": { "description": "A list of pets." } } } } }
+                }'
+              config:
+                instructions: Generate mocks for listing all pets
+                usePreviousScripts: false
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                title: HTTPValidationError
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - loc
+                        - msg
+                        - type
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            anyOf:
+                              - type: string
+                              - type: integer
+                          example:
+                            - body
+                            - swagger
+                        msg:
+                          type: string
+                          example: field required
+                        type:
+                          type: string
+                          example: value_error.missing
+  /ai/api-mock/modify-resource-script:
+    post:
+      summary: Modify Method Endpoint
+      operationId: modify_method_endpoint_modify_method_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - swagger
+                - config
+              properties:
+                swagger:
+                  type: string
+                  example: '{ "openapi": "3.0.0", "info": { "title": "Petstore", "version": "1.0.0" }, "paths": { "/pets": { "get": { "summary": "List all pets", "responses": { "200": { "description": "A list of pets." } } } } } }'
+                config:
+                  type: object
+                  required:
+                    - modify
+                  properties:
+                    instructions:
+                      type: string
+                      default: Generate mock scripts for the specified endpoint
+                      example: change the name Doggo to Sky
+                    script:
+                      type: string
+                      default: No Script
+                      example: 'mc.setProperty(''CONTENT_TYPE'', ''application/json''); var response = [{ id: 1, name: ''Doggo'' }]; mc.setPayloadJSON(response); mc.setProperty(''HTTP_SC'', ''200'');'
+                    modify:
+                      type: object
+                      required:
+                        - path
+                        - method
+                      properties:
+                        path:
+                          type: string
+                          example: "/pets"
+                        method:
+                          type: string
+                          example: get
+                        isDefaultScript:
+                          type: boolean
+                          default: false
+                          example: false
+            example:
+              swagger: '{ "openapi": "3.0.0", "info": { "title": "Petstore", "version":
+                "1.0.0" }, "paths": { "/pets": { "get": { "summary": "List all pets",
+                "responses": { "200": { "description": "A list of pets." } } } } }
+                }'
+              config:
+                instructions: change the name Doggo to Sky
+                script: 'mc.setProperty(''CONTENT_TYPE'', ''application/json''); var response = [{ id: 1, name: ''Doggo'' }]; mc.setPayloadJSON(response); mc.setProperty(''HTTP_SC'', ''200'');'
+                modify:
+                  path: "/pets"
+                  method: get
+                  isDefaultScript: false
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                title: HTTPValidationError
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - loc
+                        - msg
+                        - type
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            anyOf:
+                              - type: string
+                              - type: integer
+                          example:
+                            - body
+                            - swagger
+                        msg:
+                          type: string
+                          example: field required
+                        type:
+                          type: string
+                          example: value_error.missing
 components:
   schemas:
     HTTPValidationError:

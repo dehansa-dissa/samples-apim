@@ -1,4 +1,5 @@
 # apim-ai-deployments
+[![Build Status](https://dev.azure.com/choreo-devops/choreo-control-plane-components/_apis/build/status%2Fbuild%2Fchoreo-marketplace-assistant-build-x?repoName=wso2-enterprise%2Fapim-ai-deployments&branchName=main)](https://dev.azure.com/choreo-devops/choreo-control-plane-components/_build/latest?definitionId=1411&repoName=wso2-enterprise%2Fapim-ai-deployments&branchName=main)
 
 Included the source code for
 
@@ -66,3 +67,4 @@ Need to provide the service name and and the model deployment name and the model
 3. Go to the created openAI service and open the Azure openAI Foundy portal
 4. Deploy the embeding model `text-embedding-ada-002` by providing the deployment name.
 5. From the overview page of the created openAI service, get the endpoint (URL) and the keys.
+

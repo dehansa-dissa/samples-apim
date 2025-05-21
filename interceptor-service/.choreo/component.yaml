@@ -1,0 +1,11 @@
+schemaVersion: "1.2"
+endpoints:
+    - name: interceptor-service-be2
+      displayName: Interceptor Service
+      service:
+        basePath: /
+        port: 8000
+      type: REST
+      networkVisibilities:
+        - Public
+      schemaFilePath: openapi.yaml
