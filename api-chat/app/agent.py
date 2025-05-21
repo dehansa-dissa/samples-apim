@@ -67,8 +67,8 @@ class GraphQLChatAgent:
                 )
                 return result
             
-            if validated_response.operationType == "SUBSCRIPTION":
-                validated_response.query = f"SUBSCRIPTION: Sorry, I cannot invoke subscriptions for you. Here is the subscription query: {validated_response.query}"
+            if validated_response.operationType == "SUBSCRIPTION" or validated_response.query.startswith("subscription"):
+                validated_response.query = f"SUBSCRIPTION: Subscription operations are not supported through this chat interface. However, here is the subscription query you can use:  {validated_response.query}"
             
             return GraphQLExecutionResult(
                 method="POST",
