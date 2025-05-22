@@ -106,9 +106,9 @@ components:
         apiSpec:
           type: string
           nullable: true
-        sdl:
+        schemaDefinition:
           type: string
-          title: Sdl
+          title: Schema Definition
       type: object
       title: GraphQLTestInitializationRequest
     GraphQLTestExecutionRequest:
@@ -180,8 +180,9 @@ components:
       title: GraphQLTestExecutionResponse
     GraphQLTestPreparationResponse:
       properties:
-        apiSpec:
-          "$ref": "#/components/schemas/SdlResponse"
+        schemaDefinition:
+          type: string
+          title: Schemadefinition
         queries:
           items:
             "$ref": "#/components/schemas/SampleQueryFormat"
@@ -191,7 +192,7 @@ components:
           "$ref": "#/components/schemas/TokenCounts"
       type: object
       required:
-      - apiSpec
+      - schemaDefinition
       - queries
       - usage
       title: GraphQLTestPreparationResponse
@@ -243,15 +244,6 @@ components:
       - scenario
       - query
       title: SampleQueryFormat
-    SdlResponse:
-      properties:
-        sdl:
-          type: string
-          title: Sdl
-      type: object
-      required:
-      - sdl
-      title: SdlResponse
     TestCompletionResponse:
       properties:
         taskStatus:
