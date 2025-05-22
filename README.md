@@ -57,7 +57,7 @@ MILVERSE_API_KEY = Token from the cluster details in zilliz ([Reference: How to 
 3. Create a cluster providing the required informtion
 4. Under the cluster details you can get the public URL and custer APIkey
 
-### Set up zure openAI service (This was setup by the SRE)
+### Set up Azure openAI service (This was setup by the SRE)
 
 #### Setup through Terraform
 Need to provide the service name and and the model deployment name and the model as `text-embedding-ada-002` and run the scripts. And get the service endpoint and the keys. 
