@@ -515,8 +515,6 @@ async def merge_openapi_specs(req: dict, x_jwt_assertion: str = Header(None)):
     useCase = req["useCase"]
     language = req["language"]
 
-    print(useCase)
-
     async with aiohttp.ClientSession() as session:
         async with session.post(
             ai_assisted_sdk_gen_endpoint + "/generate-application-code",
