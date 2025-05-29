@@ -9,37 +9,10 @@
   this license, please see the license as well as any agreement you’ve
   entered into with WSO2 governing the purchase of this software and any
 """
-import json
 import re
 from typing import List, Dict
 from llm import chat
 from prompts import create_summarization_prompt, create_method_mapping_prompt, create_code_gen_prompt, get_language_specific_content
-
-# Loads multiple OpenAPI specifications from a single JSON string
-def load_openapi_specifications_from_json(data):
-    try:
-        specs = data.strip().split('}\n{')
-        api_specs = []
-
-        for i, spec in enumerate(specs):
-            if i > 0:
-                spec = '{' + spec
-            if i < len(specs) - 1:
-                spec += '}'
-
-            parsed_spec = json.loads(spec)
-            api_specs.append(parsed_spec)
-
-        return api_specs
-    except json.JSONDecodeError:
-        raise ValueError("Invalid JSON string provided.")
-
-# Combines API specifications into a single text representation
-def combine_openapi_specs_to_text(api_specs):
-    combined_text = ""
-    for spec in api_specs:
-        combined_text += json.dumps(spec, indent=2) + "\n\n"
-    return combined_text
 
 # Extract method information and associated comments from Java or JavaScript source code
 def extract_method_info(content: str, language: str) -> List[Dict]:
