@@ -437,3 +437,24 @@ async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(
                 return await response.json()
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
+
+
+@app.post("/ai/api-design-assistant/regenerate-spec", status_code=status.HTTP_201_CREATED)
+async def design_assistant_regenerate_spec(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+
+    text = req["text"]
+    sessionId = req["sessionId"]
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            api_design_assistant_endpoint + "/regenerate-spec",
+            json={"text": text, "sessionId": sessionId}
+        ) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())

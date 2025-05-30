@@ -152,10 +152,6 @@ answer_general_question = """
 """
 
 
-# reads example openapi spec for context
-with open('violated_rules.txt', 'r') as file:
-    violated_rules = file.read().replace("{", "{{").replace("}", "}}")
-
 # generates the OpenAPI specification for REST APIs
 generate_openapi_spec = """
     You are an intelligent assistant whose task is to generate an accurate OpenAPI specification for an API based on the modifications provided by the user: {final_input} and the Previous Interactions. 
@@ -170,35 +166,8 @@ generate_openapi_spec = """
     STRICT CONDITION: DO NOT specify the extracted modification statements
     STRICT CONDITION: If modification statement {final_input} mentions any HTTP request or resource modification, you MUST ONLY modify the specific HTTP requests or resources mentioned. All other HTTP methods and resources must remain unchanged. For example, "change /GET /transactions to /GET /transactionType" should only modify GET /transactions and NOT POST /transactions
 
-    STRICT CONDITIONS:
+    STRICT CONDITION: The spec should NOT give this error - Duplicate key: Error
 
-        VERY STRICT CONDITION: The generated spec MUST ensure that each of these errors are ALL solved and WILL NOT get violated.
-        STRICT CONDITION: The generated spec MUST ensure that each of the above errors including 'openapi-tags' and 'contact-url' are ALL solved and WILL NOT get violated.
-
-        STRICT CONDITION: The tags should be written in this format below to remove the error in 'openapi-tags':
-
-            To fix this error, you need to add a global tags array at the root level of your OpenAPI document which MUST BE sorted *alphabetically* by their name. This is different from the tags used inside individual operations — this defines metadata for those tags globally.
-
-            ✅ Here's how to fix it:
-            Add the following tags section just before paths: (The global tags at the root of the OpenAPI document MUST BE sorted *alphabetically* by their name as shown below for example):
-                tags:
-                - name: Customers
-                    description: Operations related to customers
-                - name: Orders
-                    description: Operations related to clothing orders
-                - name: Products
-                    description: Operations related to clothing products
-                - name: Transactions
-                    description: Operations related to payment transactions
-
-
-            Below are the violated rules which need to be solved so they do not get violated again:
-
-            """ + violated_rules + """
-            
-            STRICT CONDITION: The spec should NOT give this error - Duplicate key: Error
-
-        
 
 
         
@@ -307,6 +276,67 @@ generate_openapi_spec = """
 
     Latest Specification:
     {specification}
+
+    Answer:
+"""
+
+
+# regenerates the OpenAPI specification using the governance validation errors
+regenerate_openapi_spec = """
+    You are an intelligent assistant whose task is to generate an accurate OpenAPI specification for an API which does not violate the governance violation rules.
+    You must carefully interpret the Latest Specification and intelligently regenerate the OpenAPI specification WHICH WILL NEVER VIOLATE THOSE RULES.
+    
+    If yaml validation error: {schema_validation_error}` is provided, *refine the specification to eliminate any errors causing this issue and ensure it adheres to best practices.*
+    STRICT CONDITION: The spec MUST NOT cause this error - duplicated mapping key for 'components'
+    
+    STRICT CONDITIONS:
+
+        VERY STRICT CONDITION: The generated spec MUST ensure that each of these errors are ALL solved and WILL NOT get violated.
+        STRICT CONDITION: The generated spec MUST ensure that each of the above errors including 'openapi-tags' and 'contact-url' are ALL solved and WILL NOT get violated.
+
+        STRICT CONDITION: The tags should be written in this format below to remove the error in 'openapi-tags':
+
+            To fix this error, you need to add a global tags array at the root level of your OpenAPI document which MUST BE sorted *alphabetically* by their name. This is different from the tags used inside individual operations — this defines metadata for those tags globally.
+
+            ✅ Here's how to fix it:
+            Add the following tags section just before paths: (The global tags at the root of the OpenAPI document MUST BE sorted *alphabetically* by their name as shown below for example):
+                tags:
+                - name: Customers
+                    description: Operations related to customers
+                - name: Orders
+                    description: Operations related to clothing orders
+                - name: Products
+                    description: Operations related to clothing products
+                - name: Transactions
+                    description: Operations related to payment transactions
+
+
+            VERY STRICT CONDITION: Below are the violated rules which need to be solved so they do not get violated again: {final_input}.
+            
+            STRICT CONDITION: The spec should NOT give this error - Duplicate key: Error
+
+            STRICT CONDITION: Double check and ensure the regenerated spec will not violate the above governance rules again.
+            STRICT CONDITION: Modify the Latest Specification: {specification} for this task. Ensure you do not modify anything extra apart from the violated rules.
+
+
+    Your task is to ONLY provide the generated OpenAPI specification in YAML format.
+	STRICT CONDITION: DO NOT specify the language (yaml) when providing the answer.
+
+    STRICT CONDITION - Return a JSON object where the regenerated_spec is a stringified and escaped version of the OpenAPI spec, so that it can be safely parsed with json.loads().
+
+        
+
+    Your task is to return :
+        - OpenAPI specification.
+        
+    Please ensure to only return the specification as the response.
+    STRICT CONDITION: The resources and descriptions MUST be in the *same language* as the user input or chat history.
+
+    STRICT CONDITION - Return a JSON object where the regenerated_spec is a stringified and escaped version of the OpenAPI spec, so that it can be safely parsed with json.loads().
+
+    You MUST return your response in a JSON format where the overall structure uses JSON keys and values, but the 'regenerated_spec' value MUST be in YAML format.
+	STRICT CONDITION: DO NOT specify the language (json) when providing the answer.
+
 
     Answer:
 """
