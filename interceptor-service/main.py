@@ -490,21 +490,6 @@ async def api_mock_generate_mocks(req: dict, x_jwt_assertion: str = Header(None)
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
-@app.post("/ai/api-mock/generate-mock-scripts", status_code=status.HTTP_201_CREATED)
-async def api_mock_generate_mocks(req: dict, x_jwt_assertion: str = Header(None)):
-    try:
-        await validate_backend_jwt(x_jwt_assertion)
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
-    
-    async with aiohttp.ClientSession() as session:
-        async with session.post(api_mock_endpoint + "/generate-mock-scripts", 
-                                json=req) as response:
-            if response.status == 201:
-                return await response.json()
-            else:
-                raise HTTPException(status_code=response.status, detail=await response.text())
-
 @app.post("/ai/api-mock/modify-resource-script", status_code=status.HTTP_201_CREATED)
 async def api_mock_modify_method(req: dict, x_jwt_assertion: str = Header(None)):
     try:
