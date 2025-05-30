@@ -529,6 +529,94 @@ paths:
                         type:
                           type: string
                           example: value_error.missing
+  /ai/sdk-generation/merge-openapi-specs:
+    post:
+      summary: Merge multiple OpenAPI specifications
+      description: Merges multiple OpenAPI specifications and returns the combined result.
+      operationId: mergeOpenApiSpecs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - specifications
+                - contexts
+              properties:
+                specifications:
+                  type: object
+                  description: A JSON object containing OpenAPI specifications.
+                apiContexts:
+                  type: object
+                  description: A JSON object mapping API names to their context paths.
+      responses:
+        '201':
+          description: Successfully merged OpenAPI specifications
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The merged OpenAPI specification
+        '400':
+          description: Bad request (missing or malformed payload)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /ai/sdk-generation/generate-application-code:
+    post:
+      summary: Generate application code using OpenAPI spec and use case
+      description: Uses an OpenAPI spec, selected methods, and a use case to generate application code.
+      operationId: generateApplicationCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - APISpecification
+                - sdkMethodsFile
+                - useCase
+                - language
+              properties:
+                APISpecification:
+                  type: object
+                  description: The API specification to generate code from.
+                sdkMethodsFile:
+                  type: object
+                  description: File containing SDK methods.
+                useCase:
+                  type: string
+                  description: Use case description guiding the code generation.
+                language:
+                  type: string
+                  enum: [java, javascript]
+                  description: Target programming language.
+      responses:
+        '201':
+          description: Successfully generated application code
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: The generated application code as plain text
+        '500':
+          description: Internal server error during code generation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
 components:
   schemas:
     HTTPValidationError:
