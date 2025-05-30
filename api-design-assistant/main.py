@@ -15,6 +15,7 @@ import openai
 import json
 import yaml
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from prompts import (
@@ -23,6 +24,7 @@ from prompts import (
     check_for_spec_generation_request,
     answer_general_question,
     generate_openapi_spec,
+    regenerate_openapi_spec,
     generate_graphql_spec,
     generate_asyncapi_spec
 )
@@ -32,8 +34,7 @@ from graphql import parse, validate, build_schema, GraphQLError
 app = FastAPI(
     title="WSO2 APIM API Design Assistant",
     description="Backend for WSO2 APIM API Design Assistant",
-    version="0.1.0",
-    license_info={"name": "Apache 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
+    version="0.1.0"
 )
 
 app.add_middleware(
@@ -310,9 +311,54 @@ async def generate_spec(api_type, final_input, chat_history, specification=None,
         return "Unexpected error during generation.", ['No Resources'], "Apologies for the inconvenience. It seems that something went wrong with the API Design Assistant. Please try again."
 
 
+# Invokes LLM to generate the spec according to API type and provided information
+async def regenerate_spec_method(final_input, specification=None, schema_validation_error=None, attempt=1, max_attempts=10):
+    """
+    Regenerates an API specification using an LLM based on the previous governance validation errors.
+
+    Args:
+        final_input (str): The processed governance validation errors.
+        specification (str, optional): Existing spec to refine or use for context.
+        schema_validation_error (Exception, optional): Previous validation error (if retrying).
+        attempt (int, optional): Current retry attempt.
+        max_attempts (int, optional): Maximum allowed retry attempts.
+
+    Returns:
+        regenerated_spec: str
+    """
+    try:
+        prompt = regenerate_openapi_spec.format(
+            final_input=final_input,
+            specification=specification,
+            schema_validation_error=schema_validation_error
+        )
+
+        llm_response = await async_llm_invoke(prompt)
+        answer_text = llm_response.content.strip()
+
+        # Parses LLM response as JSON so the spec, resoures list and chat response can be extracted
+        try:
+            data = json.loads(answer_text)
+        except json.JSONDecodeError as e:
+            if attempt < max_attempts:
+                # Regenerates spec if there is a JSON error when parsing
+                return await regenerate_spec_method(final_input, None, e, attempt + 1)
+            return "Failed to parse LLM response as JSON.", ['No Resources'], "Apologies for the inconvenience. It seems that something went wrong with the API Design Assistant. Please try again."
+
+
+        # Extracts the spec, resoures list and chat response
+        regenerated_spec = data.get("regenerated_spec", "")
+
+        # Returns spec, resources and chat response successfully
+        return regenerated_spec
+
+    except Exception:
+        return "Unexpected error during generation.", ['No Resources'], "Apologies for the inconvenience. It seems that something went wrong with the API Design Assistant. Please try again."
+
+
 # Chat Endpoint generates the API specifications and other related details
 @app.post("/chat")
-async def generate(request: Request):
+async def generate(request: ChatInput):
     """
     Handles POST requests to the /chat endpoint for generating API specifications.
 
@@ -340,7 +386,8 @@ async def generate(request: Request):
 
         HTTP status code: 200 for success, or other status codes returned by `validate_user_input`.
     """
-    data = await request.json()
+    # Convert Pydantic model to dict
+    data = request.dict()
 
     # Validates the JSON payload
     error_response, status_code = await validate_user_input(data)
@@ -427,3 +474,33 @@ async def generate(request: Request):
 
     # Returns response successfully
     return response, 200
+
+
+@app.post("/regenerate-spec")
+async def regenerate_spec(body: ChatInput):
+    # Convert Pydantic model to dict
+    data = body.dict()
+
+    # Validate user input
+    error_response, status_code = await validate_user_input(data)
+    if status_code != 200:
+        return JSONResponse(content=error_response, status_code=status_code)
+
+    # Extract values
+    user_input = data["text"].strip()
+    session_id = data["sessionId"].strip()
+
+    # Retrieve task data from Redis
+    task_data = await get_task_data(session_id)
+    specification = task_data.get("specification", "")
+
+    # Call LLM to regenerate new spec
+    specification = await regenerate_spec_method(user_input, specification)
+
+    # Updates Redis with data 
+    await update_task_data(session_id, specification=specification)
+
+    # Return final response
+    return {
+        "regeneratedSpec": specification
+    }
