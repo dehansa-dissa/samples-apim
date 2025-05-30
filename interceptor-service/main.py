@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Header, Body, HTTPException, status
+from fastapi import FastAPI, Header, Body, HTTPException, Response, status
 import jwt
 from jwt import PyJWTError
 from aiocache import cached, SimpleMemoryCache, caches
@@ -19,8 +19,11 @@ import tiktoken
 from jwt_validation import validate_backend_jwt
 
 api_chat_endpoint = os.getenv("API_CHAT_ENDPOINT")
+graphql_api_chat_endpoint = os.getenv("GRAPHQL_API_CHAT_ENDPOINT")
 marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
 api_design_assistant_endpoint = os.getenv("API_DA_ENDPOINT")
+api_mock_endpoint = os.getenv("API_MOCK_ENDPOINT")
+ai_assisted_sdk_gen_endpoint = ("AI_SDK_GENERATOR_ENDPOINT")
 api_publisher_endpoint = os.getenv("API_PUBLISHER_ENDPOINT")
 api_chat_access_token = os.getenv("API_CHAT_ENDPOINT_ACCESS_TOKEN")
 introspect_endpoint = os.getenv("INTROSPECTION_ENDPOINT")
@@ -217,30 +220,42 @@ async def count_tokens(text: str = Body(..., media_type="text/plain")):
     token_count = len(encoding.encode(text))
     return {"count": token_count}
 
+async def process_request(req: dict, headers: dict, service_url: str, orgID: str):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(service_url, headers=headers, json=req) as response:
+            if response.status in [200, 201]:
+                response_json = await response.json()
+                if 'usage' in response_json:
+                    usage = response_json.pop('usage', None)
+                    cache_key = "org:" + orgID + ":token_count"
+                    asyncio.create_task(update_redis_cache(
+                        cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
+                    ))
+                return response_json
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
+
 @app.post("/ai/api-chat/prepare", status_code=status.HTTP_201_CREATED)
-async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
+async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None), apiType: str = None):
     try:
         await validate_backend_jwt(x_jwt_assertion)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
-    async with aiohttp.ClientSession() as session:
-        headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
-        async with session.post(api_chat_endpoint + "/prepare", headers=headers, json=req) as response:
-            if response.status == 201:
-                response_json = await response.json()
-                if 'usage' in response_json:
-                    usage = response_json.pop('usage', None)
-                    cache_key = "org:" + orgID + ":token_count"
-                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-                return response_json
-            else:
-                raise HTTPException(status_code=response.status, detail=await response.text())
+    headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
 
+    if apiType == "HTTP":
+        service_url = api_chat_endpoint + "/prepare"
+    elif apiType == "GRAPHQL":
+        service_url = graphql_api_chat_endpoint + "/prepare"
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request format.")
+    
+    return await process_request(req, headers, service_url, orgID)
 
 @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
-async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None)):
+async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None), apiType: str = None):
     try:
         await validate_backend_jwt(x_jwt_assertion)
     except Exception as e:
@@ -249,18 +264,16 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     if do_throttle == "true":
         await throttle(orgID)
-    async with aiohttp.ClientSession() as session:
-        headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
-        async with session.post(api_chat_endpoint + "/chat", headers=headers, json=req) as response:
-            if response.status == 201:
-                response_json = await response.json()
-                if 'usage' in response_json:
-                    usage = response_json.pop('usage', None)
-                    cache_key = "org:" + orgID + ":token_count"
-                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
-                return response_json
-            else:
-                raise HTTPException(status_code=response.status, detail=await response.text())
+    headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
+    
+    if apiType == "HTTP":
+        service_url = api_chat_endpoint + "/chat"
+    elif apiType == "GRAPHQL":
+        service_url = graphql_api_chat_endpoint + "/chat"
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request format.")
+    
+    return await process_request(req, headers, service_url, orgID)
 
 @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
 async def chat(req: dict, x_jwt_assertion: str = Header(None)):
@@ -301,7 +314,9 @@ async def chat(req: dict, x_jwt_assertion: str = Header(None)):
                 if 'usage' in response_json:
                     usage = response_json.pop('usage', None)
                     cache_key = "org:" + orgID + ":token_count"
-                    asyncio.create_task(update_redis_cache(cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]))
+                    asyncio.create_task(update_redis_cache(
+                        cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
+                    ))
                 return response_json
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
@@ -441,20 +456,91 @@ async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(
 
 @app.post("/ai/api-design-assistant/regenerate-spec", status_code=status.HTTP_201_CREATED)
 async def design_assistant_regenerate_spec(req: dict, x_jwt_assertion: str = Header(None)):
+=======
+@app.post("/ai/api-mock/generate-mock-scripts", status_code=status.HTTP_201_CREATED)
+async def api_mock_generate_mocks(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(api_mock_endpoint + "/generate-mock-scripts", 
+                                json=req) as response:
+            if response.status == 201:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
+
+@app.post("/ai/api-mock/generate-mock-scripts", status_code=status.HTTP_201_CREATED)
+async def api_mock_generate_mocks(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(api_mock_endpoint + "/generate-mock-scripts", 
+                                json=req) as response:
+            if response.status == 201:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
+
+@app.post("/ai/api-mock/modify-resource-script", status_code=status.HTTP_201_CREATED)
+async def api_mock_modify_method(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(api_mock_endpoint + "/modify-resource-script", 
+                                json=req) as response:
+            if response.status == 201:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
+            
+@app.post("/ai/sdk-generation/merge-openapi-specs", status_code=status.HTTP_201_CREATED)
+async def merge_openapi_specs(req: dict, x_jwt_assertion: str = Header(None)):
     try:
         await validate_backend_jwt(x_jwt_assertion)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
 
-    text = req["text"]
-    sessionId = req["sessionId"]
+    specifications = req["specifications"]
+    contexts = req["contexts"]
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            api_design_assistant_endpoint + "/regenerate-spec",
-            json={"text": text, "sessionId": sessionId}
+            ai_assisted_sdk_gen_endpoint + "/merge-openapi-specs",
+            json={"specifications": specifications, "contexts": contexts}
         ) as response:
             if response.status == 200:
                 return await response.json()
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
+
+@app.post("/ai/sdk-generation/generate-application-code", status_code=status.HTTP_201_CREATED)
+async def merge_openapi_specs(req: dict, x_jwt_assertion: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+
+    APISpecification = req["APISpecification"]
+    sdkMethodsFile = req["sdkMethodsFile"]
+    useCase = req["useCase"]
+    language = req["language"]
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            ai_assisted_sdk_gen_endpoint + "/generate-application-code",
+            json={"APISpecification": APISpecification, "sdkMethodsFile": sdkMethodsFile, "useCase": useCase, "language": language}
+        ) as response:
+            if response.status == 200:
+                return await response.text()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
+            

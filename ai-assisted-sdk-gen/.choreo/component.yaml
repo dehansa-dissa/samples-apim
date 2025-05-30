@@ -1,11 +1,11 @@
 schemaVersion: "1.2"
 endpoints:
-    - name: interceptor-service-be2
-      displayName: Interceptor Service
+    - name: ai-assisted-sdk-generation
+      displayName: AI Assisted SDK Generation
       service:
         basePath: /
-        port: 8000
+        port: 5000
       type: REST
       networkVisibilities:
-        - Public
+        - Project
       schemaFilePath: openapi.yaml

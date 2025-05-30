@@ -1,0 +1,114 @@
+openapi: 3.1.0
+info:
+  title: AI Assisted SDK Generation
+  description: |
+    An API for merging OpenAPI specifications and generating application code based on use cases.
+  version: '1.0.0'
+paths:
+  /merge-openapi-specs:
+    post:
+      summary: Merge multiple OpenAPI specifications
+      description: |
+        Merges multiple OpenAPI specifications provided either as a JSON structure 
+        containing specifications or as raw JSON string.
+      operationId: mergeOpenApiSpecs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergeSpecsRequest'
+      responses:
+        '200':
+          description: Successfully merged OpenAPI specifications
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Merged API specification in text format
+        '400':
+          description: Bad request - invalid JSON format or no specifications provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /generate-application-code:
+    post:
+      summary: Generate application code based on use case
+      description: |
+        Generates application code in the specified language based on the provided use case,
+        SDK methods file, and merged API specification.
+      operationId: generateApplicationCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateCodeRequest'
+      responses:
+        '200':
+          description: Successfully generated application code
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Generated application code
+        '500':
+          description: Internal server error during code generation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    MergeSpecsRequest:
+      type: object
+      properties:
+        specifications:
+          type: array
+          description: Array of OpenAPI specifications to be merged
+          items:
+            $ref: '#/components/schemas/OpenAPISpecification'
+        contexts:
+          type: array
+          description: Contextual information for the API specifications
+          items:
+            type: string
+    
+    OpenAPISpecification:
+      type: object
+      description: An OpenAPI specification object
+    
+    GenerateCodeRequest:
+      type: object
+      required:
+        - useCase
+        - sdkMethodsFile
+        - mergedAPISpecification
+        - language
+      properties:
+        useCase:
+          type: string
+          description: Description of the application use case
+        sdkMethodsFile:
+          type: string
+          description: SDK methods file content with method definitions and comments
+        mergedAPISpecification:
+          type: string
+          description: Merged API specification from previous step
+        language:
+          type: string
+          description: Target programming language for code generation
+          enum: [java, javascript]
+    
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          example: Failed to generate application code

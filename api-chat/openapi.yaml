@@ -1,0 +1,311 @@
+openapi: 3.1.0
+info:
+  title: FastAPI
+  version: 0.1.0
+paths:
+  /prepare:
+    post:
+      summary: Sdl Prepare
+      description: Handles SDL preparation requests.
+      operationId: sdl_prepare_prepare_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GraphQLTestPreparationRequest"
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: "#/components/schemas/GraphQLTestPreparationResponse"
+                - $ref: "#/components/schemas/ErrorInfo"
+                title: Response Sdl Prepare Prepare Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /chat:
+    post:
+      summary: Graphql Chat
+      description: Handles GraphQL chat requests, either initializing or continuing
+        execution.
+      operationId: graphql_chat_chat_post
+      parameters:
+      - required: true
+        schema:
+          type: string
+          title: Apichatrequestid
+        name: apiChatRequestId
+        in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+              - $ref: "#/components/schemas/GraphQLTestInitializationRequest"
+              - $ref: "#/components/schemas/GraphQLTestExecutionRequest"
+              - $ref: "#/components/schemas/ErrorInfo"
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: "#/components/schemas/GraphQLTestExecutionResponse"
+                - $ref: "#/components/schemas/TestCompletionResponse"
+                - $ref: "#/components/schemas/InvalidResponse"
+                - $ref: "#/components/schemas/ErrorInfo"
+                title: Response Graphql Chat Chat Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /health:
+    get:
+      summary: Health Check
+      description: Handles health check requests.
+      operationId: health_check_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+components:
+  schemas:
+    ErrorInfo:
+      properties:
+        response:
+          type: string
+          title: Response
+      type: object
+      required:
+      - response
+      title: ErrorInfo
+    GraphQLTestPreparationRequest:
+      properties:
+        GRAPHQL_SCHEMA:
+          type: string
+          title: Graphqlschema
+      type: object
+    GraphQLTestInitializationRequest:
+      properties:
+        command:
+          type: string
+          title: Command
+        apiSpec:
+          type: string
+          nullable: true
+        schemaDefinition:
+          type: string
+          title: Schema Definition
+      type: object
+      title: GraphQLTestInitializationRequest
+    GraphQLTestExecutionRequest:
+      properties:
+        response:
+          type: string
+          title: Response
+          properties:
+            resource:
+              $ref: "#/components/schemas/PreviousResponse"
+      type: object
+      title: GraphQLTestExecutionRequest
+    PreviousResponse:
+      properties:
+        code:
+          type: integer
+          title: Code
+        path:
+          type: string
+          title: Path
+        headers:
+          type: object
+          title: Headers
+        body:
+          type: string
+          title: body
+      type: object
+      required:
+        - code
+        - path
+        - headers
+        - body
+      title: PreviousResponse
+    GraphQLExecutionResult:
+      properties:
+        method:
+          type: string
+          enum:
+          - POST
+          title: Method
+        path:
+          type: string
+          title: Path
+          default: "/"
+        inputs:
+          "$ref": "#/components/schemas/RequestBody"
+      type: object
+      required:
+      - method
+      - inputs
+      title: GraphQLExecutionResult
+    GraphQLTestExecutionResponse:
+      properties:
+        taskStatus:
+          type: string
+          enum:
+          - IN_PROGRESS
+          - TERMINATED
+          title: Taskstatus
+        resource:
+          "$ref": "#/components/schemas/GraphQLExecutionResult"
+        usage:
+          "$ref": "#/components/schemas/TokenCounts"
+      type: object
+      required:
+      - taskStatus
+      - resource
+      - usage
+      title: GraphQLTestExecutionResponse
+    GraphQLTestPreparationResponse:
+      properties:
+        schemaDefinition:
+          type: string
+          title: Schemadefinition
+        queries:
+          items:
+            "$ref": "#/components/schemas/SampleQueryFormat"
+          type: array
+          title: Queries
+        usage:
+          "$ref": "#/components/schemas/TokenCounts"
+      type: object
+      required:
+      - schemaDefinition
+      - queries
+      - usage
+      title: GraphQLTestPreparationResponse
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            "$ref": "#/components/schemas/ValidationError"
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    InvalidResponse:
+      properties:
+        taskStatus:
+          type: string
+          enum:
+          - TERMINATED
+          title: Taskstatus
+        result:
+          type: string
+          title: Result
+        usage:
+          "$ref": "#/components/schemas/TokenCounts"
+      type: object
+      required:
+      - taskStatus
+      - result
+      - usage
+      title: InvalidResponse
+    RequestBody:
+      properties:
+        requestBody:
+          "$ref": "#/components/schemas/ToolComponent"
+      type: object
+      required:
+      - requestBody
+      title: RequestBody
+    SampleQueryFormat:
+      properties:
+        scenario:
+          type: string
+          title: Scenario
+        query:
+          type: string
+          title: Query
+      type: object
+      required:
+      - scenario
+      - query
+      title: SampleQueryFormat
+    TestCompletionResponse:
+      properties:
+        taskStatus:
+          type: string
+          enum:
+          - COMPLETED
+          title: Taskstatus
+        result:
+          type: string
+          title: Result
+        usage:
+          "$ref": "#/components/schemas/TokenCounts"
+      type: object
+      required:
+      - taskStatus
+      - result
+      - usage
+      title: TestCompletionResponse
+    TokenCounts:
+      properties:
+        prompt_tokens:
+          type: integer
+          title: Prompt Tokens
+        completion_tokens:
+          type: integer
+          title: Completion Tokens
+        total_tokens:
+          type: integer
+          title: Total Tokens
+      type: object
+      required:
+      - prompt_tokens
+      - completion_tokens
+      - total_tokens
+      title: TokenCounts
+    ToolComponent:
+      properties:
+        query:
+          type: string
+          title: Query
+      type: object
+      required:
+      - query
+      title: ToolComponent
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
