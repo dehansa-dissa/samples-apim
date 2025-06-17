@@ -43,6 +43,7 @@ def convert_to_int(s):
         raise ValueError("Could not convert '{}' to an integer".format(s))
 
 openai_token_count_per_org = convert_to_int(os.getenv("OPENAI_TOKEN_COUNT_PER_ORG", "1000000"))
+api_count_limit = convert_to_int(os.getenv("API_COUNT_LIMIT", "1000"))
 
 cache = SimpleMemoryCache()
 
@@ -332,7 +333,7 @@ async def publish_api(req: dict, x_jwt_assertion: str = Header(None)):
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
     count = await fetch_api_count(orgID)
-    if count <= 1000:
+    if count <= api_count_limit:
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req,
@@ -371,7 +372,7 @@ async def api_count(x_jwt_assertion: str = Header(None)):
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     count = await fetch_api_count(orgID)
-    return {"count": count, "limit": 1000}
+    return {"count": count, "limit": api_count_limit}
 
 
 @app.post("/ai/spec-populator/bulk-upload")
@@ -384,8 +385,8 @@ async def upload_bulk_apis(req: dict, x_jwt_assertion: str = Header(None)):
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
     count = await fetch_api_count_for_upload(orgID)
-    if count < 1000:
-        req["apis"] = req["apis"][:1000-count]
+    if count < api_count_limit:
+        req["apis"] = req["apis"][:api_count_limit-count]
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             async with session.post(api_publisher_endpoint + '/bulk_add_vector', json=req,
