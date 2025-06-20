@@ -49,6 +49,32 @@ AZURE_OPENAI_API_KEY - Azure OpenAI service key ([Reference: Set up zure openAI 
 MILVERSE_API_KEY = Token from the cluster details in zilliz ([Reference: How to setup zilliz milvus vectorDB](#how-to-setup-zilliz-milvus-vectordb-this-was-setup-by-the-digiops-team)) 
 ```
 
+## Marketplace Assistant API
+
+This service is deployed in the Choreo control plane. It provides a chatbot interface for the API marketplace, leveraging a RAG pipeline with Azure OpenAI and Milvus to answer user queries.
+
+### Environment variables
+
+#### Configs
+
+```
+COLLECTION_NAME = Name of the milvus zillis collection (i.e DevChoreoMarketplace)
+AZURE_ENDPOINT = Azure openAI service endpoint ([Reference: Set up zure openAI service](#set-up-azure-openai-service-this-was-setup-by-the-sre))
+AZURE_EMBEDDING_DEPLOYMENT = Azure model deployment name for embeddings (default: OpenAPIEmbeddings)
+AZURE_CHAT_DEPLOYMENT = Azure model deployment name for chat (default: APIM-Deployment)
+AZURE_CHAT_VERSION = Azure openAI chat model api version (default: 2023-12-01-preview)
+SOURCE_PLATFORM = Specifies the target platform, either 'APIM' or 'CHOREO'.
+PROXY_URL = URL of the milvus proxy service. This is used when SOURCE_PLATFORM is 'CHOREO'.
+ZILLIZ_CLOUD_URI = Public URL for Zilliz cloud. This is used when SOURCE_PLATFORM is 'APIM'.
+LOG_LEVEL = "INFO" - Define the log level, This is Not mandotory
+```
+
+#### Secrets
+```
+AZURE_OPENAI_API_KEY - Azure OpenAI service key ([Reference: Set up zure openAI service](#set-up-azure-openai-service-this-was-setup-by-the-sre))
+ZILLIZ_CLOUD_API_KEY = API Key for Zilliz cloud. This is used when SOURCE_PLATFORM is 'APIM'.
+```
+
 ## External resource creation
 ### How to setup zilliz milvus vectorDB (This was setup by the digiops team)
 
