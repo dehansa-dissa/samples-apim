@@ -187,8 +187,10 @@ async def get_org_info_from_token(x_jwt_assertion: str = Header(None)):
             detail="Invalid token"
         )
 
-async def throttle(orgID):
-    cache_key = "org:" + orgID + ":token_count"
+# We are using the handle as the orgID for now. This is because the orgID claim is
+# of the parent org and not the sub org.
+async def throttle(handle):
+    cache_key = "org:" + handle + ":token_count"
     current_counts_json = await redis_client.get(cache_key)
     if current_counts_json is not None:
         current_counts = json.loads(current_counts_json)
@@ -262,7 +264,7 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     if do_throttle == "true":
-        await throttle(orgID)
+        await throttle(handle)
     headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
     
     if apiType == "GRAPHQL":
@@ -281,7 +283,7 @@ async def chat(req: dict, x_jwt_assertion: str = Header(None)):
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     if do_throttle == "true":
-        await throttle(orgID)
+        await throttle(handle)
     history_string = req["history"]
     data_list = json.loads(history_string)
     objects_list = []
