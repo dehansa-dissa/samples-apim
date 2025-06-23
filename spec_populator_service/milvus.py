@@ -185,9 +185,11 @@ def upsert_vector_for_choreo(mc, embed, orgID, api: ChoreoAPI):
     document_exist = query_document(api.id, mc)
     if document_exist == 0:
         milvus_res = mc.insert(collection_name=collection_name, data=payload)
+        logging.info("milvus_res (insert): %s", milvus_res)
         response = {"insert_count": milvus_res.get("insert_count")}
     else:
         milvus_res = mc.upsert(collection_name=collection_name, data=payload)
+        logging.info("milvus_res (upsert): %s", milvus_res)
         response = {"upsert_count": milvus_res.get("upsert_count")}
 
     count_after = get_collection_raw_count(mc)
