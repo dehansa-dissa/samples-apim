@@ -272,3 +272,12 @@ def get_collection_raw_count(mc):
     )
     mc.get_collection_stats(collection_name=collection_name)
     return response[0]["count(*)"]
+
+
+def get_vector_count_for_key(mc, key_id):
+    response = mc.query(
+        collection_name=collection_name,
+        filter=f'(key_id == "{key_id}")',
+        output_fields=["count(*)"],
+    )
+    return response[0]["count(*)"]

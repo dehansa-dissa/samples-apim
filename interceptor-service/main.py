@@ -198,19 +198,19 @@ async def throttle(handle):
         if total_count >= openai_token_count_per_org:
             raise HTTPException(status_code=429, detail="Maximum token limit reached")
 
-@cached(ttl=60, key=lambda orgID: f"api_count:{orgID}")
-async def fetch_api_count(orgID):
+@cached(ttl=60, key=lambda orgID, handle: f"api_count:{orgID}:{handle}")
+async def fetch_api_count(orgID, handle):
     async with aiohttp.ClientSession() as session:
-        async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID}) as response:
+        async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID, 'keyID': handle}) as response:
             if response.status == 200:
                 count = (await response.json())['count']
                 return count
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
-async def fetch_api_count_for_upload(orgID):
+async def fetch_api_count_for_upload(orgID, handle):
     async with aiohttp.ClientSession() as session:
-        async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID}) as response:
+        async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID, 'keyID': handle}) as response:
             if response.status == 200:
                 count = (await response.json())['count']
                 return count
@@ -330,7 +330,7 @@ async def publish_api(req: dict, x_jwt_assertion: str = Header(None)):
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
-    count = await fetch_api_count(orgID)
+    count = await fetch_api_count(orgID, handle)
     if count <= api_count_limit:
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
@@ -369,7 +369,7 @@ async def api_count(x_jwt_assertion: str = Header(None)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
-    count = await fetch_api_count(orgID)
+    count = await fetch_api_count(orgID, handle)
     return {"count": count, "limit": api_count_limit}
 
 
@@ -382,7 +382,7 @@ async def upload_bulk_apis(req: dict, x_jwt_assertion: str = Header(None)):
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
-    count = await fetch_api_count_for_upload(orgID)
+    count = await fetch_api_count_for_upload(orgID, handle)
     if count < api_count_limit:
         req["apis"] = req["apis"][:api_count_limit-count]
         async with aiohttp.ClientSession() as session:

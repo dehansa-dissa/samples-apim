@@ -11,7 +11,7 @@ from pymilvus import MilvusClient
 
 from milvus import upsert_vector_for_onprem, upsert_vector_for_choreo, delete_vector, \
     upsert_bulk_vector_for_onprem, get_vector_count_for_org, delete_bulk_vector_for_onprem, delete_vector_for_choreo, \
-    upsert_bulk_vector_for_choreo, delete_org_wise_vectors_for_choreo
+    upsert_bulk_vector_for_choreo, delete_org_wise_vectors_for_choreo, get_vector_count_for_key
 from utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
     pre_process_asyncapi_def, API, ChoreoAPI
 
@@ -244,12 +244,12 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
 
 
 @app.get("/api_count")
-async def get_api_count(orgID: str):
+async def get_api_count(orgID: str, keyID: str = None):
     mc = MilvusClient(uri=url, token=api_key)
     try:
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(get_vector_count_for_org, mc, orgID))
-        logging.info(f"API count for org {orgID}: {response}")
+        response = await loop.run_in_executor(None, partial(get_vector_count_for_key, mc, keyID))
+        logging.info(f"API count for keyID {keyID}: {response}")
         return {"count": response}
     except Exception as e:
         logging.error(f"An error occurred while getting api count: {e}")
