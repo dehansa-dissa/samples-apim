@@ -12,7 +12,7 @@ FROM choreocontrolplane.azurecr.io/ubuntu:20.04 AS builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3.9=3.9.5-3ubuntu0~20.04.1 \
-      python3-pip=20.0.2-5ubuntu1.10 \
+      python3-pip \
       python3.9-venv=3.9.5-3ubuntu0~20.04.1 && \
     apt-get install -y g++ && \
     apt-get clean && \
@@ -44,6 +44,7 @@ RUN groupadd --system --gid ${USER_GROUP_ID} ${GROUP} && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
       python3.9=3.9.5-3ubuntu0~20.04.1 \
+      python3-pip \
       python3.9-venv=3.9.5-3ubuntu0~20.04.1 \
       libncurses6=6.2-0ubuntu2.1 \
       libncursesw6=6.2-0ubuntu2.1 \
