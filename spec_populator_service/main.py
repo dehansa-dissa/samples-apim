@@ -244,12 +244,12 @@ async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
 
 
 @app.get("/api_count")
-async def get_api_count(orgID: str, keyID: str = None):
+async def get_api_count(orgID: str):
     mc = MilvusClient(uri=url, token=api_key)
     try:
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(get_vector_count_for_key, mc, keyID))
-        logging.info(f"API count for keyID {keyID}: {response}")
+        response = await loop.run_in_executor(None, partial(get_vector_count_for_org, mc, orgID))
+        logging.info(f"API count for org {orgID}: {response}")
         return {"count": response}
     except Exception as e:
         logging.error(f"An error occurred while getting api count: {e}")
@@ -280,3 +280,19 @@ async def bulk_remove_vector(orgID: str, keyID: Optional[str] = None, tenantDoma
 def health():
     """Check the api is running"""
     return {"status": "Running"}
+
+
+# New endpoint to fetch count by keyID
+@app.get("/api_count_by_key")
+async def get_api_count_by_key(keyID: str):
+    mc = MilvusClient(uri=url, token=api_key)
+    try:
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, partial(get_vector_count_for_key, mc, keyID))
+        logging.info(f"API count for keyID {keyID}: {response}")
+        return {"count": response}
+    except Exception as e:
+        logging.error(f"An error occurred while getting api count by key: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        mc.close()

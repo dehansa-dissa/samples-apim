@@ -201,7 +201,7 @@ async def throttle(handle):
 @cached(ttl=60, key=lambda orgID, handle: f"api_count:{orgID}:{handle}")
 async def fetch_api_count(orgID, handle):
     async with aiohttp.ClientSession() as session:
-        async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID, 'keyID': handle}) as response:
+        async with session.get(api_publisher_endpoint + "/api_count_by_key", params={'keyID': handle}) as response:
             if response.status == 200:
                 count = (await response.json())['count']
                 return count
@@ -210,7 +210,7 @@ async def fetch_api_count(orgID, handle):
 
 async def fetch_api_count_for_upload(orgID, handle):
     async with aiohttp.ClientSession() as session:
-        async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID, 'keyID': handle}) as response:
+        async with session.get(api_publisher_endpoint + "/api_count_by_key", params={'keyID': handle}) as response:
             if response.status == 200:
                 count = (await response.json())['count']
                 return count
