@@ -24,20 +24,29 @@ from prompts import create_merge_specs_prompt
 from llm import create_llm
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "headers": ["Content-Type", "Authorization"]
+    }
+})
 
 openai.api_type = API_TYPE
 openai.api_version = API_VERSION
 openai.api_key = API_KEY
 openai.azure_endpoint = AZURE_ENDPOINT
 
+@app.route("/test", methods=["GET"])
+def test():
+    return jsonify({"status": "Flask server is running"})
+
 # Flask route to handle the merging of OpenAPI specifications that accepts file uploads or a raw JSON string
 @app.route("/merge-openapi-specs", methods=["POST"])
 def merge_openapi_specs():
     try:
         if request.is_json:
-            json_payload = request.get_json()
-            
+            json_payload = request.get_json()            
             if "specifications" in json_payload:
                 specifications = json_payload["specifications"]
             else:
@@ -55,14 +64,12 @@ def merge_openapi_specs():
         prompt_template = create_merge_specs_prompt(specifications, api_contexts)
         llm = create_llm()
         llm_chain = prompt_template | llm
-
         response = llm_chain.invoke({'specs_text': specifications, 'api_contexts': api_contexts})
         answer_text = response.content
 
-        return Response(
-            answer_text,
-            content_type='application/json'
-        )
+        return jsonify({
+            "merged_spec": answer_text
+        });
 
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -88,8 +95,10 @@ def process_java_file():
 
         # Generate final code based on use case and language
         application_code = generate_code_response(use_case, summarized_spec, extracted_methods, language)
-        return Response (application_code, content_type='application/json')
-        
+        return jsonify({
+            "application_code": application_code
+        })
+
     except Exception as e:
         error_response = {
             "status": "error",
@@ -99,4 +108,4 @@ def process_java_file():
         return jsonify(error_response), 500
     
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
