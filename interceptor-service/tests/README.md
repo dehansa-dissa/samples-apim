@@ -80,7 +80,7 @@ TOKEN_V2=your_basic_auth_token_v2
 TOKEN_ENDPOINT_V2=https://your-token-endpoint.com
 
 # Test type selection
-TEST_TYPE=all  # Options: all, apichat, marketplaceassistant, specpopulator, apidesignassistant, apimockgenerator, sdkgeneration
+TEST_TYPE=all  # Options: all, apichat, marketplaceassistant, specpopulator, apidesignassistant
 ```
 
 ## 🧪 Test Categories

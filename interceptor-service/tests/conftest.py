@@ -1,3 +1,13 @@
+# -------------------------------------------------------------------------------------
+#
+# Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com). All Rights Reserved.
+#
+# This software is the property of WSO2 LLC. and its suppliers, if any.
+# Dissemination of any information or reproduction of any material contained
+# herein in any form is strictly forbidden, unless permitted by WSO2 expressly.
+# You may not alter or remove any copyright or other notice from copies of this content.
+#
+# --------------------------------------------------------------------------------------
 
 """
 Pytest configuration, utilities and hooks for interceptor service tests.
@@ -104,16 +114,23 @@ bearer_tokens = BearerToken()
 _version_configs_cache = None
 
 
-def get_version_configs():
-    """Generate test configurations for all available versions."""
+def get_version_configs(ignored_versions: List[int] = None):
+    """Generate test configurations for all available versions, excluding ignored_versions."""
     global _version_configs_cache
     if _version_configs_cache is not None:
+        # Filter out ignored versions from cache if needed
+        if ignored_versions:
+            return [
+                config for config in _version_configs_cache
+                if getattr(config.values[0], "version", None) not in ignored_versions
+            ]
         return _version_configs_cache
 
     configs = []
-    version = 1
-    
-    while True:
+    versions = os.getenv("TEST_VERSIONS", "1,2").split(",")
+    ignored_versions = ignored_versions or []
+
+    for version in map(int, versions):
         endpoint = os.getenv(f"ENDPOINT_V{version}")
         token = os.getenv(f"TOKEN_V{version}")
 
@@ -129,12 +146,16 @@ def get_version_configs():
         
         config = TestConfig(version, endpoint, auth)
         configs.append(pytest.param(config, id=f"v{version}"))
-        version += 1
     
     if not configs:
         pytest.skip("No versioned endpoints configured")
     
     _version_configs_cache = configs
+    if ignored_versions:
+        return [
+            config for config in _version_configs_cache
+            if getattr(config.values[0], "version", None) not in ignored_versions
+        ]
     return _version_configs_cache
 
 def make_request(
@@ -256,12 +277,12 @@ class TestReporter:
         
         # Determine subject and attachment
         if self.failed_tests:
-            subject = f"[APIM AI Deployments] Test Report - {len(self.failed_tests)} Failures"
+            subject = f"[APIM AI Deployments] Test - FAILURE"
             log_file = "test_failures.log"
             self._write_failure_log(log_file)
             attachment_path = log_file
         else:
-            subject = "[APIM AI Deployments] Test Report - All Tests Passed!"
+            subject = "[APIM AI Deployments] Test - SUCCESS"
             attachment_path = None
         
         self._send_email(
@@ -299,7 +320,6 @@ class TestReporter:
             "failed_tests": len(self.failed_tests),
             "skipped_tests": len(self.skipped_tests),
             "duration": duration,
-            "success_rate": (len(self.passed_tests) / total_tests * 100) if total_tests > 0 else 0,
             "test_categories": test_categories,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
@@ -312,32 +332,34 @@ class TestReporter:
         report = f"""
 APIM AI Deployments - Test Execution Report
 {'=' * 60}
+"""
 
+        # Overall Status
+        if stats['failed_tests'] == 0:
+            report += """
+✅ OVERALL STATUS: SUCCESS
+All tests passed successfully! The system is functioning correctly.
+
+"""
+        else:
+            report += f"""
+❌ OVERALL STATUS: FAILED
+{stats['failed_tests']} test(s) failed. Please review the failures below.
+
+"""
+
+        report += f"""
 📊 SUMMARY
 {'─' * 30}
 • Total Tests: {stats['total_tests']}
 • Passed: {stats['passed_tests']} ✅
 • Failed: {stats['failed_tests']} ❌
 • Skipped: {stats['skipped_tests']} ⏭️
-• Success Rate: {stats['success_rate']:.1f}%
 • Duration: {stats['duration']:.2f} seconds
 • Timestamp: {stats['timestamp']}
 
 """
-        
-        # Overall Status
-        if stats['failed_tests'] == 0:
-            report += """
-🎉 OVERALL STATUS: SUCCESS
-All tests passed successfully! The system is functioning correctly.
 
-"""
-        else:
-            report += f"""
-⚠️ OVERALL STATUS: FAILED
-{stats['failed_tests']} test(s) failed. Please review the failures below.
-
-"""
         
         # Test Categories Breakdown
         report += f"""
@@ -347,7 +369,6 @@ All tests passed successfully! The system is functioning correctly.
         
         for category, results in stats['test_categories'].items():
             total_cat = results['passed'] + results['failed'] + results['skipped']
-            success_rate = (results['passed'] / total_cat * 100) if total_cat > 0 else 0
             
             status_icon = "✅" if results['failed'] == 0 else "❌"
             report += f"""
@@ -356,7 +377,6 @@ All tests passed successfully! The system is functioning correctly.
    • Passed: {results['passed']}
    • Failed: {results['failed']}
    • Skipped: {results['skipped']}
-   • Success Rate: {success_rate:.1f}%
 """
         
         # Passed Tests Summary
