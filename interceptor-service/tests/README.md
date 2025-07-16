@@ -51,7 +51,6 @@ This directory contains comprehensive automated integration tests for the Interc
 tests/
 ├── conftest.py                      # Pytest configuration and hooks
 ├── constants.py                     # Test constants and configuration
-├── fixtures.py                      # Reusable test fixtures and utilities
 ├── test_data.py                     # Test payloads and data
 ├── run_tests.py                     # Enhanced test runner script
 ├── requirements.txt                 # Python dependencies
@@ -62,7 +61,6 @@ tests/
 ├── test_marketplace_assistant.py    # Marketplace Assistant tests
 ├── test_spec_populator.py          # Spec Populator tests
 ├── test_api_design_assistant.py    # API Design Assistant tests
-└── test_api_mock_generator.py      # API Mock Generator tests
 ```
 
 ## 🔧 Configuration
@@ -93,8 +91,6 @@ TEST_TYPE=all  # Options: all, apichat, marketplaceassistant, specpopulator, api
 | `marketplaceassistant` | Marketplace Assistant | `test_marketplace_assistant.py` |
 | `specpopulator` | Spec Populator services | `test_spec_populator.py` |
 | `apidesignassistant` | API Design Assistant | `test_api_design_assistant.py` |
-| `apimockgenerator` | API Mock Generator | `test_api_mock_generator.py` |
-| `sdkgeneration` | SDK Generation services | `test_sdk_generation.py` |
 
 ## 📊 Running Tests
 
@@ -155,15 +151,6 @@ class TestNewService:
         pass
 ```
 
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **Missing environment variables**: Check your `.env` file configuration
-2. **Authentication failures**: Verify your tokens and endpoints are correct
-3. **Network timeouts**: Ensure endpoints are accessible and responsive
-4. **Import errors**: Make sure you've installed all requirements
-
 ### Debugging
 
 ```bash
@@ -172,7 +159,4 @@ python run_tests.py --verbose
 
 # Run a single test for debugging
 pytest test_api_chat.py::TestAPIChatEndpoints::test_prepare_endpoint_success -v -s
-
-# Check environment configuration
-python -c "from conftest import get_version_configs; print(get_version_configs())"
 ```
