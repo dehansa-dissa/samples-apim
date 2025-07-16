@@ -23,8 +23,6 @@ class TestRunner:
         'marketplaceassistant': ['test_marketplace_assistant.py'],
         'specpopulator': ['test_spec_populator.py'],
         'apidesignassistant': ['test_api_design_assistant.py'],
-        'apimockgenerator': ['test_api_mock_generator.py'],
-        'sdkgeneration': ['test_sdk_generation.py']
     }
     
     def __init__(self):

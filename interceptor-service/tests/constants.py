@@ -3,7 +3,6 @@ Constants used across all tests.
 """
 
 # Test configuration constants
-INVALID_JWT_TOKEN = "invalid_jwt_token"
 TEST_TENANT_DOMAIN = "carbon.super"
 USER_AGENT = "PostmanRuntime/7.44.1"
 DEFAULT_TIMEOUT = 30  # seconds
