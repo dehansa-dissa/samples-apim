@@ -175,5 +175,3 @@ class TestAPIChatEndpoints:
         # Verify response contains required fields
         json_data_cont = assert_response(response, expected_status=HTTP_201_CREATED, required_fields=["taskStatus", "resource"])
         assert json_data_cont is not None
-
-
