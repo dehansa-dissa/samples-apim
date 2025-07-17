@@ -45,7 +45,8 @@ class TestAPIChatEndpoints:
         )
         
         # Verify response contains required fields
-        assert_response(response, expected_status=HTTP_201_CREATED, required_fields=["apiSpec", "queries"])
+        json_data = assert_response(response, expected_status=HTTP_201_CREATED, required_fields=["apiSpec", "queries"])
+        assert json_data is not None
     
     @pytest.mark.parametrize("config", get_version_configs())
     def test_execute_endpoint_success(self, config):
@@ -68,7 +69,8 @@ class TestAPIChatEndpoints:
         )
         
         # Verify response contains required fields
-        assert_response(response, expected_status=HTTP_201_CREATED, required_fields=["taskStatus", "resource"])
+        json_data = assert_response(response, expected_status=HTTP_201_CREATED, required_fields=["taskStatus", "resource"])
+        assert json_data is not None
 
     @pytest.mark.parametrize("config", get_version_configs())
     def test_apichat_flow_success(self, config):
@@ -92,6 +94,9 @@ class TestAPIChatEndpoints:
             data=prepare_payload,
         )
 
+        json_data = assert_response(prepare_response, expected_status=HTTP_201_CREATED, required_fields=["apiSpec", "queries"])
+        assert json_data is not None
+
         prepare_respnse_body = json.loads(prepare_response.text)
 
         execute_payload = {
@@ -106,6 +111,9 @@ class TestAPIChatEndpoints:
             headers=headers,
             data=json.dumps(execute_payload),
         )
+
+        json_data = assert_response(initiate_execute_response, expected_status=HTTP_201_CREATED, required_fields=["taskStatus", "resource"])
+        assert json_data is not None
 
         initiate_execute_response_body = json.loads(initiate_execute_response.text)
 
@@ -127,4 +135,45 @@ class TestAPIChatEndpoints:
         )
 
         # Verify response contains required fields
-        assert_response(get_results_execute_response, expected_status=HTTP_201_CREATED)
+        json_data = assert_response(get_results_execute_response, expected_status=HTTP_201_CREATED)
+        assert json_data is not None
+
+    @pytest.mark.parametrize("config", get_version_configs())
+    def test_api_chat_two_steps_success(self, config):
+        """Test API chat with two steps."""
+        url = f"{config.url}/ai/api-chat/execute"
+        headers = config.get_headers({
+            "Content-Type": CONTENT_TYPE_JSON,
+            "apiChatRequestId": "1"
+        })
+        
+        payload_init = TestPayloads.get_json_payload("API_CHAT_EXECUTE")
+        
+        client = requests.Session()
+        response = make_request(
+            client=client,
+            method="POST",
+            url=url,
+            headers=headers,
+            data=payload_init,
+        )
+        
+        # Verify response contains required fields
+        json_data_init = assert_response(response, expected_status=HTTP_201_CREATED, required_fields=["taskStatus", "resource"])
+        assert json_data_init is not None
+
+        payload_cont = TestPayloads.get_json_payload("API_CHAT_EXECUTE_CONT")
+        
+        response = make_request(
+            client=client,
+            method="POST",
+            url=url,
+            headers=headers,
+            data=payload_cont,
+        )
+        
+        # Verify response contains required fields
+        json_data_cont = assert_response(response, expected_status=HTTP_201_CREATED, required_fields=["taskStatus", "resource"])
+        assert json_data_cont is not None
+
+

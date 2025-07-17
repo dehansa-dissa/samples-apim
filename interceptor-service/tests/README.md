@@ -57,10 +57,10 @@ tests/
 ├── .env.example                     # Environment configuration template
 ├── 
 ├── # Individual test modules
-├── test_api_chat.py                 # API Chat endpoint tests
+├── test_api_chat.py                 # API Chat tests
 ├── test_marketplace_assistant.py    # Marketplace Assistant tests
-├── test_spec_populator.py          # Spec Populator tests
-├── test_api_design_assistant.py    # API Design Assistant tests
+├── test_spec_populator.py           # Spec Populator tests
+├── test_api_design_assistant.py     # API Design Assistant tests
 ```
 
 ## 🔧 Configuration
@@ -87,7 +87,7 @@ TEST_TYPE=all  # Options: all, apichat, marketplaceassistant, specpopulator, api
 
 | Category | Description | Test File |
 |----------|-------------|-----------|
-| `apichat` | API Chat endpoints | `test_api_chat.py` |
+| `apichat` | API Chat | `test_api_chat.py` |
 | `marketplaceassistant` | Marketplace Assistant | `test_marketplace_assistant.py` |
 | `specpopulator` | Spec Populator services | `test_spec_populator.py` |
 | `apidesignassistant` | API Design Assistant | `test_api_design_assistant.py` |

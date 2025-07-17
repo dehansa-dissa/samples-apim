@@ -47,7 +47,112 @@ class TestPayloads:
         },
         "command": "Get the menu items"
     }
+
+    API_CHAT_EXECUTE_CONT = {
+        "command":"create a new order",
+        "apiSpec":{
+            "serviceUrl":"https://localhost:9443/am/sample/pizzashack/v1/api",
+            "tools":[
+                {
+                    "name":"GET-order_orderId",
+                    "description":"Retrieve details of a specific Order by its ID. Returns the requested Order if found, otherwise returns a 'Not Found' error.. This tool invokes a HTTP GET resource",
+                    "method":"GET",
+                    "path":"/order/{orderId}"
+                },
+                {
+                    "name":"PUT-order_orderId",
+                    "description":"Update an existing Order by its ID. Successful response includes the updated Order details. In case of a 'Bad Request' or 'Not Found' error, appropriate error messages are returned.. This tool invokes a HTTP PUT resource",
+                    "method":"PUT",
+                    "path":"/order/{orderId}",
+                    "requestBody":{
+                    "mediaType":"application/json",
+                    "schema":{
+                        "type":"object",
+                        "required":[
+                            "orderId"
+                        ],
+                        "properties":{
+                            "customerName":{
+                                "type":"string"
+                            },
+                            "delivered":{
+                                "type":"boolean"
+                            },
+                            "address":{
+                                "type":"string"
+                            },
+                            "pizzaType":{
+                                "type":"string"
+                            },
+                            "creditCardNumber":{
+                                "type":"string"
+                            },
+                            "quantity":{
+                                "type":"number"
+                            },
+                            "orderId":{
+                                "type":"string"
+                            }
+                        }
+                    }
+                    }
+                },
+                {
+                    "name":"DELETE-order_orderId",
+                    "description":"Delete an existing Order by its ID. If the deletion is successful, an 'OK' response is returned. Otherwise, a 'Not Found' error with details is provided.. This tool invokes a HTTP DELETE resource",
+                    "method":"DELETE",
+                    "path":"/order/{orderId}"
+                },
+                {
+                    "name":"GET-menu",
+                    "description":"Retrieve a list of available menu items. Returns an array of MenuItem objects representing the menu items. In case of an unsupported media type, an error message is returned.. This tool invokes a HTTP GET resource",
+                    "method":"GET",
+                    "path":"/menu"
+                },
+                {
+                    "name":"POST-order",
+                    "description":"Create a new Order by providing the necessary details in the request body. Upon successful creation, a 'Created' response is returned with the newly created Order object. Errors such as 'Bad Request' or 'Unsupported Media Type' are handled appropriately.. This tool invokes a HTTP POST resource",
+                    "method":"POST",
+                    "path":"/order",
+                    "requestBody":{
+                    "mediaType":"application/json",
+                    "schema":{
+                        "type":"object",
+                        "required":[
+                            "orderId"
+                        ],
+                        "properties":{
+                            "customerName":{
+                                "type":"string"
+                            },
+                            "delivered":{
+                                "type":"boolean"
+                            },
+                            "address":{
+                                "type":"string"
+                            },
+                            "pizzaType":{
+                                "type":"string"
+                            },
+                            "creditCardNumber":{
+                                "type":"string"
+                            },
+                            "quantity":{
+                                "type":"number"
+                            },
+                            "orderId":{
+                                "type":"string"
+                            }
+                        }
+                    }
+                    }
+                }
+            ]
+        }
+        }
+
     
+
     # Marketplace Assistant payloads
     MARKETPLACE_CHAT = {
         "query": "Hi give me pizza api",
@@ -73,6 +178,11 @@ class TestPayloads:
     # API Design Assistant payloads
     API_DESIGN_CHAT = {
         "text": "Create an API for live sports scores",
+        "sessionId": "test-session-id"
+    }
+
+    API_DESIGN_CHAT_CONT = {
+        "text": "Implement security for the API",
         "sessionId": "test-session-id"
     }
     
