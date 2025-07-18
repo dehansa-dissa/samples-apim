@@ -190,7 +190,7 @@ async def get_org_info_from_token(x_jwt_assertion: str = Header(None)):
 # We are using the handle as the orgID for now. This is because the orgID claim is
 # of the parent org and not the sub org.
 async def throttle(handle):
-    cache_key = "org:" + handle + ":token_count"
+    cache_key = "key:" + handle + ":token_count"
     current_counts_json = await redis_client.get(cache_key)
     if current_counts_json is not None:
         current_counts = json.loads(current_counts_json)
@@ -230,7 +230,7 @@ async def process_request(req: dict, headers: dict, service_url: str, handle: st
                 response_json = await response.json()
                 if 'usage' in response_json:
                     usage = response_json.pop('usage', None)
-                    cache_key = "org:" + handle + ":token_count"
+                    cache_key = "key:" + handle + ":token_count"
                     asyncio.create_task(update_redis_cache(
                         cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
                     ))
@@ -312,7 +312,7 @@ async def chat(req: dict, x_jwt_assertion: str = Header(None)):
                 response_json = await response.json()
                 if 'usage' in response_json:
                     usage = response_json.pop('usage', None)
-                    cache_key = "org:" + handle + ":token_count"
+                    cache_key = "key:" + handle + ":token_count"
                     asyncio.create_task(update_redis_cache(
                         cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
                     ))
@@ -452,7 +452,7 @@ async def design_assistant_chat(req: dict, x_jwt_assertion: str = Header(None)):
                 response_json = await response.json()
                 if 'usage' in response_json:
                     usage = response_json.pop('usage', None)
-                    cache_key = "org:" + handle + ":token_count"
+                    cache_key = "key:" + handle + ":token_count"
                     asyncio.create_task(update_redis_cache(
                         cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
                     ))
@@ -478,7 +478,7 @@ async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(
                 response_json = await response.json()
                 if 'usage' in response_json:
                     usage = response_json.pop('usage', None)
-                    cache_key = "org:" + handle + ":token_count"
+                    cache_key = "key:" + handle + ":token_count"
                     asyncio.create_task(update_redis_cache(
                         cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
                     ))
@@ -508,7 +508,7 @@ async def design_assistant_regenerate_spec(req: dict, x_jwt_assertion: str = Hea
                 response_json = await response.json()
                 if 'usage' in response_json:
                     usage = response_json.pop('usage', None)
-                    cache_key = "org:" + handle + ":token_count"
+                    cache_key = "key:" + handle + ":token_count"
                     asyncio.create_task(update_redis_cache(
                         cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
                     ))
