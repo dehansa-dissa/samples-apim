@@ -133,6 +133,12 @@ def delete_bulk_vector_for_onprem(mc, orgId, keyId, tenantDomain):
     )
     return response
 
+def delete_vectors_for_all_tenants_onprem(mc, orgId, keyId):
+    response = mc.delete(
+        collection_name=collection_name,
+        filter=f"key_id == '{keyId}'"
+    )
+    return response
 
 def upsert_vector_for_choreo(mc, embed, orgID, api: ChoreoAPI):
     if create_collection:
