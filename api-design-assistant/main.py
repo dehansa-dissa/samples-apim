@@ -179,7 +179,7 @@ async def update_task_data(session_id, state=None, chat_history=None, specificat
 
 
 # Invokes LLM and handles errors
-async def async_llm_invoke(prompt, max_retries=3, delay=2):
+async def async_llm_invoke(prompt, token_usage: TokenUsage, max_retries=3, delay=2):
     """
     Asynchronously invokes the LLM with the given prompt, retrying on failure.
 
@@ -200,6 +200,7 @@ async def async_llm_invoke(prompt, max_retries=3, delay=2):
     while retries < max_retries:
         try:
             response = await asyncio.to_thread(llm.invoke, prompt)
+            token_usage.add_usage(response)
             return response
         except (openai.RateLimitError, openai.APIConnectionError, openai.Timeout) as e:
             retries += 1
@@ -210,32 +211,28 @@ async def async_llm_invoke(prompt, max_retries=3, delay=2):
 # Invokes LLM to check user's query's validity
 async def validate_query_content(user_input, chat_history, token_usage: TokenUsage):
     prompt = check_user_input_validity.format(user_input=user_input, chat_history=chat_history)
-    response = await async_llm_invoke(prompt)
-    token_usage.add_usage(response)
+    response = await async_llm_invoke(prompt, token_usage)
     return response.content.strip()
 
 
 # Invokes LLM to suggest a type of API for the given use case
 async def suggest_api_type(user_input, chat_history, token_usage: TokenUsage):
     prompt = identify_api_type.format(user_input=user_input, history=chat_history)
-    response = await async_llm_invoke(prompt)
-    token_usage.add_usage(response)
+    response = await async_llm_invoke(prompt, token_usage)
     return response.content.strip()
 
 
 # Invokes LLM to check user's query if spec generation is requested
 async def check_for_spec_gen_request(user_input, chat_history, specification, token_usage: TokenUsage):
     prompt = check_for_spec_generation_request.format(user_input=user_input, chat_history=chat_history, specification=specification)
-    response = await async_llm_invoke(prompt)
-    token_usage.add_usage(response)
+    response = await async_llm_invoke(prompt, token_usage)
     return response.content.strip()
 
 
 # Invokes LLM to answer user's general question
 async def form_answer_general_question(user_input, chat_history, specification, token_usage: TokenUsage):
     prompt = answer_general_question.format(user_input=user_input, chat_history=chat_history, specification=specification)
-    response = await async_llm_invoke(prompt)
-    token_usage.add_usage(response)
+    response = await async_llm_invoke(prompt, token_usage)
     return response.content.strip()
 
 
@@ -277,8 +274,7 @@ async def generate_spec(api_type, final_input, chat_history, token_usage: TokenU
             schema_validation_error=schema_validation_error
         )
 
-        llm_response = await async_llm_invoke(prompt)
-        token_usage.add_usage(llm_response)
+        llm_response = await async_llm_invoke(prompt, token_usage)
         answer_text = llm_response.content.strip()
 
 
@@ -350,8 +346,7 @@ async def regenerate_spec_method(final_input, token_usage: TokenUsage, specifica
             schema_validation_error=schema_validation_error
         )
 
-        llm_response = await async_llm_invoke(prompt)
-        token_usage.add_usage(llm_response)
+        llm_response = await async_llm_invoke(prompt, token_usage)
         answer_text = llm_response.content.strip()
 
         # Parses LLM response as JSON so the spec, resoures list and chat response can be extracted
