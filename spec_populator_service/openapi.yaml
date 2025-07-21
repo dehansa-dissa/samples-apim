@@ -204,6 +204,73 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    /bulk_remove_all_tenant:
+      delete:
+        summary: Bulk Remove All Tenant
+        operationId: bulk_remove_all_tenant_bulk_remove_all_tenant_delete
+        parameters:
+          - name: orgID
+            in: query
+            required: true
+            schema:
+              type: string
+              title: Orgid
+          - name: keyID
+            in: query
+            required: false
+            schema:
+              anyOf:
+                - type: string
+              default: ''
+              title: Keyid
+          # - name: tenantDomain
+          #   in: query
+          #   required: false
+          #   schema:
+          #     anyOf:
+          #       - type: string
+          #     default: ''
+          #     title: Tenantdomain
+        responses:
+          '200':
+            description: Successful Response
+            content:
+              application/json:
+                schema: {}
+          '422':
+            description: Validation Error
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/HTTPValidationError'
+  /api_count_by_key:
+    get:
+      summary: Get Api Count By Key
+      operationId: get_api_count_by_key_get_api_count_by_key_get
+      parameters:
+        - name: keyID
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Keyid
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    title: Count
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /health:
     get:
       summary: Health
