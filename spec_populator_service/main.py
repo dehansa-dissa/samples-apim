@@ -10,7 +10,7 @@ from log_filters import EndpointFilter
 from pymilvus import MilvusClient
 
 from milvus import upsert_vector_for_onprem, upsert_vector_for_choreo, delete_vector, \
-    upsert_bulk_vector_for_onprem, get_vector_count_for_org, delete_bulk_vector_for_onprem, delete_vector_for_choreo, \
+    upsert_bulk_vector_for_onprem, get_vector_count_for_org, delete_bulk_vector_for_onprem, delete_vectors_for_all_tenants_onprem, delete_vector_for_choreo, \
     upsert_bulk_vector_for_choreo, delete_org_wise_vectors_for_choreo
 from utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
     pre_process_asyncapi_def, API, ChoreoAPI
@@ -275,8 +275,39 @@ async def bulk_remove_vector(orgID: str, keyID: Optional[str] = None, tenantDoma
     finally:
         mc.close()
 
+@app.delete("/bulk_remove_all_tenant")
+async def bulk_remove_all_tenant(orgID: str, keyID: Optional[str] = None, tenantDomain: Optional[str] = None):
+    mc = MilvusClient(uri=url, token=api_key)
+    try:
+        loop = asyncio.get_event_loop()
+        if source == const.APIM:
+            response = await loop.run_in_executor(None, partial(delete_vectors_for_all_tenants_onprem, mc, orgID, keyID))
+        elif source == const.CHOREO:
+            response = await loop.run_in_executor(None, partial(delete_org_wise_vectors_for_choreo, mc, orgID))
+        return {const.MESSAGE: response}
+    except Exception as e:
+        logging.error(f"An error occurred while removing bulk of vectors: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        mc.close()
 
 @app.get("/health")
 def health():
     """Check the api is running"""
     return {"status": "Running"}
+
+
+# New endpoint to fetch count by keyID
+@app.get("/api_count_by_key")
+async def get_api_count_by_key(keyID: str):
+    mc = MilvusClient(uri=url, token=api_key)
+    try:
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, partial(get_vector_count_for_key, mc, keyID))
+        logging.info(f"API count for keyID {keyID}: {response}")
+        return {"count": response}
+    except Exception as e:
+        logging.error(f"An error occurred while getting api count by key: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        mc.close()

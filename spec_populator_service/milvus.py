@@ -133,6 +133,12 @@ def delete_bulk_vector_for_onprem(mc, orgId, keyId, tenantDomain):
     )
     return response
 
+def delete_vectors_for_all_tenants_onprem(mc, orgId, keyId):
+    response = mc.delete(
+        collection_name=collection_name,
+        filter=f"key_id == '{keyId}'"
+    )
+    return response
 
 def upsert_vector_for_choreo(mc, embed, orgID, api: ChoreoAPI):
     if create_collection:
@@ -271,4 +277,13 @@ def get_collection_raw_count(mc):
         output_fields=["count(*)"],
     )
     mc.get_collection_stats(collection_name=collection_name)
+    return response[0]["count(*)"]
+
+
+def get_vector_count_for_key(mc, key_id):
+    response = mc.query(
+        collection_name=collection_name,
+        filter=f'(key_id == "{key_id}")',
+        output_fields=["count(*)"],
+    )
     return response[0]["count(*)"]

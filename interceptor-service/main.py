@@ -23,7 +23,7 @@ graphql_api_chat_endpoint = os.getenv("GRAPHQL_API_CHAT_ENDPOINT")
 marketplace_chat_endpoint = os.getenv("MARKETPLACE_CHAT_ENDPOINT")
 api_design_assistant_endpoint = os.getenv("API_DA_ENDPOINT")
 api_mock_endpoint = os.getenv("API_MOCK_ENDPOINT")
-ai_assisted_sdk_gen_endpoint = ("AI_SDK_GENERATOR_ENDPOINT")
+ai_assisted_sdk_gen_endpoint = os.getenv("AI_SDK_GENERATOR_ENDPOINT")
 api_publisher_endpoint = os.getenv("API_PUBLISHER_ENDPOINT")
 api_chat_access_token = os.getenv("API_CHAT_ENDPOINT_ACCESS_TOKEN")
 introspect_endpoint = os.getenv("INTROSPECTION_ENDPOINT")
@@ -175,7 +175,7 @@ async def decode_jwt(x_jwt_assertion: str):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Organization details not found in token"
         )
-    return org_id, aud
+    return org_id, aud[0]
 
 async def get_org_info_from_token(x_jwt_assertion: str = Header(None)):
     try:
@@ -187,8 +187,8 @@ async def get_org_info_from_token(x_jwt_assertion: str = Header(None)):
             detail="Invalid token"
         )
 
-async def throttle(orgID):
-    cache_key = "org:" + orgID + ":token_count"
+async def throttle(handle):
+    cache_key = "key:" + handle + ":token_count"
     current_counts_json = await redis_client.get(cache_key)
     if current_counts_json is not None:
         current_counts = json.loads(current_counts_json)
@@ -196,19 +196,19 @@ async def throttle(orgID):
         if total_count >= openai_token_count_per_org:
             raise HTTPException(status_code=429, detail="Maximum token limit reached")
 
-@cached(ttl=60, key=lambda orgID: f"api_count:{orgID}")
-async def fetch_api_count(orgID):
+@cached(ttl=60, key=lambda orgID, handle: f"api_count:{orgID}:{handle}")
+async def fetch_api_count(orgID, handle):
     async with aiohttp.ClientSession() as session:
-        async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID}) as response:
+        async with session.get(api_publisher_endpoint + "/api_count_by_key", params={'keyID': handle}) as response:
             if response.status == 200:
                 count = (await response.json())['count']
                 return count
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
-async def fetch_api_count_for_upload(orgID):
+async def fetch_api_count_for_upload(orgID, handle):
     async with aiohttp.ClientSession() as session:
-        async with session.get(api_publisher_endpoint + "/api_count", params={'orgID': orgID}) as response:
+        async with session.get(api_publisher_endpoint + "/api_count_by_key", params={'keyID': handle}) as response:
             if response.status == 200:
                 count = (await response.json())['count']
                 return count
@@ -221,14 +221,14 @@ async def count_tokens(text: str = Body(..., media_type="text/plain")):
     token_count = len(encoding.encode(text))
     return {"count": token_count}
 
-async def process_request(req: dict, headers: dict, service_url: str, orgID: str):
+async def process_request(req: dict, headers: dict, service_url: str, handle: str):
     async with aiohttp.ClientSession() as session:
         async with session.post(service_url, headers=headers, json=req) as response:
             if response.status in [200, 201]:
                 response_json = await response.json()
                 if 'usage' in response_json:
                     usage = response_json.pop('usage', None)
-                    cache_key = "org:" + orgID + ":token_count"
+                    cache_key = "key:" + handle + ":token_count"
                     asyncio.create_task(update_redis_cache(
                         cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
                     ))
@@ -251,7 +251,7 @@ async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
     else:
         service_url = api_chat_endpoint + "/prepare"
     
-    return await process_request(req, headers, service_url, orgID)
+    return await process_request(req, headers, service_url, handle)
 
 @app.post("/ai/api-chat/execute", status_code=status.HTTP_201_CREATED)
 async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_assertion: str = Header(None), apiType: str = None):
@@ -262,7 +262,7 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     if do_throttle == "true":
-        await throttle(orgID)
+        await throttle(handle)
     headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
     
     if apiType == "GRAPHQL":
@@ -270,7 +270,7 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
     else:
         service_url = api_chat_endpoint + "/chat"
     
-    return await process_request(req, headers, service_url, orgID)
+    return await process_request(req, headers, service_url, handle)
 
 @app.post("/ai/marketplace-assistant/chat", status_code=status.HTTP_201_CREATED)
 async def chat(req: dict, x_jwt_assertion: str = Header(None)):
@@ -281,7 +281,7 @@ async def chat(req: dict, x_jwt_assertion: str = Header(None)):
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     if do_throttle == "true":
-        await throttle(orgID)
+        await throttle(handle)
     history_string = req["history"]
     data_list = json.loads(history_string)
     objects_list = []
@@ -304,13 +304,13 @@ async def chat(req: dict, x_jwt_assertion: str = Header(None)):
 
     async with aiohttp.ClientSession() as session:
         headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
-        async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'keyID': handle[0]},
+        async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'keyID': handle},
                                 json=payload, headers=headers) as response:
             if response.status == 200:
                 response_json = await response.json()
                 if 'usage' in response_json:
                     usage = response_json.pop('usage', None)
-                    cache_key = "org:" + orgID + ":token_count"
+                    cache_key = "key:" + handle + ":token_count"
                     asyncio.create_task(update_redis_cache(
                         cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
                     ))
@@ -328,12 +328,12 @@ async def publish_api(req: dict, x_jwt_assertion: str = Header(None)):
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
-    count = await fetch_api_count(orgID)
+    count = await fetch_api_count(orgID, handle)
     if count <= api_count_limit:
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req,
-                                    params={'orgID': orgID, 'keyID': handle[0]}, headers=headers) as response:
+                                    params={'orgID': orgID, 'keyID': handle}, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
@@ -352,7 +352,7 @@ async def remove_api(uuid: str, x_jwt_assertion: str = Header(None)):
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     async with aiohttp.ClientSession() as session:
         headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
-        async with session.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'keyID': handle[0]},
+        async with session.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'keyID': handle},
                                     headers=headers) as response:
             if response.status == 200:
                 return await response.json()
@@ -367,7 +367,7 @@ async def api_count(x_jwt_assertion: str = Header(None)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
-    count = await fetch_api_count(orgID)
+    count = await fetch_api_count(orgID, handle)
     return {"count": count, "limit": api_count_limit}
 
 
@@ -380,13 +380,13 @@ async def upload_bulk_apis(req: dict, x_jwt_assertion: str = Header(None)):
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
-    count = await fetch_api_count_for_upload(orgID)
+    count = await fetch_api_count_for_upload(orgID, handle)
     if count < api_count_limit:
         req["apis"] = req["apis"][:api_count_limit-count]
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             async with session.post(api_publisher_endpoint + '/bulk_add_vector', json=req,
-                                    params={'orgID': orgID, 'keyID': handle[0]}, headers=headers) as response:
+                                    params={'orgID': orgID, 'keyID': handle}, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
@@ -406,12 +406,28 @@ async def remove_bulk_apis(x_jwt_assertion: str = Header(None), TENANT_DOMAIN: s
     async with aiohttp.ClientSession() as session:
         headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
         async with session.delete(api_publisher_endpoint + '/bulk_remove_vector',
-                                params={'orgID': orgID, 'keyID': handle[0], "tenantDomain": TENANT_DOMAIN}, headers=headers) as response:
+                                params={'orgID': orgID, 'keyID': handle, "tenantDomain": TENANT_DOMAIN}, headers=headers) as response:
             if response.status == 200:
                 return await response.json()
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
+@app.delete("/ai/spec-populator/bulk-remove-all-tenant")
+async def remove_bulk_apis_all_tenants(x_jwt_assertion: str = Header(None), keyId: str = Header(None)):
+    try:
+        await validate_backend_jwt(x_jwt_assertion)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
+    
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    async with aiohttp.ClientSession() as session:
+        headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
+        async with session.delete(api_publisher_endpoint + '/bulk_remove_all_tenant',
+                                params={'orgID': orgID, 'keyID': handle}, headers=headers) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                raise HTTPException(status_code=response.status, detail=await response.text())
 
 @app.post("/ai/api-design-assistant/chat", status_code=status.HTTP_201_CREATED)
 async def design_assistant_chat(req: dict, x_jwt_assertion: str = Header(None)):
@@ -423,13 +439,24 @@ async def design_assistant_chat(req: dict, x_jwt_assertion: str = Header(None)):
     text = req["text"]
     sessionId = req["sessionId"]
 
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    if do_throttle == "true":
+        await throttle(handle)
+
     async with aiohttp.ClientSession() as session:
         async with session.post(
             api_design_assistant_endpoint + "/chat",
             json={"text": text, "sessionId": sessionId}
         ) as response:
             if response.status == 200:
-                return await response.json()
+                response_json = await response.json()
+                if 'usage' in response_json:
+                    usage = response_json.pop('usage', None)
+                    cache_key = "key:" + handle + ":token_count"
+                    asyncio.create_task(update_redis_cache(
+                        cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
+                    ))
+                return response_json
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
     
@@ -441,12 +468,23 @@ async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    if do_throttle == "true":
+        await throttle(handle)
+
     async with aiohttp.ClientSession() as session:
         sessionId = req["sessionId"]
         async with session.post(api_design_assistant_endpoint + "/generate-api-payload", 
                                 json={'sessionId': sessionId}) as response:
             if response.status == 200:
-                return await response.json()
+                response_json = await response.json()
+                if 'usage' in response_json:
+                    usage = response_json.pop('usage', None)
+                    cache_key = "key:" + handle + ":token_count"
+                    asyncio.create_task(update_redis_cache(
+                        cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
+                    ))
+                return response_json
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
@@ -461,13 +499,24 @@ async def design_assistant_regenerate_spec(req: dict, x_jwt_assertion: str = Hea
     text = req["text"]
     sessionId = req["sessionId"]
 
+    orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    if do_throttle == "true":
+        await throttle(handle)
+
     async with aiohttp.ClientSession() as session:
         async with session.post(
             api_design_assistant_endpoint + "/regenerate-spec",
             json={"text": text, "sessionId": sessionId}
         ) as response:
             if response.status == 200:
-                return await response.json()
+                response_json = await response.json()
+                if 'usage' in response_json:
+                    usage = response_json.pop('usage', None)
+                    cache_key = "key:" + handle + ":token_count"
+                    asyncio.create_task(update_redis_cache(
+                        cache_key, [usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]]
+                    ))
+                return response_json
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
@@ -543,4 +592,3 @@ async def merge_openapi_specs(req: dict, x_jwt_assertion: str = Header(None)):
                 return await response.text()
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
-            
