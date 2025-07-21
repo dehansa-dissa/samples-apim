@@ -187,8 +187,6 @@ async def get_org_info_from_token(x_jwt_assertion: str = Header(None)):
             detail="Invalid token"
         )
 
-# We are using the handle as the orgID for now. This is because the orgID claim is
-# of the parent org and not the sub org.
 async def throttle(handle):
     cache_key = "key:" + handle + ":token_count"
     current_counts_json = await redis_client.get(cache_key)
@@ -414,7 +412,7 @@ async def remove_bulk_apis(x_jwt_assertion: str = Header(None), TENANT_DOMAIN: s
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
-@app.delete("/ai/spec-populator/bult-remove-all-tenant")
+@app.delete("/ai/spec-populator/bulk-remove-all-tenant")
 async def remove_bulk_apis_all_tenants(x_jwt_assertion: str = Header(None), keyId: str = Header(None)):
     try:
         await validate_backend_jwt(x_jwt_assertion)
@@ -442,6 +440,8 @@ async def design_assistant_chat(req: dict, x_jwt_assertion: str = Header(None)):
     sessionId = req["sessionId"]
 
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    if do_throttle == "true":
+        await throttle(handle)
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -469,6 +469,8 @@ async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    if do_throttle == "true":
+        await throttle(handle)
 
     async with aiohttp.ClientSession() as session:
         sessionId = req["sessionId"]
@@ -498,6 +500,8 @@ async def design_assistant_regenerate_spec(req: dict, x_jwt_assertion: str = Hea
     sessionId = req["sessionId"]
 
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
+    if do_throttle == "true":
+        await throttle(handle)
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -588,4 +592,3 @@ async def merge_openapi_specs(req: dict, x_jwt_assertion: str = Header(None)):
                 return await response.text()
             else:
                 raise HTTPException(status_code=response.status, detail=await response.text())
-            

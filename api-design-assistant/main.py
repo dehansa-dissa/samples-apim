@@ -28,6 +28,7 @@ from prompts import (
     generate_graphql_spec,
     generate_asyncapi_spec
 )
+from langchain_community.callbacks import get_openai_callback
 from config import r, llm
 from graphql import parse, validate, build_schema, GraphQLError
 
@@ -46,17 +47,26 @@ app.add_middleware(
 )
 
 class TokenUsage:
+    """
+    Tracks token consumption across LLM (Large Language Model) invocations.
+    Attributes:
+        prompt_tokens (int): The number of tokens used in the prompt.
+        completion_tokens (int): The number of tokens generated in the completion.
+        total_tokens (int): The total number of tokens used (prompt + completion).
+    Methods:
+        add_usage(response): Updates token usage statistics based on the response
+        from the LLM, which includes usage details.
+    """
     def __init__(self):
         self.prompt_tokens = 0
         self.completion_tokens = 0 
         self.total_tokens = 0
-
-    def add_usage(self, response):
+    
+    def add_usage(self, token_usage):
         # OpenAI responses include usage statistics
-        if hasattr(response, 'usage'):
-            self.prompt_tokens += response.usage.prompt_tokens
-            self.completion_tokens += response.usage.completion_tokens
-            self.total_tokens += response.usage.total_tokens
+        self.prompt_tokens += token_usage.prompt_tokens
+        self.completion_tokens += token_usage.completion_tokens
+        self.total_tokens += token_usage.total_tokens
 
 # Defines the expected structure of incoming JSON payloads to the chat endpoint
 class ChatInput(BaseModel):
@@ -199,9 +209,10 @@ async def async_llm_invoke(prompt, token_usage: TokenUsage, max_retries=3, delay
     retries = 0
     while retries < max_retries:
         try:
-            response = await asyncio.to_thread(llm.invoke, prompt)
-            token_usage.add_usage(response)
-            return response
+            with get_openai_callback() as cb:
+                response = await asyncio.to_thread(llm.invoke, prompt)
+                token_usage.add_usage(cb)
+                return response
         except (openai.RateLimitError, openai.APIConnectionError, openai.Timeout) as e:
             retries += 1
             if retries >= max_retries:
