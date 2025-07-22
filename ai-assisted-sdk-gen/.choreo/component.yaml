@@ -4,7 +4,7 @@ endpoints:
       displayName: AI Assisted SDK Generation
       service:
         basePath: /
-        port: 5001
+        port: 5000
       type: REST
       networkVisibilities:
         - Project
