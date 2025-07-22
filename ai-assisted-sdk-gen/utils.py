@@ -19,41 +19,26 @@ def extract_method_info(content: str, language: str) -> List[Dict]:
     methods = []
     
     if language.lower() == "java":
-        javadoc_pattern = r'/\*\*(.*?)\*/'
-        method_pattern = r'public\s+(?:.*?)\s+(\w+?(?:Get|Put|Post|Delete|Patch)(?:Call|WithHttpInfo|Async)?)\s*\([^)]*\)'
-        
-        # Find all matches with their positions
-        current_pos = 0
-        while current_pos < len(content):
-            javadoc_match = re.search(javadoc_pattern, content[current_pos:], re.DOTALL)
-            if not javadoc_match:
-                break
-                
-            javadoc = javadoc_match.group(1)
+        # This single regex finds a Javadoc block and the public method declaration that immediately follows it.
+        # It's designed to be more general and capture any valid method name.
+        # - Group 1 (.*?): Captures the content inside the Javadoc block.
+        # - Group 2 ([\w\d_]+): Captures the method name. This is the key change.
+        pattern = re.compile(
+            r'/\*\*(.*?)\*/\s*public\s+(?:.*?)\s+([\w\d_]+)\s*\([^)]*\)',
+            re.DOTALL  # re.DOTALL allows '.' to match newlines, which is crucial for the Javadoc block.
+        )
+
+        # Find all non-overlapping matches of the pattern in the string.
+        matches = re.findall(pattern, content)
+
+        for match in matches:
+            javadoc, method_name = match
             # Clean up Javadoc
             javadoc = re.sub(r'\s*\*\s*', ' ', javadoc).strip()
-
-            current_pos += javadoc_match.end()
-            
-            # Look for method declaration after Javadoc
-            method_match = re.search(method_pattern, content[current_pos:])
-            if method_match:
-                method_name = method_match.group(1)
-                # Check if method name ends with one of the expected patterns
-                if any(method_name.endswith(suffix) for suffix in [
-                    'GetCall', 'Get', 'GetWithHttpInfo', 'GetAsync',
-                    'PutCall', 'Put', 'PutWithHttpInfo', 'PutAsync',
-                    'PostCall', 'Post', 'PostWithHttpInfo', 'PostAsync',
-                    'DeleteCall', 'Delete', 'DeleteWithHttpInfo', 'DeleteAsync',
-                    'PatchCall', 'Patch', 'PatchWithHttpInfo', 'PatchAsync'
-                ]):
-                    methods.append({
-                        'methodName': method_name,
-                        'comments': javadoc
-                    })
-                current_pos += method_match.end()
-            else:
-                current_pos += 1
+            methods.append({
+                'methodName': method_name,
+                'comments': javadoc
+            })
                 
     elif language.lower() == "javascript":
         jsdoc_pattern = r'/\*\*(.*?)\*/'
@@ -144,8 +129,76 @@ def map_methods_to_endpoints(summarized_spec, formatted_methods):
     response = chat.invoke(prompt)
     return response.content
 
+def extract_imports_from_sdk(content: str, language: str) -> List[str]:
+    """
+    Extract import statements from the SDK methods file content
+    """
+    imports = []
+    
+    if language.lower() == "java":
+        # Java import pattern
+        import_pattern = r'import\s+([a-zA-Z0-9._*]+);'
+        matches = re.findall(import_pattern, content)
+        imports = [f"import {match};" for match in matches]
+
+        default_api_import = extract_default_api_import_from_sdk(content, language)
+        if default_api_import:
+            imports.append(default_api_import)
+        
+    elif language.lower() == "javascript":
+        # JavaScript require/import patterns
+        require_pattern = r'(?:const|var|let)\s+.*?=\s+require\([\'"]([^\'"]+)[\'"]\)'
+        import_pattern = r'import\s+.*?from\s+[\'"]([^\'"]+)[\'"]'
+        
+        require_matches = re.findall(require_pattern, content)
+        import_matches = re.findall(import_pattern, content)
+        
+        imports.extend([f"const ... = require('{match}');" for match in require_matches])
+        imports.extend([f"import ... from '{match}';" for match in import_matches])
+
+        default_api_import = extract_default_api_import_from_sdk(content, language)
+        if default_api_import:
+            imports.append(default_api_import)
+
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_imports = []
+    for imp in imports:
+        if imp not in seen:
+            seen.add(imp)
+            unique_imports.append(imp)
+    
+    return unique_imports
+
+def extract_default_api_import_from_sdk(content: str, language: str) -> str:
+    """
+    Extract DefaultApi class import location from the SDK content itself
+    """
+    if language.lower() == "java":
+        # Look for package declaration in the DefaultApi class file
+        package_pattern = r'package\s+([a-zA-Z0-9._]+);'
+        package_match = re.search(package_pattern, content)
+        
+        if package_match:
+            package_name = package_match.group(1)
+            return f"import {package_name}.DefaultApi;"
+        
+        # Fallback: Look for existing DefaultApi import in the content
+        default_api_import_pattern = r'import\s+([a-zA-Z0-9._]+\.DefaultApi);'
+        import_match = re.search(default_api_import_pattern, content)
+        if import_match:
+            return f"import {import_match.group(1)};"
+        
+    elif language.lower() == "javascript":
+        if 'module.exports' in content and 'DefaultApi' in content:
+            # CommonJS pattern
+            return "const DefaultApi = require('./api/DefaultApi');"
+        elif 'export' in content and 'DefaultApi' in content:
+            # ES6 module pattern
+            return "import DefaultApi from './api/DefaultApi';"
+
 # Generate application code based on use case and language
-def generate_code_response(user_input, merged_spec, sdk_methods, language):
+def generate_code_response(user_input, merged_spec, sdk_methods, language, extracted_imports):
     lang_content = get_language_specific_content(language)
 
     prompt_template = create_code_gen_prompt()
@@ -156,7 +209,8 @@ def generate_code_response(user_input, merged_spec, sdk_methods, language):
         sdk_methods=sdk_methods,
         language=language,
         example_code=lang_content["example_code"],
-        language_specific_instructions=lang_content["language_specific_instructions"]
+        language_specific_instructions=lang_content["language_specific_instructions"],
+        sdk_imports="\n".join(extracted_imports)
     )
 
     response = chat.invoke(prompt)
