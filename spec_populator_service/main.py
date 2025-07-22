@@ -10,7 +10,7 @@ from log_filters import EndpointFilter
 from pymilvus import MilvusClient
 
 from milvus import upsert_vector_for_onprem, upsert_vector_for_choreo, delete_vector, \
-    upsert_bulk_vector_for_onprem, get_vector_count_for_org, delete_bulk_vector_for_onprem, delete_vectors_for_all_tenants_onprem, delete_vector_for_choreo, \
+    upsert_bulk_vector_for_onprem, get_vector_count_for_org, get_vector_count_for_key, delete_bulk_vector_for_onprem, delete_vectors_for_all_tenants_onprem, delete_vector_for_choreo, \
     upsert_bulk_vector_for_choreo, delete_org_wise_vectors_for_choreo
 from utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
     pre_process_asyncapi_def, API, ChoreoAPI
@@ -276,7 +276,7 @@ async def bulk_remove_vector(orgID: str, keyID: Optional[str] = None, tenantDoma
         mc.close()
 
 @app.delete("/bulk_remove_all_tenant")
-async def bulk_remove_all_tenant(orgID: str, keyID: Optional[str] = None, tenantDomain: Optional[str] = None):
+async def bulk_remove_all_tenant(orgID: str, keyID: Optional[str] = None):
     mc = MilvusClient(uri=url, token=api_key)
     try:
         loop = asyncio.get_event_loop()

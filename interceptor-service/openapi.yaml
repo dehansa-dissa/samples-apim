@@ -252,6 +252,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /ai/spec-populator/bulk-remove-all-tenant:
+    delete:
+      summary: Remove Bulk APIs for All Tenants
+      operationId: remove_bulk_apis_all_tenants
+      parameters:
+        - name: x-jwt-assertion
+          in: header
+          required: true
+          schema:
+            type: string
+            description: JWT assertion for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: Unauthorized - JWT validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /ai/api-design-assistant/chat:
     post:
       summary: Generate API specifications based on user input
@@ -359,6 +391,65 @@ paths:
                   error:
                     type: string
                     description: Error message
+  /ai/api-design-assistant/regenerate-spec:
+    post:
+      summary: Regenerate API specification based on user input and session
+      description: Regenerates the API specification using the provided text and session ID. Requires JWT authentication.
+      operationId: designAssistantRegenerateSpec
+      parameters:
+        - name: x-jwt-assertion
+          in: header
+          required: true
+          schema:
+            type: string
+            description: JWT assertion for authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: Natural language description for regenerating the API spec
+                  example: "update the API to include a transaction endpoint"
+                sessionId:
+                  type: string
+                  description: Unique identifier for the user session
+                  example: "1234567890"
+      responses:
+        "201":
+          description: Successfully regenerated API specification.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The regenerated API specification and related metadata
+        "401":
+          description: Unauthorized - JWT validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "422":
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /ai/api-mock/generate-mock-scripts:
     post:
       summary: Generate Mock Scripts Endpoint

@@ -114,3 +114,56 @@ paths:
                   error:
                     type: string
                     description: Error message
+    /regenerate-spec:
+      post:
+        summary: Regenerate API Specification
+        description: Regenerates the API specification based on updated user input and session state.
+        operationId: designAssistantRegenerateSpec
+        requestBody:
+          required: true # have to check
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text:
+                    type: string
+                    description: Natural language description of the API to be created
+                    example: "create an API for a banking transaction."
+                  sessionId:
+                    type: string
+                    description: Unique identifier for the user session
+                    example: "1234567890"
+        responses:
+          "200":
+            description: Successfully regenerated API specification.
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    regeneratedSpec:
+                      type: string
+                      description: The regenerated API specification
+                    usage:
+                      type: object
+                      properties:
+                        prompt_tokens:
+                          type: integer
+                          description: Number of tokens used in the prompt
+                        completion_tokens:
+                          type: integer
+                          description: Number of tokens used in the completion
+                        total_tokens:
+                          type: integer
+                          description: Total number of tokens used
+          "400":
+            description: Invalid request or session ID
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    error:
+                      type: string
+                      description: Error message

@@ -413,7 +413,7 @@ async def remove_bulk_apis(x_jwt_assertion: str = Header(None), TENANT_DOMAIN: s
                 raise HTTPException(status_code=response.status, detail=await response.text())
 
 @app.delete("/ai/spec-populator/bulk-remove-all-tenant")
-async def remove_bulk_apis_all_tenants(x_jwt_assertion: str = Header(None), keyId: str = Header(None)):
+async def remove_bulk_apis_all_tenants(x_jwt_assertion: str = Header(None)):
     try:
         await validate_backend_jwt(x_jwt_assertion)
     except Exception as e:
