@@ -18,19 +18,13 @@ from utils import (
     format_methods_for_llm,
     summarize_api_specification,
     map_methods_to_endpoints,
-    generate_code_response 
+    generate_code_response ,
+    extract_imports_from_sdk
 )
 from prompts import create_merge_specs_prompt
 from llm import create_llm
 
 app = Flask(__name__)
-CORS(app, resources={
-    r"/*": {
-        "origins": "*",
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "headers": ["Content-Type", "Authorization"]
-    }
-})
 
 openai.api_type = API_TYPE
 openai.api_version = API_VERSION
@@ -67,9 +61,10 @@ def merge_openapi_specs():
         response = llm_chain.invoke({'specs_text': specifications, 'api_contexts': api_contexts})
         answer_text = response.content
 
-        return jsonify({
-            "merged_spec": answer_text
-        });
+        return Response(
+            answer_text,
+            content_type='application/json'
+        )
 
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -93,18 +88,29 @@ def process_java_file():
         summarized_spec = summarize_api_specification(use_case, api_spec)
         extracted_methods = map_methods_to_endpoints(summarized_spec, formatted_methods)
 
+        extracted_imports = extract_imports_from_sdk(methods_file, language)
+
         # Generate final code based on use case and language
-        application_code = generate_code_response(use_case, summarized_spec, extracted_methods, language)
-        return jsonify({
-            "application_code": application_code
-        })
+        application_code = generate_code_response(use_case, summarized_spec, extracted_methods, language, extracted_imports)
+
+        if application_code == "The provided use case is invalid":
+            error_response = {
+                "status": "error",
+                "error": application_code
+            }
+            return jsonify(error_response), 400
+
+        return Response(
+            application_code,
+            content_type='application/json'
+        )
 
     except Exception as e:
         error_response = {
             "status": "error",
             "message": "Failed to generate application code",
+            "error": str(e)
         }
-        print(error_response)
         return jsonify(error_response), 500
     
 if __name__ == "__main__":
