@@ -223,14 +223,6 @@ paths:
                 - type: string
               default: ''
               title: Keyid
-          # - name: tenantDomain
-          #   in: query
-          #   required: false
-          #   schema:
-          #     anyOf:
-          #       - type: string
-          #     default: ''
-          #     title: Tenantdomain
         responses:
           '200':
             description: Successful Response
