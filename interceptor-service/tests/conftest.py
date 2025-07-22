@@ -182,13 +182,22 @@ def make_request(
         Response object
     """
     try:
-        response = client.request(
-            method=method,
-            url=url,
-            headers=headers,
-            data=data,
-            timeout=timeout
-        )
+        max_retries = 2
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = client.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    data=data,
+                    timeout=timeout
+                )
+                return response
+            except requests.exceptions.Timeout as e:
+                if attempt == max_retries:
+                    pytest.fail(f"Request timed out after {max_retries} attempts: {e}")
+                else:
+                    time.sleep(10)  # Wait before retrying
         
         return response
     
