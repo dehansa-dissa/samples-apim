@@ -164,7 +164,7 @@ def make_request(
     url: str,
     headers: Dict[str, str],
     data: Any = None,
-    timeout: int = 30
+    timeout: int = 100
 ) -> requests.Response:
     """
     Make HTTP request with standard error handling.
