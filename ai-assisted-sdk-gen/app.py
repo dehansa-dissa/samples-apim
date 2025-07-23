@@ -31,10 +31,6 @@ openai.api_version = API_VERSION
 openai.api_key = API_KEY
 openai.azure_endpoint = AZURE_ENDPOINT
 
-@app.route("/test", methods=["GET"])
-def test():
-    return jsonify({"status": "Flask server is running"})
-
 # Flask route to handle the merging of OpenAPI specifications that accepts file uploads or a raw JSON string
 @app.route("/merge-openapi-specs", methods=["POST"])
 def merge_openapi_specs():
@@ -114,4 +110,4 @@ def process_java_file():
         return jsonify(error_response), 500
     
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5001)
