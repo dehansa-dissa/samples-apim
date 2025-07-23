@@ -12,21 +12,110 @@
 from langchain.prompts import PromptTemplate
 
 merge_specs_prompt = """
-
-Api Specifications :
+Api Specifications:
 {specs_text}
 
 Api Names and their respective contexts:
 {api_contexts}
 
-PRIMARY OBJECTIVES: 
+PRIMARY OBJECTIVES:
 1. Merge the provided API specifications into a single cohesive specification.
 2. Prefix all resource paths with their corresponding API context and version.
 3. Create an appropriate title and description for the merged API.
-4. The server URL of the merged API should always be given as :
+4. The server URL of the merged API should always be:
     servers:
     - url: https://localhost:8243
     - url: http://localhost:8280
+
+CRITICAL JSON STRUCTURE REQUIREMENTS:
+- Output MUST be a single, complete, valid JSON object
+- Start with opening brace {{ and end with closing brace }}
+- NO extra braces, commas, or structural elements outside the main JSON object
+- Follow this EXACT structure template:
+
+{{
+  "openapi": "3.0.0",
+  "info": {{
+    "title": "...",
+    "description": "...",
+    "version": "1.0.0"
+  }},
+  "servers": [
+    {{"url": "https://localhost:8243"}},
+    {{"url": "http://localhost:8280"}}
+  ],
+  "paths": {{
+    "/path1": {{
+      "parameters": [...],
+      "get": {{...}},
+      "post": {{...}}
+    }},
+    "/path2": {{...}}
+  }},
+  "components": {{
+    "schemas": {{...}},
+    "securitySchemes": {{...}}
+  }}
+}}
+
+CRITICAL PARAMETER HANDLING REQUIREMENTS:
+- PATH PARAMETERS (parameters with "in": "path") MUST be moved to the path level and shared across ALL HTTP methods for that path
+- QUERY PARAMETERS (parameters with "in": "query") should remain at the operation level (GET, POST, etc.) as they are method-specific
+- HEADER PARAMETERS (parameters with "in": "header") should remain at the operation level unless they apply to all methods
+- When moving path parameters to the path level, ensure they are removed from individual operation parameters arrays
+
+PARAMETER PLACEMENT RULES:
+1. If a parameter has "in": "path", move it to the path level "parameters" array
+2. If a parameter has "in": "query", keep it in the specific operation's "parameters" array
+3. If a parameter has "in": "header", keep it in the specific operation's "parameters" array unless it applies to all methods
+4. Path-level parameters apply to ALL operations (GET, POST, PUT, DELETE, etc.) for that path
+5. Operation-level parameters only apply to that specific HTTP method
+
+EXAMPLE CORRECT STRUCTURE:
+{{
+  "paths": {{
+    "/api/v1/lists/{{list_id}}/items": {{
+      "parameters": [
+        {{
+          "name": "list_id",
+          "in": "path",
+          "description": "The unique identifier for the list.",
+          "required": true,
+          "style": "simple",
+          "explode": false,
+          "schema": {{
+            "type": "string",
+            "example": "shopping-list-123"
+          }}
+        }}
+      ],
+      "get": {{
+        "summary": "Get all items from a list",
+        "description": "Retrieves all items currently on a specified list.",
+        "operationId": "getListItems",
+        "parameters": [
+          {{
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of items to return",
+            "required": false,
+            "schema": {{
+              "type": "integer"
+            }}
+          }}
+        ],
+        "responses": {{...}}
+      }},
+      "post": {{
+        "summary": "Add an item to a list",
+        "description": "Adds a new item to the specified list.",
+        "operationId": "addListItem",
+        "requestBody": {{...}},
+        "responses": {{...}}
+      }}
+    }}
+  }}
+}}
 
 CRITICAL REQUIREMENTS:
 - EVERY endpoint path MUST be prefixed with its corresponding API context and version.
@@ -34,6 +123,22 @@ CRITICAL REQUIREMENTS:
 - Maintain all security definitions, schemas, and other components.
 - Resolve any conflicts between duplicate operations or schemas.
 - Ensure the output is valid OpenAPI/Swagger specification.
+- PROPERLY ORGANIZE PARAMETERS: Path parameters at path level, query/header parameters at operation level.
+
+JSON VALIDATION RULES:
+- All string values must be properly quoted with double quotes
+- No trailing commas after the last element in objects or arrays
+- Proper nesting of objects and arrays
+- All brackets and braces must be properly matched
+- No duplicate keys within the same object level
+
+PARAMETER ORGANIZATION ALGORITHM:
+1. For each path in the merged specification:
+   a. Identify all parameters used across all operations for that path
+   b. Extract parameters with "in": "path" and move them to path-level "parameters" array
+   c. Remove path parameters from individual operation "parameters" arrays
+   d. Keep query, header, and other parameter types in their respective operations
+   e. Ensure path parameters are not duplicated in operations
 
 STRICT CONSTRAINTS:
 - DO NOT modify the original API contexts or versions in any way.
@@ -41,9 +146,24 @@ STRICT CONSTRAINTS:
 - DO NOT include any markdown code block formatting or language indicators in your response.
 - DO NOT include any explanations or comments outside the specification.
 - DO NOT include any text before or after the specification.
+- DO NOT add extra braces or structural elements outside the main JSON object.
+- DO NOT duplicate path parameters in both path level and operation level.
 
-OUTPUT FORMAT
-Provide ONLY the complete merged OpenAPI specification as valid JSON without any surrounding text, explanations, or markdown formatting.
+VALIDATION CHECKLIST:
+Before outputting, verify:
+1. JSON starts with {{ and ends with }}
+2. All quotes are properly matched
+3. No extra commas or braces
+4. Proper nesting structure
+5. Valid OpenAPI 3.0 format
+6. Path parameters are at path level, not duplicated in operations
+7. Query parameters remain at operation level
+8. All path parameters are properly referenced in the path string with curly braces
+
+OUTPUT FORMAT:
+Provide ONLY the complete merged OpenAPI specification as a single, valid JSON object without any surrounding text, explanations, markdown formatting, or extra structural elements.
+
+The output must be parseable by any standard JSON parser without errors and follow proper OpenAPI 3.0 parameter organization standards.
 """
 
 def create_merge_specs_prompt(specs_text, api_contexts):
@@ -153,13 +273,33 @@ Role and Objective:
 You are a senior software engineer specializing in implementing {language} Application code based on SDK methods. 
 
 Your primary goal is to generate production-ready {language} code that COMPLETELY implements the given use case using the provided SDK methods and data models EXACTLY as defined.
+
+IMPORTANT VALIDATION:
+- If the provided use case is invalid, not meaningful, not actionable, or does NOT relate to the API capabilities described in the specification, you MUST RETURN ONLY the following static response:
+  The provided use case is invalid
+- If the use case is invalid, DO NOT generate any code, explanation, formatting, markdown, or annotations. Return ONLY the exact string above, with nothing else.
+- **However, if the use case is a generic request such as "Generate a sample application by integrating given APIs", "Create an example client using these APIs", 
+  or similar, you MUST generate a sample application that demonstrates how to use at least one representative endpoint from each API described in the specification. In this case, DO NOT return the invalid use case response.**
+
 - User's Use Case:
   "{question}"  
 
 You MUST follow these Instructions:
 
-1. Carefully analyse and use the SDK Methods and use the Information provided based on the OpenAPI Specification:
-- A summary of the OpenAPI specification along with the associated sdk method names, model class names, and fields is provided to give further insight into the API endpoints, request/response formats, and additional details required for implementation. 
+1. Use the SDK Imports:
+   - The following imports have been extracted from the SDK methods file and should be used in your generated code:
+   
+   SDK IMPORTS:
+   <sdkImports>
+   {sdk_imports}
+   </sdkImports>
+   
+   - You MUST include these imports in your generated code where relevant
+   - You MAY add additional standard library imports as needed
+   - DO NOT modify or remove any of the provided SDK imports
+
+2. Carefully analyse and use the SDK Methods and use the Information provided based on the OpenAPI Specification:
+- A summary of the OpenAPI specification along with the associated sdk method names, model class names, and fields is provided to give further insight into the API endpoints, request/response formats.
 
     OPEN API SPEC SUMMARY:
     - <specificationSummary>
@@ -176,7 +316,7 @@ You MUST follow these Instructions:
    - The return types of the methods are provided in the documentation comments. You MUST ENSURE the return types are STRICTLY ADHERED TO when constructing methods.
    - Always match the parameter and return types as described.
 
-2. Refer to the Example:
+3. Refer to the Example:
    - Use the given example client application as a reference for best practices in structuring the logic and handling API calls.
    - Always implement OAuth2 token automation logic before making API calls as shown, including:
         - Implementing the getOAuth2AccessToken() method to retrieve tokens.
@@ -187,21 +327,21 @@ You MUST follow these Instructions:
         ``` 
      </exampleCode>
 
-
-3. Data Type Guidelines:
+4. Data Type Guidelines:
    - For numeric values: Use the actual numeric type, not strings.
    - For dates: Use appropriate date objects for manipulation, convert to string only when passing to API.
    - Field names must exactly match those in the model classes. DO NOT invent your own fields.
    - Nested objects within schemas are implemented as separate classes with names that follow the pattern: [ParentClassName][NestedObjectName]
             - Example: For OrderRequest with a nested BillingAddress object, use OrderRequestBillingAddress
 
-4. {language_specific_instructions}
+5. {language_specific_instructions}
 
-5. Plan your code structure:
+6. Plan your code structure:
    - Determine the appropriate response types based on the method documentation in <specificationSummary> and <sdkMethods>.
    - If the request and response types of the endpoints clash between <specificationSummary> and <sdkMethods>, you MUST ALWAYS STICK TO the request and response types mentioned in the <sdkMethods>.
 
-6. Generate the {language} Application code:
+7. Generate the {language} Application code:
+   - Start with the proper imports from the SDK imports section above
    - Implement a well-structured and functional {language} application code that covers the entire use case utilizing the provided SDK methods. 
    - The implementation MUST follow best practices, including error handling and API response processing. Ensure OOP Principles are followed and sub methods to fulfill each task is used. 
    - Implement the main function to address the use case requirements.
@@ -211,17 +351,18 @@ You MUST follow these Instructions:
    - you MUST ENSURE that all functions, methods, helper methods are provided with COMPLETE IMPLEMENTATION.
    - STRICT CONDITION: DO NOT specify the language ({language}) when providing the answer.
 
-7. Review and refine your code:
+8. Review and refine your code:
    - Check that all use case requirements are met.
    - VERIFY that ONLY the SDK methods and models from the provided <specificationSummary> are used.
    - Ensure the code follows coding best practices and conventions for {language}.
    - Ensure you have STRICTLY followed the guidelines provided.
+   - Verify that all necessary imports are included at the top of the file.
 
 """
 
 def create_code_gen_prompt():
     return PromptTemplate(
-        input_variables=["question", "merged_spec", "sdk_methods", "language", "example_code", "language_specification_instructions"],
+        input_variables=["question", "merged_spec", "sdk_methods", "language", "example_code", "language_specification_instructions", "sdk_imports"],
         template=code_generation_prompt
     )
 

@@ -18,13 +18,13 @@ from utils import (
     format_methods_for_llm,
     summarize_api_specification,
     map_methods_to_endpoints,
-    generate_code_response 
+    generate_code_response,
+    extract_imports_from_sdk
 )
 from prompts import create_merge_specs_prompt
 from llm import create_llm
 
 app = Flask(__name__)
-CORS(app)
 
 openai.api_type = API_TYPE
 openai.api_version = API_VERSION
@@ -36,8 +36,7 @@ openai.azure_endpoint = AZURE_ENDPOINT
 def merge_openapi_specs():
     try:
         if request.is_json:
-            json_payload = request.get_json()
-            
+            json_payload = request.get_json()            
             if "specifications" in json_payload:
                 specifications = json_payload["specifications"]
             else:
@@ -55,7 +54,6 @@ def merge_openapi_specs():
         prompt_template = create_merge_specs_prompt(specifications, api_contexts)
         llm = create_llm()
         llm_chain = prompt_template | llm
-
         response = llm_chain.invoke({'specs_text': specifications, 'api_contexts': api_contexts})
         answer_text = response.content
 
@@ -86,17 +84,30 @@ def process_java_file():
         summarized_spec = summarize_api_specification(use_case, api_spec)
         extracted_methods = map_methods_to_endpoints(summarized_spec, formatted_methods)
 
+        extracted_imports = extract_imports_from_sdk(methods_file, language)
+
         # Generate final code based on use case and language
-        application_code = generate_code_response(use_case, summarized_spec, extracted_methods, language)
-        return Response (application_code, content_type='application/json')
-        
+        application_code = generate_code_response(use_case, summarized_spec, extracted_methods, language, extracted_imports)
+
+        if application_code == "The provided use case is invalid":
+            error_response = {
+                "status": "error",
+                "error": application_code
+            }
+            return jsonify(error_response), 400
+
+        return Response(
+            application_code,
+            content_type='application/json'
+        )
+
     except Exception as e:
         error_response = {
             "status": "error",
             "message": "Failed to generate application code",
+            "error": str(e)
         }
-        print(error_response)
         return jsonify(error_response), 500
     
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
