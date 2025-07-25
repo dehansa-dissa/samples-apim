@@ -510,7 +510,7 @@ async def generate(request: ChatInput):
     }
     
     # Returns response successfully
-    return response, 200
+    return response
 
 
 @app.post("/regenerate-spec")
