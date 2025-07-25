@@ -163,7 +163,7 @@ async def test_connection():
     except Exception as e:
         raise Exception("Error testing Redis connection")
 
-@cached(ttl=900, key=lambda x_jwt_assertion: f"jwt_org_info:{x_jwt_assertion}")
+@cached(ttl=900)
 async def decode_jwt(x_jwt_assertion: str):
     payload = jwt.decode(x_jwt_assertion, options={"verify_signature": False})
     
@@ -196,7 +196,7 @@ async def throttle(handle):
         if total_count >= openai_token_count_per_org:
             raise HTTPException(status_code=429, detail="Maximum token limit reached")
 
-@cached(ttl=60, key=lambda orgID, handle: f"api_count:{orgID}:{handle}")
+@cached(ttl=60)
 async def fetch_api_count(orgID, handle):
     async with aiohttp.ClientSession() as session:
         async with session.get(api_publisher_endpoint + "/api_count_by_key", params={'keyID': handle}) as response:
