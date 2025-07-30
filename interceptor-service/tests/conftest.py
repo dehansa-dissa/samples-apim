@@ -52,10 +52,11 @@ class AuthConfig:
 class TestConfig:
     """Configuration for a test endpoint version."""
     
-    def __init__(self, version: int, url: str, auth: AuthConfig):
+    def __init__(self, version: int, url: str, auth: AuthConfig, environment: str = "dev"):
         self.version = version
         self.url = url
         self.auth = auth
+        self.environment = environment
     
     def get_headers(self, extra_headers: Dict[str, str] = None) -> Dict[str, str]:
         """Get headers with authentication."""
@@ -78,13 +79,14 @@ class BearerToken:
     def __init__(self):
         self._cache = {}
     
-    def get_token(self, version: int, basic_auth_token: str, token_endpoint: str) -> str:
+    def get_token(self, version: int, environment: str, basic_auth_token: str, token_endpoint: str) -> str:
         """Get or fetch bearer token."""
-        if version in self._cache:
-            return self._cache[version]
+        cache_key = f"{version}_{environment}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
         
         if not token_endpoint:
-            pytest.fail(f"TOKEN_ENDPOINT_V{version} is not set for version {version}")
+            pytest.fail(f"TOKEN_ENDPOINT_V{version}_{environment.upper()} is not set for version {version} in {environment}")
         
         headers = {
             "Authorization": f"Basic {basic_auth_token}",
@@ -100,11 +102,11 @@ class BearerToken:
             if not access_token:
                 pytest.fail("'access_token' not found in token endpoint response")
             
-            self._cache[version] = access_token
+            self._cache[cache_key] = access_token
             return access_token
         
         except requests.exceptions.RequestException as e:
-            pytest.fail(f"Failed to get bearer token for V{version}: {e}")
+            pytest.fail(f"Failed to get bearer token for V{version} in {environment}: {e}")
 
 
 # Global bearer token cache
@@ -115,7 +117,7 @@ _version_configs_cache = None
 
 
 def get_version_configs(ignored_versions: List[int] = None):
-    """Generate test configurations for all available versions, excluding ignored_versions."""
+    """Generate test configurations for all available versions and environments, excluding ignored_versions."""
     global _version_configs_cache
     if _version_configs_cache is not None:
         # Filter out ignored versions from cache if needed
@@ -128,24 +130,29 @@ def get_version_configs(ignored_versions: List[int] = None):
 
     configs = []
     versions = os.getenv("TEST_VERSIONS", "1,2").split(",")
+    environments = os.getenv("TEST_ENVIRONMENTS", "dev").split(",")
     ignored_versions = ignored_versions or []
 
-    for version in map(int, versions):
-        endpoint = os.getenv(f"ENDPOINT_V{version}")
-        token = os.getenv(f"TOKEN_V{version}")
+    for environment in environments:
+        env_upper = environment.upper()
+        for version in map(int, versions):
 
-        if not (endpoint and token):
-            break
-        
-        if version == 1:
-            auth = AuthConfig(AUTH_METHOD_API_KEY, token)
-        else:
-            token_endpoint = os.getenv(f"TOKEN_ENDPOINT_V{version}")
-            bearer_token = bearer_tokens.get_token(version, token, token_endpoint)
-            auth = AuthConfig(AUTH_METHOD_BEARER, bearer_token)
-        
-        config = TestConfig(version, endpoint, auth)
-        configs.append(pytest.param(config, id=f"v{version}"))
+            endpoint = (os.getenv(f"ENDPOINT_V{version}_{env_upper}"))
+            token = (os.getenv(f"TOKEN_V{version}_{env_upper}"))
+
+            if not (endpoint and token):
+                continue
+            
+            if version == 1:
+                auth = AuthConfig(AUTH_METHOD_API_KEY, token)
+            else:
+                token_endpoint = (os.getenv(f"TOKEN_ENDPOINT_V{version}_{env_upper}") or 
+                                os.getenv(f"TOKEN_ENDPOINT_V{version}"))
+                bearer_token = bearer_tokens.get_token(version, environment, token, token_endpoint)
+                auth = AuthConfig(AUTH_METHOD_BEARER, bearer_token)
+            
+            config = TestConfig(version, endpoint, auth, environment)
+            configs.append(pytest.param(config, id=f"v{version}_{environment}"))
     
     if not configs:
         pytest.skip("No versioned endpoints configured")
@@ -182,7 +189,7 @@ def make_request(
         Response object
     """
     try:
-        max_retries = 2
+        max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
                 response = client.request(
@@ -192,13 +199,15 @@ def make_request(
                     data=data,
                     timeout=timeout
                 )
+                if response.status_code == 503:
+                    if attempt == max_retries:
+                        pytest.fail("Service is still unavailable after retries.")
+                    continue
                 return response
             except requests.exceptions.Timeout as e:
                 if attempt == max_retries:
                     pytest.fail(f"Request timed out after {max_retries} attempts: {e}")
-                else:
-                    time.sleep(10)  # Wait before retrying
-        
+
         return response
     
     except requests.exceptions.RequestException as e:
@@ -259,6 +268,15 @@ class TestReporter:
             elif report.skipped:
                 self.skipped_tests.append(report)
     
+    def _extract_environment_from_test(self, test_nodeid: str) -> str:
+        """Extract environment from test node ID."""
+        # Test node ID format: test_file.py::test_function[v1_dev]
+        if "[" in test_nodeid and "]" in test_nodeid:
+            param_part = test_nodeid.split("[")[-1].split("]")[0]
+            if "_" in param_part:
+                return param_part.split("_")[-1]
+        return "unknown"
+    
     def set_session_start(self):
         """Mark the start time of the test session."""
         self.start_time = time.time()
@@ -285,13 +303,16 @@ class TestReporter:
         report_body = self._create_comprehensive_report()
         
         # Determine subject and attachment
+        environments_tested = list(self.test_stats.get('environment_stats', {}).keys())
+        env_suffix = f" ({'/'.join(env.upper() for env in environments_tested)})" if environments_tested else ""
+        
         if self.failed_tests:
-            subject = f"[APIM AI Deployments] Test - FAILURE"
+            subject = f"[APIM AI Deployments] Test - FAILURE{env_suffix}"
             log_file = "test_failures.log"
             self._write_failure_log(log_file)
             attachment_path = log_file
         else:
-            subject = "[APIM AI Deployments] Test - SUCCESS"
+            subject = f"[APIM AI Deployments] Test - SUCCESS{env_suffix}"
             attachment_path = None
         
         self._send_email(
@@ -309,19 +330,31 @@ class TestReporter:
         total_tests = len(self.passed_tests) + len(self.failed_tests) + len(self.skipped_tests)
         duration = self.end_time - self.start_time
         
-        # Categorize tests by module
+        # Categorize tests by module and environment
         test_categories = {}
+        environment_stats = {}
+        
         for test in self.passed_tests + self.failed_tests + self.skipped_tests:
             module_name = test.nodeid.split("::")[0].replace("test_", "").replace(".py", "")
+            environment = self._extract_environment_from_test(test.nodeid)
+            
+            # Module-based categorization
             if module_name not in test_categories:
                 test_categories[module_name] = {"passed": 0, "failed": 0, "skipped": 0}
             
+            # Environment-based categorization
+            if environment not in environment_stats:
+                environment_stats[environment] = {"passed": 0, "failed": 0, "skipped": 0}
+            
             if test in self.passed_tests:
                 test_categories[module_name]["passed"] += 1
+                environment_stats[environment]["passed"] += 1
             elif test in self.failed_tests:
                 test_categories[module_name]["failed"] += 1
+                environment_stats[environment]["failed"] += 1
             elif test in self.skipped_tests:
                 test_categories[module_name]["skipped"] += 1
+                environment_stats[environment]["skipped"] += 1
         
         self.test_stats = {
             "total_tests": total_tests,
@@ -330,6 +363,7 @@ class TestReporter:
             "skipped_tests": len(self.skipped_tests),
             "duration": duration,
             "test_categories": test_categories,
+            "environment_stats": environment_stats,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
     
@@ -369,6 +403,26 @@ All tests passed successfully! The system is functioning correctly.
 
 """
 
+        # Environment Breakdown
+        if stats['environment_stats']:
+            report += f"""
+🌍 ENVIRONMENT BREAKDOWN
+{'─' * 40}
+"""
+            
+            for env, results in stats['environment_stats'].items():
+                total_env = results['passed'] + results['failed'] + results['skipped']
+                
+                status_icon = "✅" if results['failed'] == 0 else "❌"
+                env_display = env.upper() if env != "unknown" else "UNKNOWN"
+                report += f"""
+{status_icon} {env_display} Environment:
+   • Total: {total_env}
+   • Passed: {results['passed']}
+   • Failed: {results['failed']}
+   • Skipped: {results['skipped']}
+"""
+
         
         # Test Categories Breakdown
         report += f"""
@@ -397,8 +451,17 @@ All tests passed successfully! The system is functioning correctly.
 """
             for test in self.passed_tests:
                 test_name = test.nodeid.split("::")[-1]
+                # Extract version from parameter part (e.g., test_name[v2_dev] -> test_name[v2])
+                if "[" in test_name and "]" in test_name:
+                    base_name = test_name.split("[")[0]
+                    param_part = test_name.split("[")[-1].split("]")[0]
+                    if "_" in param_part:
+                        version_part = param_part.split("_")[0]  # Extract just the version (v2)
+                        test_name = f"{base_name}[{version_part}]"
                 module_name = test.nodeid.split("::")[0].replace("test_", "").replace(".py", "")
-                report += f"• {module_name}: {test_name}\n"
+                environment = self._extract_environment_from_test(test.nodeid)
+                env_display = f"[{environment.upper()}]" if environment != "unknown" else ""
+                report += f"• {module_name}: {test_name} {env_display}\n"
         
         # Failed Tests Summary
         if self.failed_tests:
@@ -409,8 +472,17 @@ All tests passed successfully! The system is functioning correctly.
 """
             for test in self.failed_tests:
                 test_name = test.nodeid.split("::")[-1]
+                # Extract version from parameter part (e.g., test_name[v2_dev] -> test_name[v2])
+                if "[" in test_name and "]" in test_name:
+                    base_name = test_name.split("[")[0]
+                    param_part = test_name.split("[")[-1].split("]")[0]
+                    if "_" in param_part:
+                        version_part = param_part.split("_")[0]  # Extract just the version (v2)
+                        test_name = f"{base_name}[{version_part}]"
                 module_name = test.nodeid.split("::")[0].replace("test_", "").replace(".py", "")
-                report += f"• {module_name}: {test_name}\n"
+                environment = self._extract_environment_from_test(test.nodeid)
+                env_display = f"[{environment.upper()}]" if environment != "unknown" else ""
+                report += f"• {module_name}: {test_name} {env_display}\n"
             
             report += """
 📎 Detailed failure logs are attached to this email.
@@ -425,8 +497,17 @@ All tests passed successfully! The system is functioning correctly.
 """
             for test in self.skipped_tests:
                 test_name = test.nodeid.split("::")[-1]
+                # Extract version from parameter part (e.g., test_name[v2_dev] -> test_name[v2])
+                if "[" in test_name and "]" in test_name:
+                    base_name = test_name.split("[")[0]
+                    param_part = test_name.split("[")[-1].split("]")[0]
+                    if "_" in param_part:
+                        version_part = param_part.split("_")[0]  # Extract just the version (v2)
+                        test_name = f"{base_name}[{version_part}]"
                 module_name = test.nodeid.split("::")[0].replace("test_", "").replace(".py", "")
-                report += f"• {module_name}: {test_name}\n"
+                environment = self._extract_environment_from_test(test.nodeid)
+                env_display = f"[{environment.upper()}]" if environment != "unknown" else ""
+                report += f"• {module_name}: {test_name} {env_display}\n"
         
         # Footer
         report += f"""
