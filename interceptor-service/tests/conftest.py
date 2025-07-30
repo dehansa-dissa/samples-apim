@@ -129,8 +129,8 @@ def get_version_configs(ignored_versions: List[int] = None):
         return _version_configs_cache
 
     configs = []
-    versions = os.getenv("TEST_VERSIONS", "1,2").split(",")
-    environments = os.getenv("TEST_ENVIRONMENTS", "dev").split(",")
+    versions = [v.strip() for v in os.getenv("TEST_VERSIONS", "1,2").split(",")]
+    environments = [e.strip() for e in os.getenv("TEST_ENVIRONMENTS", "dev").split(",")]
     ignored_versions = ignored_versions or []
 
     for environment in environments:
@@ -199,7 +199,7 @@ def make_request(
                     data=data,
                     timeout=timeout
                 )
-                if response.status_code == 503:
+                if response.status_code == 504 or response.status_code == 503:
                     if attempt == max_retries:
                         pytest.fail("Service is still unavailable after retries.")
                     continue
@@ -543,7 +543,15 @@ Test execution duration: {stats['duration']:.2f} seconds
         try:
             message = MIMEMultipart()
             message["From"] = self.smtp_config['user']
-            message["To"] = self.smtp_config['recipient']
+            recipients = self.smtp_config['recipient']
+            if recipients:
+                if isinstance(recipients, str):
+                    recipient_list = [r.strip() for r in recipients.split(",") if r.strip()]
+                else:
+                    recipient_list = list(recipients)
+            else:
+                recipient_list = []
+            message["To"] = ", ".join(recipient_list)
             message["Subject"] = subject
             message.attach(MIMEText(body, "plain"))
             
@@ -556,11 +564,11 @@ Test execution duration: {stats['duration']:.2f} seconds
                 server.login(self.smtp_config['user'], self.smtp_config['password'])
                 server.sendmail(
                     self.smtp_config['user'], 
-                    self.smtp_config['recipient'], 
+                    recipient_list, 
                     message.as_string()
                 )
             
-            print(f"Test report sent to {self.smtp_config['recipient']}")
+            print(f"Test report sent to {', '.join(recipient_list)}")
         
         except Exception as e:
             print(f"Failed to send email: {e}")
