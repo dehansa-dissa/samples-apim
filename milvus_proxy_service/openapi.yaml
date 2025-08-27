@@ -135,6 +135,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /has_collection:
+    get:
+      summary: Has Collection
+      operationId: has_collection_has_collection_get
+      parameters:
+        - name: collection_name
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Collection Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection_exists:
+                    type: boolean
+                    title: Collection Exists
+                  row_count:
+                    type: integer
+                    title: Row Count
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /health:
     get:
       summary: Health
