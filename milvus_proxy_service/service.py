@@ -41,7 +41,7 @@ class DeleteReqBody(BaseModel):
 
 class UpsertReqBody(BaseModel):
     collection_name: str
-    data: dict
+    data: dict | list
 
 
 class CreateColReqBody(BaseModel):
