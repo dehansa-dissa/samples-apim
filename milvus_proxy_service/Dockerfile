@@ -13,7 +13,7 @@ FROM ubuntu:20.04 AS builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3.9=3.9.5-3ubuntu0~20.04.1 \
-      python3-pip=20.0.2-5ubuntu1.10 \
+      python3-pip=20.0.2-5ubuntu1.11 \
       python3.9-venv=3.9.5-3ubuntu0~20.04.1 && \
     apt-get install -y g++ && \
     apt-get clean && \
