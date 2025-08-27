@@ -259,8 +259,8 @@ async def delete_vectors(request_body: DeleteReqBody):
     return {"message": response}
 
 
-@app.get('/collection_info')
-def collection_info(collection_name: str):
+@app.get('/has_collection')
+def has_collection(collection_name: str):
     mc = MilvusClient(uri=url, token=api_key)
     exists = mc.has_collection(collection_name)
     row_count = 0
