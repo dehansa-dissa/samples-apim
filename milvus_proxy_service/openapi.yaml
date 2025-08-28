@@ -157,9 +157,6 @@ paths:
                   collection_exists:
                     type: boolean
                     title: Collection Exists
-                  row_count:
-                    type: integer
-                    title: Row Count
         '422':
           description: Validation Error
           content:

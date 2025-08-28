@@ -263,13 +263,8 @@ async def delete_vectors(request_body: DeleteReqBody):
 def has_collection(collection_name: str):
     mc = MilvusClient(uri=url, token=api_key)
     exists = mc.has_collection(collection_name)
-    row_count = 0
-    if exists:
-        stats = mc.get_collection_stats(collection_name=collection_name)
-        row_count = stats.get('row_count', 0)
     return {
         "collection_exists": exists,
-        "row_count": row_count
     }
 
 
