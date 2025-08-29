@@ -259,6 +259,15 @@ async def delete_vectors(request_body: DeleteReqBody):
     return {"message": response}
 
 
+@app.get('/has_collection')
+def has_collection(collection_name: str):
+    mc = MilvusClient(uri=url, token=api_key)
+    exists = mc.has_collection(collection_name)
+    return {
+        "collection_exists": exists,
+    }
+
+
 @app.get("/health")
 def health():
     """Check the api is running"""
