@@ -1,7 +1,7 @@
 import logging
 
 from fastapi import FastAPI, Request, Response
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 from pymilvus import DataType, MilvusClient
 from http import HTTPStatus
 import os
@@ -41,7 +41,7 @@ class DeleteReqBody(BaseModel):
 
 class UpsertReqBody(BaseModel):
     collection_name: str
-    data: dict | list
+    data: Union[dict, list]
 
 
 class CreateColReqBody(BaseModel):
