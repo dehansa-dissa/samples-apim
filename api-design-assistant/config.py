@@ -18,22 +18,24 @@ import datetime
 from datetime import datetime, timedelta
 import base64
 import requests
+
 load_dotenv()
 
 # openai proxy related env variables
-PROXY_URL = os.getenv("PROXY_URL")
+USE_PROXY = os.getenv("USE_PROXY", "false").lower() == "true"
+AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT")
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET") 
 TOKEN_ENDPOINT_URL = os.getenv("TOKEN_ENDPOINT_URL")
-AZURE_CHAT_VERSION = os.getenv("AZURE_CHAT_VERSION")
-MODEL_NAME = "gpt-5-mini"
+AZURE_CHAT_VERSION = os.getenv("AZURE_CHAT_VERSION", "2025-01-01-preview")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+AZURE_CHAT_DEPLOYMENT = os.getenv("AZURE_CHAT_DEPLOYMENT")
 
 # Token cache to store access token and expiry time
 _token_cache = {
     "access_token": None,
     "expires_at": None
 }
-
 
 def generate_access_token():
     """
@@ -93,12 +95,15 @@ def get_api_key():
     """
     Get API key - either from OAuth2 token generation or fallback to direct key
     """
-    return generate_access_token()
+    if USE_PROXY:
+        return generate_access_token()
+    else:
+        return OPENAI_API_KEY
 
 llm = AzureAIChatCompletionsModel(
-        endpoint=PROXY_URL,
+        endpoint=AZURE_ENDPOINT,
         credential=AzureKeyCredential(get_api_key()),
-        model_name=MODEL_NAME,
+        model_name=AZURE_CHAT_DEPLOYMENT,
         api_version=AZURE_CHAT_VERSION,
     )
 

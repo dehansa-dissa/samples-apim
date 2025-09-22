@@ -44,10 +44,6 @@ from app.constants import *
 from app.prompts import qa_system_prompt_choreo_stream, qa_system_prompt_choreo, qa_system_prompt_apim, \
     query_prompt_template, context_q_system_prompt
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 # Token cache to store access token and expiry time
 _token_cache = {
     "access_token": None,
@@ -113,13 +109,19 @@ def get_api_key():
     """
     Get API key - either from OAuth2 token generation or fallback to direct key
     """
-    return generate_access_token()
-
+    if USE_PROXY:
+        return generate_access_token()
+    else:
+        return AZURE_API_KEY
 
 api = FastAPI(
     title="API Marketplace Chatbot",
     version="0.1.0",
 )
+
+# TODO: implement debug logging switch
+collection_name = os.getenv("COLLECTION_NAME")
+
 
 # request input format
 class Query(BaseModel):
@@ -235,7 +237,6 @@ def get_vectorstore() -> Milvus:
     model_name = 'text-embedding-ada-002'
     embeddings = AzureOpenAIEmbeddings(
         model=model_name,
-        api_key=AZURE_API_KEY,
         azure_deployment=AZURE_EMBEDDING_DEPLOYMENT,
         azure_endpoint=AZURE_ENDPOINT,
         openai_api_type="azure",
@@ -248,7 +249,7 @@ def get_vectorstore() -> Milvus:
             "token": ZILLIZ_CLOUD_API_KEY,
             "secure": True,
         },
-        collection_name=COLLECTION_NAME,
+        collection_name=collection_name,
         text_field="page_content",
         metadata_field="metadata"
     )
@@ -260,7 +261,6 @@ def get_choreo_vectorstore(auth_token, org_id) -> Milvus:
     model_name = 'text-embedding-ada-002'
     embeddings = AzureOpenAIEmbeddings(
         model=model_name,
-        api_key=AZURE_API_KEY,
         azure_deployment=AZURE_EMBEDDING_DEPLOYMENT,
         azure_endpoint=AZURE_ENDPOINT,
         openai_api_type="azure",
@@ -272,7 +272,7 @@ def get_choreo_vectorstore(auth_token, org_id) -> Milvus:
             "uri": PROXY_URL,
             "token": auth_token,
         },
-        collection_name=COLLECTION_NAME,
+        collection_name=collection_name,
         text_field="page_content",
         metadata_field="metadata",
         org_id=org_id
@@ -298,10 +298,10 @@ def get_retriever(tenant_domain, partition_id, auth_token=None, user_roles ='') 
                                                             "expr": 'key_id == "' + partition_id + '" && tenant_domain == "' + tenant_domain + '" && ((visibility_roles[0] == "") || (array_contains_any(visibility_roles,'+user_roles+')))'})
 
         llm = AzureAIChatCompletionsModel(
-                endpoint=PROXY_URL,
+                endpoint=AZURE_CHAT_ENDPOINT,
                 credential=AzureKeyCredential(get_api_key()),
-                model_name=MODEL_NAME,
-                api_version="2025-01-01-preview"
+                model_name=AZURE_CHAT_DEPLOYMENT,
+                api_version=AZURE_CHAT_VERSION
             )
 
     elif SOURCE_PLATFORM == CHOREO:
@@ -311,10 +311,10 @@ def get_retriever(tenant_domain, partition_id, auth_token=None, user_roles ='') 
 
 
         llm = AzureAIChatCompletionsModel(
-                endpoint=PROXY_URL,
+                endpoint=AZURE_CHAT_ENDPOINT,
                 credential=AzureKeyCredential(get_api_key()),
-                model_name=MODEL_NAME,
-                api_version="2025-01-01-preview"
+                model_name=AZURE_CHAT_DEPLOYMENT,
+                api_version=AZURE_CHAT_VERSION
             )
 
     QUERY_PROMPT = PromptTemplate(
@@ -357,10 +357,10 @@ def format_docs(docs):
 def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False, auth_token=None, user_roles = ''):
 
     llm = AzureAIChatCompletionsModel(
-            endpoint=PROXY_URL,
+            endpoint=AZURE_CHAT_ENDPOINT,
             credential=AzureKeyCredential(get_api_key()),
-            model_name=MODEL_NAME,
-            api_version="2025-01-01-preview"
+            model_name=AZURE_CHAT_DEPLOYMENT,
+            api_version=AZURE_CHAT_VERSION
         )
 
     contextualize_q_system_prompt = context_q_system_prompt
