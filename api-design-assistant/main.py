@@ -11,10 +11,9 @@
 """
 import redis
 import asyncio
-import openai
 import json
 import yaml
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -28,7 +27,6 @@ from prompts import (
     generate_graphql_spec,
     generate_asyncapi_spec
 )
-from langchain_community.callbacks import get_openai_callback
 from config import r, llm
 from graphql import parse, validate, build_schema, GraphQLError
 
@@ -209,11 +207,17 @@ async def async_llm_invoke(prompt, token_usage: TokenUsage, max_retries=3, delay
     retries = 0
     while retries < max_retries:
         try:
-            with get_openai_callback() as cb:
-                response = await asyncio.to_thread(llm.invoke, prompt)
-                token_usage.add_usage(cb)
-                return response
-        except (openai.RateLimitError, openai.APIConnectionError, openai.Timeout) as e:
+            response = await llm.ainvoke(prompt)
+            if hasattr(response, 'usage') and response.usage:
+                usage = response.usage
+                token_usage.add_usage(type('TokenUsage', (), {
+                    'prompt_tokens': usage.get('prompt_tokens', 0),
+                    'completion_tokens': usage.get('completion_tokens', 0),
+                    'total_tokens': usage.get('total_tokens', 0)
+                })())
+
+            return response
+        except Exception as e:
             retries += 1
             if retries >= max_retries:
                 raise Exception(f"Failed after {max_retries} retries due to: {e}")

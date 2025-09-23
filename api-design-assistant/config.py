@@ -38,19 +38,7 @@ _token_cache = {
 }
 
 def generate_access_token():
-    """
-    Generate access token using OAuth2 client credentials grant type
-    
-    This function implements the OAuth2 client credentials flow to generate
-    access tokens instead of using direct API keys. It includes:
-    - Basic authentication with client_id and client_secret
-    - Token caching to avoid unnecessary API calls
-    - Graceful fallback to direct API key if OAuth2 fails
-    - 60-second safety margin before token expiry
-    
-    Returns:
-        str: Access token or fallback API key
-    """
+
     global _token_cache
     
     # Check if we have a valid cached token
@@ -87,14 +75,8 @@ def generate_access_token():
         
     except Exception as e:
         print(f"Failed to generate access token: {str(e)}")
-        print("Falling back to direct API key")
-        return
-
 
 def get_api_key():
-    """
-    Get API key - either from OAuth2 token generation or fallback to direct key
-    """
     if USE_PROXY:
         return generate_access_token()
     else:
