@@ -17,9 +17,7 @@ from langchain_openai import AzureOpenAIEmbeddings
 from operator import itemgetter
 from fastapi import FastAPI, Header
 from fastapi.responses import StreamingResponse
-from queue import Queue
-from langchain.callbacks.tracers import ConsoleCallbackHandler
-from pydantic import BaseModel, BaseSettings
+from pydantic import BaseModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser, BaseOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -29,19 +27,76 @@ from langchain_core.documents import Document
 import asyncio
 from pydantic import BaseModel
 import requests
+import base64
+from datetime import datetime, timedelta
 
 from functools import partial
 from functools import lru_cache
 from typing import AsyncGenerator, Literal
 
+from langchain_azure_ai.chat_models import AzureAIChatCompletionsModel
+from azure.core.credentials import AzureKeyCredential
 from langchain.chat_models import AzureChatOpenAI
-from langchain.chains import LLMChain
 from langchain_community.vectorstores import Milvus
 from langchain.retrievers.multi_query import MultiQueryRetriever
 
 from app.constants import *
 from app.prompts import qa_system_prompt_choreo_stream, qa_system_prompt_choreo, qa_system_prompt_apim, \
     query_prompt_template, context_q_system_prompt
+
+# Token cache to store access token and expiry time
+_token_cache = {
+    "access_token": None,
+    "expires_at": None
+}
+
+
+def generate_access_token():
+    
+    global _token_cache
+    
+    # Check if we have a valid cached token
+    if (_token_cache["access_token"] and 
+        _token_cache["expires_at"] and 
+        datetime.now() < _token_cache["expires_at"]):
+        return _token_cache["access_token"]
+
+    try:
+        # Create Basic Auth header
+        credentials = f"{CLIENT_ID}:{CLIENT_SECRET}"
+        encoded_credentials = base64.b64encode(credentials.encode()).decode()
+        
+        headers = {
+            "Authorization": f"Basic {encoded_credentials}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+        
+        payload = "grant_type=client_credentials"
+
+        response = requests.post(TOKEN_ENDPOINT_URL, headers=headers, data=payload)
+        response.raise_for_status()
+        
+        token_data = response.json()
+        access_token = token_data.get("access_token")
+        expires_in = token_data.get("expires_in", 3600)  # Default to 1 hour
+        
+        # Cache the token with expiry time (subtract 60 seconds for safety margin)
+        _token_cache["access_token"] = access_token
+        _token_cache["expires_at"] = datetime.now() + timedelta(seconds=expires_in - 60)
+        
+        print(f"Successfully generated new access token, expires in {expires_in} seconds")
+        return access_token
+        
+    except Exception as e:
+        print(f"Failed to generate access token: {str(e)}")
+
+
+def get_api_key():
+
+    if USE_PROXY:
+        return generate_access_token()
+    else:
+        return AZURE_API_KEY
 
 api = FastAPI(
     title="API Marketplace Chatbot",
@@ -161,29 +216,53 @@ class MilvusProxy(Milvus):
         return ret
 
 
-@lru_cache()
-def get_vectorstore() -> Milvus:
-    model_name = 'text-embedding-ada-002'
-    embeddings = AzureOpenAIEmbeddings(
-        model=model_name,
-        azure_deployment=AZURE_EMBEDDING_DEPLOYMENT,
-        azure_endpoint=AZURE_ENDPOINT,
-        openai_api_type="azure",
-    )
-    # Todo Check if the collection is available in the Milvus
-    vectorstore = Milvus(
-        embeddings,
-        connection_args={
-            "uri": ZILLIZ_CLOUD_URI,
-            "token": ZILLIZ_CLOUD_API_KEY,
-            "secure": True,
-        },
-        collection_name=collection_name,
-        text_field="page_content",
-        metadata_field="metadata"
-    )
-    return vectorstore
+# Global LLM, embeddings and vectorstore instances
+_llm = None
+_embeddings = None
+_vectorstore_apim = None
 
+def get_llm():
+    """Get or create cached LLM instance"""
+    global _llm
+    if _llm is None:
+        api_key = get_api_key()
+        _llm = AzureAIChatCompletionsModel(
+            endpoint=AZURE_CHAT_ENDPOINT,
+            credential=AzureKeyCredential(api_key),
+            model=AZURE_CHAT_DEPLOYMENT,
+            api_version=AZURE_CHAT_VERSION
+        )
+    return _llm
+
+def get_embeddings():
+    """Get or create cached embeddings instance"""
+    global _embeddings
+    if _embeddings is None:
+        _embeddings = AzureOpenAIEmbeddings(
+            model='text-embedding-ada-002',
+            api_key=AZURE_API_KEY,
+            azure_deployment=AZURE_EMBEDDING_DEPLOYMENT,
+            azure_endpoint=AZURE_ENDPOINT,
+            openai_api_type="azure",
+        )
+    return _embeddings
+
+def get_vectorstore():
+    """Get or create cached APIM vectorstore instance"""
+    global _vectorstore_apim
+    if _vectorstore_apim is None and SOURCE_PLATFORM == APIM:
+        _vectorstore_apim = Milvus(
+            get_embeddings(),
+            connection_args={
+                "uri": ZILLIZ_CLOUD_URI,
+                "token": ZILLIZ_CLOUD_API_KEY,
+                "secure": True,
+            },
+            collection_name=collection_name,
+            text_field="page_content",
+            metadata_field="metadata"
+        )
+    return _vectorstore_apim
 
 @lru_cache()
 def get_choreo_vectorstore(auth_token, org_id) -> Milvus:
@@ -226,19 +305,13 @@ def get_retriever(tenant_domain, partition_id, auth_token=None, user_roles ='') 
                                              search_kwargs={"k": 5,
                                                             "expr": 'key_id == "' + partition_id + '" && tenant_domain == "' + tenant_domain + '" && ((visibility_roles[0] == "") || (array_contains_any(visibility_roles,'+user_roles+')))'})
 
-        llm = AzureChatOpenAI(
-            #     temperature=0.3,
-            model_name="gpt-35-turbo",
-            #     max_tokens=2048,
-            deployment_name=AZURE_CHAT_DEPLOYMENT,
-            api_version=AZURE_CHAT_VERSION,
-            azure_endpoint=AZURE_ENDPOINT,
-        )
+        llm = get_llm()
 
     elif SOURCE_PLATFORM == CHOREO:
         vectorstore = get_choreo_vectorstore(auth_token, partition_id)
         retriever = vectorstore.as_retriever(search_type="similarity",
-                                             search_kwargs={"k": 5, "expr": 'org_id == "' + partition_id + '"'})
+                                                search_kwargs={"k": 5, "expr": 'org_id == "' + partition_id + '"'})
+
 
         llm = AzureChatOpenAI(
             #     temperature=0.3,
@@ -262,7 +335,7 @@ def get_retriever(tenant_domain, partition_id, auth_token=None, user_roles ='') 
             return lines
 
     output_parser = LineListOutputParser()
-    llm_chain = LLMChain(llm=llm, prompt=QUERY_PROMPT, output_parser=output_parser)
+    llm_chain = QUERY_PROMPT | llm | output_parser
 
     mq_retriever = MultiQueryRetriever(retriever=retriever, llm_chain=llm_chain, parser_key="lines")
     return mq_retriever
@@ -287,14 +360,6 @@ def format_docs(docs):
 
 
 def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False, auth_token=None, user_roles = ''):
-    llm = AzureChatOpenAI(
-        temperature=0.3,
-        model_name="gpt-35-turbo",
-        #     max_tokens=2048,
-        deployment_name=AZURE_CHAT_DEPLOYMENT,
-        api_version=AZURE_CHAT_VERSION,
-        azure_endpoint=AZURE_ENDPOINT,
-    )
 
     contextualize_q_system_prompt = context_q_system_prompt
     contextualize_q_prompt = ChatPromptTemplate.from_messages(
@@ -306,6 +371,14 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False, auth_
     )
 
     if SOURCE_PLATFORM == CHOREO:
+        llm = AzureChatOpenAI(
+            temperature=0.3,
+            model_name="gpt-35-turbo",
+            #     max_tokens=2048,
+            deployment_name=AZURE_CHAT_DEPLOYMENT,
+            api_version=AZURE_CHAT_VERSION,
+            azure_endpoint=AZURE_ENDPOINT,
+        )
         retriever = get_retriever(tenant_domain, partition_id, auth_token)
         # Condition was added so if needed, we can add a separate prompt for streaming.
         if stream:
@@ -313,6 +386,7 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False, auth_
         else:
             qa_system_prompt = qa_system_prompt_choreo
     else:
+        llm = get_llm()
         retriever = get_retriever(tenant_domain, partition_id, False, user_roles)
         qa_system_prompt = qa_system_prompt_apim
 

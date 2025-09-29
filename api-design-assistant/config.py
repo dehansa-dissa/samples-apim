@@ -11,24 +11,83 @@
 """
 import redis.asyncio as redis
 import os
-import openai
 from dotenv import load_dotenv
-from langchain_openai import AzureChatOpenAI
+from langchain_azure_ai.chat_models import AzureAIChatCompletionsModel
+from azure.core.credentials import AzureKeyCredential
+import datetime
+from datetime import datetime, timedelta
+import base64
+import requests
 
 load_dotenv()
 
-deployment_name = os.getenv("AZURE_CHAT_DEPLOYMENT")
-openai.api_type = "azure"
-openai.api_key = os.getenv("OPENAI_API_KEY")
-openai.api_version = os.getenv("AZURE_CHAT_VERSION")
-openai.azure_endpoint = os.getenv("AZURE_ENDPOINT")
+# openai proxy related env variables
+USE_PROXY = os.getenv("USE_PROXY", "false").lower() == "true"
+AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT")
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET") 
+TOKEN_ENDPOINT_URL = os.getenv("TOKEN_ENDPOINT_URL")
+AZURE_CHAT_VERSION = os.getenv("AZURE_CHAT_VERSION", "2025-01-01-preview")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+AZURE_CHAT_DEPLOYMENT = os.getenv("AZURE_CHAT_DEPLOYMENT")
 
-llm = AzureChatOpenAI(
-    model=deployment_name,
-    temperature=0.1,
-    api_version=openai.api_version,
-    azure_endpoint=openai.azure_endpoint
-)
+# Token cache to store access token and expiry time
+_token_cache = {
+    "access_token": None,
+    "expires_at": None
+}
+
+def generate_access_token():
+
+    global _token_cache
+    
+    # Check if we have a valid cached token
+    if (_token_cache["access_token"] and 
+        _token_cache["expires_at"] and 
+        datetime.now() < _token_cache["expires_at"]):
+        return _token_cache["access_token"]
+
+    try:
+        # Create Basic Auth header
+        credentials = f"{CLIENT_ID}:{CLIENT_SECRET}"
+        encoded_credentials = base64.b64encode(credentials.encode()).decode()
+        
+        headers = {
+            "Authorization": f"Basic {encoded_credentials}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+        
+        payload = "grant_type=client_credentials"
+
+        response = requests.post(TOKEN_ENDPOINT_URL, headers=headers, data=payload)
+        response.raise_for_status()
+        
+        token_data = response.json()
+        access_token = token_data.get("access_token")
+        expires_in = token_data.get("expires_in", 3600)  # Default to 1 hour
+        
+        # Cache the token with expiry time (subtract 60 seconds for safety margin)
+        _token_cache["access_token"] = access_token
+        _token_cache["expires_at"] = datetime.now() + timedelta(seconds=expires_in - 60)
+        
+        print(f"Successfully generated new access token, expires in {expires_in} seconds")
+        return access_token
+        
+    except Exception as e:
+        print(f"Failed to generate access token: {str(e)}")
+
+def get_api_key():
+    if USE_PROXY:
+        return generate_access_token()
+    else:
+        return OPENAI_API_KEY
+
+llm = AzureAIChatCompletionsModel(
+        endpoint=AZURE_ENDPOINT,
+        credential=AzureKeyCredential(get_api_key()),
+        model_name=AZURE_CHAT_DEPLOYMENT,
+        api_version=AZURE_CHAT_VERSION,
+    )
 
 r = redis.Redis(
     host=os.getenv("REDIS_HOST"), port=int(os.getenv("REDIS_PORT")),
