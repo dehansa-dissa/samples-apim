@@ -36,7 +36,7 @@ def get_llm(auth_token: str = None):
     return AzureAIChatCompletionsModel(
             endpoint=AZURE_ENDPOINT,
             credential=AzureKeyCredential(api_key),
-            model_name=AZURE_CHAT_DEPLOYMENT,
+            model=AZURE_CHAT_DEPLOYMENT,
             api_version=AZURE_CHAT_VERSION,
         )
 

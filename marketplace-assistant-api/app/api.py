@@ -169,9 +169,9 @@ class MilvusProxy(Milvus):
 def get_llm(auth_token: str = None):
     api_key = get_api_key(auth_token)
     return AzureAIChatCompletionsModel(
-            endpoint=AZURE_ENDPOINT,
+            endpoint=AZURE_CHAT_ENDPOINT,
             credential=AzureKeyCredential(api_key),
-            model_name=AZURE_CHAT_DEPLOYMENT,
+            model=AZURE_CHAT_DEPLOYMENT,
             api_version=AZURE_CHAT_VERSION,
         )
 
@@ -223,7 +223,7 @@ def get_choreo_vectorstore(auth_token, org_id) -> Milvus:
     return vectorstore
 
 
-def get_retriever(tenant_domain, partition_id, auth_token=None, user_roles ='') -> MultiQueryRetriever:
+def get_retriever(llm, tenant_domain, partition_id, auth_token=None, user_roles ='') -> MultiQueryRetriever:
     vectorstore = None
     # TODO: Try adding a Self Query retriever
     # Incorporate score based filtering mechanism once Milverse introduces it
@@ -239,22 +239,10 @@ def get_retriever(tenant_domain, partition_id, auth_token=None, user_roles ='') 
                                              search_kwargs={"k": 5,
                                                             "expr": 'key_id == "' + partition_id + '" && tenant_domain == "' + tenant_domain + '" && ((visibility_roles[0] == "") || (array_contains_any(visibility_roles,'+user_roles+')))'})
 
-        llm = get_llm(auth_token)
-
     elif SOURCE_PLATFORM == CHOREO:
         vectorstore = get_choreo_vectorstore(auth_token, partition_id)
         retriever = vectorstore.as_retriever(search_type="similarity",
                                                 search_kwargs={"k": 5, "expr": 'org_id == "' + partition_id + '"'})
-
-
-        llm = AzureChatOpenAI(
-            #     temperature=0.3,
-            # model_name="gpt-35-turbo",
-            #     max_tokens=2048,
-            deployment_name=AZURE_CHAT_DEPLOYMENT,
-            api_version=AZURE_CHAT_VERSION,
-            azure_endpoint=AZURE_ENDPOINT,
-        )
 
     QUERY_PROMPT = PromptTemplate(
         input_variables=["question"],
@@ -313,7 +301,7 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False, auth_
             api_version=AZURE_CHAT_VERSION,
             azure_endpoint=AZURE_ENDPOINT,
         )
-        retriever = get_retriever(tenant_domain, partition_id, auth_token)
+        retriever = get_retriever(llm, tenant_domain, partition_id, auth_token)
         # Condition was added so if needed, we can add a separate prompt for streaming.
         if stream:
             qa_system_prompt = qa_system_prompt_choreo_stream
@@ -321,7 +309,7 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False, auth_
             qa_system_prompt = qa_system_prompt_choreo
     else:
         llm = get_llm(auth_token)
-        retriever = get_retriever(tenant_domain, partition_id, auth_token, user_roles)
+        retriever = get_retriever(llm, tenant_domain, partition_id, auth_token, user_roles)
         qa_system_prompt = qa_system_prompt_apim
 
     qa_prompt = ChatPromptTemplate.from_messages(
@@ -352,7 +340,7 @@ def prepare_rag_chain(tenant_domain: str, partition_id: str, stream=False, auth_
     }
     rag_chain = _inputs | _context | qa_prompt | llm
 
-    return rag_chain
+    return rag_chain, llm
 
 
 async def in_thread(func, *args):
@@ -371,19 +359,24 @@ async def generate_response(
         in_thread(prepare_rag_chain, tenant_domain, partitionID, False, auth_token, user_roles),
         prepare_history(history),
     )
-    rag_chain = results[0]
+    rag_chain, llm = results[0]
     chat_history = results[1]
 
-    with get_openai_callback() as cb:
-        chain_response = await rag_chain.ainvoke({
-            "question": message,
-            "chat_history": chat_history},
-            # config={
-            #     'callbacks': [ConsoleCallbackHandler()]
-            #     }
-        )
-        chain_response = parse_json(chain_response.content, cb)
-    return chain_response
+    try:
+        with get_openai_callback() as cb:
+            chain_response = await rag_chain.ainvoke({
+                "question": message,
+                "chat_history": chat_history},
+                # config={
+                #     'callbacks': [ConsoleCallbackHandler()]
+                #     }
+            )
+            chain_response = parse_json(chain_response.content, cb)
+        return chain_response
+    finally:
+        # Close the LLM client session to prevent unclosed connection warnings
+        if hasattr(llm, 'aclose'):
+            await llm.aclose()
 
 
 async def generate_choreo_response(messages: list, org_id: str, auth_token: str):
@@ -394,27 +387,32 @@ async def generate_choreo_response(messages: list, org_id: str, auth_token: str)
         prepare_history(history),
     )
 
-    rag_chain = results[0]
+    rag_chain, llm = results[0]
     chat_history = results[1]
 
     questions = ""
     for message in messages:
         questions = f'{questions} {message} ? '
 
-    with get_openai_callback() as cb:
-        assist_response = (rag_chain.invoke({
-            "question": questions,
-            "chat_history": chat_history},
-            # config={
-            #     'callbacks': [ConsoleCallbackHandler()]
-            # }
-        ))
+    try:
+        with get_openai_callback() as cb:
+            assist_response = (rag_chain.invoke({
+                "question": questions,
+                "chat_history": chat_history},
+                # config={
+                #     'callbacks': [ConsoleCallbackHandler()]
+                # }
+            ))
 
-    assist_response_json = parse_choreo_json(assist_response.content, cb)
-    response.content = create_str_markdown(assist_response_json["response"])
-    response.usage = assist_response_json["usage"]
+        assist_response_json = parse_choreo_json(assist_response.content, cb)
+        response.content = create_str_markdown(assist_response_json["response"])
+        response.usage = assist_response_json["usage"]
 
-    return response
+        return response
+    finally:
+        # Close the LLM client session to prevent unclosed connection warnings
+        if hasattr(llm, 'aclose'):
+            await llm.aclose()
 
 
 async def generate_sse_response(
@@ -424,7 +422,7 @@ async def generate_sse_response(
         in_thread(prepare_rag_chain, tenant_domain, org_id, True),
         prepare_history(history),
     )
-    rag_chain = results[0]
+    rag_chain, llm = results[0]
     chat_history = results[1]
 
     try:
@@ -461,6 +459,10 @@ async def generate_sse_response(
 
     except Exception as e:  # TODO: Add proper exception handling
         yield QuerySSEResponse(type="error", value=str(e)).json()
+    finally:
+        # Close the LLM client session to prevent unclosed connection warnings
+        if hasattr(llm, 'aclose'):
+            await llm.aclose()
 
 
 async def process_sse_response(stage, token_content):
