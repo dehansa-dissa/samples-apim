@@ -16,6 +16,7 @@ FINISH_STREAM = "FINISH_STREAM"
 ZILLIZ_CLOUD_URI = os.getenv('ZILLIZ_CLOUD_URI', "")
 ZILLIZ_CLOUD_API_KEY = os.getenv('ZILLIZ_CLOUD_API_KEY', "")
 AZURE_ENDPOINT = os.getenv('AZURE_ENDPOINT')
+AZURE_EMBEDDING_ENDPOINT = os.getenv('AZURE_EMBEDDING_ENDPOINT')
 AZURE_CHAT_ENDPOINT = os.getenv("AZURE_CHAT_ENDPOINT")
 AZURE_API_KEY = os.getenv("OPENAI_API_KEY")
 AZURE_EMBEDDING_DEPLOYMENT = os.getenv('AZURE_EMBEDDING_DEPLOYMENT', "OpenAPIEmbeddings")
@@ -26,8 +27,5 @@ PROXY_URL = os.getenv('PROXY_URL')
 
 # azure openai proxy related env variables
 USE_PROXY = os.getenv("USE_PROXY", "false").lower() == "true"
-CLIENT_ID = os.getenv("CLIENT_ID")
-CLIENT_SECRET = os.getenv("CLIENT_SECRET") 
-TOKEN_ENDPOINT_URL = os.getenv("TOKEN_ENDPOINT_URL")
 
 OUTPUT_FIELDS = ['id', 'metadata', 'api_type', 'api_name', 'page_content', 'org_id']

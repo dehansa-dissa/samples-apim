@@ -13,7 +13,7 @@ import redis
 import asyncio
 import json
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -27,7 +27,7 @@ from prompts import (
     generate_graphql_spec,
     generate_asyncapi_spec
 )
-from config import r, llm
+from config import r, get_llm
 from graphql import parse, validate, build_schema, GraphQLError
 
 app = FastAPI(
@@ -187,7 +187,7 @@ async def update_task_data(session_id, state=None, chat_history=None, specificat
 
 
 # Invokes LLM and handles errors
-async def async_llm_invoke(prompt, token_usage: TokenUsage, max_retries=3, delay=2):
+async def async_llm_invoke(llm, prompt, token_usage: TokenUsage, max_retries=3, delay=2):
     """
     Asynchronously invokes the LLM with the given prompt, retrying on failure.
 
@@ -224,35 +224,35 @@ async def async_llm_invoke(prompt, token_usage: TokenUsage, max_retries=3, delay
             await asyncio.sleep(delay)
 
 # Invokes LLM to check user's query's validity
-async def validate_query_content(user_input, chat_history, token_usage: TokenUsage):
+async def validate_query_content(llm, user_input, chat_history, token_usage: TokenUsage):
     prompt = check_user_input_validity.format(user_input=user_input, chat_history=chat_history)
-    response = await async_llm_invoke(prompt, token_usage)
+    response = await async_llm_invoke(llm, prompt, token_usage)
     return response.content.strip()
 
 
 # Invokes LLM to suggest a type of API for the given use case
-async def suggest_api_type(user_input, chat_history, token_usage: TokenUsage):
+async def suggest_api_type(llm, user_input, chat_history, token_usage: TokenUsage):
     prompt = identify_api_type.format(user_input=user_input, history=chat_history)
-    response = await async_llm_invoke(prompt, token_usage)
+    response = await async_llm_invoke(llm, prompt, token_usage)
     return response.content.strip()
 
 
 # Invokes LLM to check user's query if spec generation is requested
-async def check_for_spec_gen_request(user_input, chat_history, specification, token_usage: TokenUsage):
+async def check_for_spec_gen_request(llm, user_input, chat_history, specification, token_usage: TokenUsage):
     prompt = check_for_spec_generation_request.format(user_input=user_input, chat_history=chat_history, specification=specification)
-    response = await async_llm_invoke(prompt, token_usage)
+    response = await async_llm_invoke(llm, prompt, token_usage)
     return response.content.strip()
 
 
 # Invokes LLM to answer user's general question
-async def form_answer_general_question(user_input, chat_history, specification, token_usage: TokenUsage):
+async def form_answer_general_question(llm, user_input, chat_history, specification, token_usage: TokenUsage):
     prompt = answer_general_question.format(user_input=user_input, chat_history=chat_history, specification=specification)
-    response = await async_llm_invoke(prompt, token_usage)
+    response = await async_llm_invoke(llm, prompt, token_usage)
     return response.content.strip()
 
 
 # Invokes LLM to generate the spec according to API type and provided information
-async def generate_spec(api_type, final_input, chat_history, token_usage: TokenUsage, specification=None, schema_validation_error=None, attempt=1, max_attempts=10):
+async def generate_spec(llm, api_type, final_input, chat_history, token_usage: TokenUsage, specification=None, schema_validation_error=None, attempt=1, max_attempts=10):
     """
     Generates an API specification using an LLM based on the given API type and user input.
 
@@ -289,7 +289,7 @@ async def generate_spec(api_type, final_input, chat_history, token_usage: TokenU
             schema_validation_error=schema_validation_error
         )
 
-        llm_response = await async_llm_invoke(prompt, token_usage)
+        llm_response = await async_llm_invoke(llm, prompt, token_usage)
         answer_text = llm_response.content.strip()
 
 
@@ -340,7 +340,7 @@ async def generate_spec(api_type, final_input, chat_history, token_usage: TokenU
 
 
 # Invokes LLM to generate the spec according to API type and provided information
-async def regenerate_spec_method(final_input, token_usage: TokenUsage, specification=None, schema_validation_error=None, attempt=1, max_attempts=10):
+async def regenerate_spec_method(llm, final_input, token_usage: TokenUsage, specification=None, schema_validation_error=None, attempt=1, max_attempts=10):
     """
     Regenerates an API specification using an LLM based on the previous governance validation errors.
 
@@ -361,7 +361,7 @@ async def regenerate_spec_method(final_input, token_usage: TokenUsage, specifica
             schema_validation_error=schema_validation_error
         )
 
-        llm_response = await async_llm_invoke(prompt, token_usage)
+        llm_response = await async_llm_invoke(llm, prompt, token_usage)
         answer_text = llm_response.content.strip()
 
         # Parses LLM response as JSON so the spec, resoures list and chat response can be extracted
@@ -386,7 +386,7 @@ async def regenerate_spec_method(final_input, token_usage: TokenUsage, specifica
 
 # Chat Endpoint generates the API specifications and other related details
 @app.post("/chat")
-async def generate(request: ChatInput):
+async def generate(request: ChatInput, x_jwt_assertion: str = Header(None)):
     """
     Handles POST requests to the /chat endpoint for generating API specifications.
 
@@ -414,6 +414,9 @@ async def generate(request: ChatInput):
 
         HTTP status code: 200 for success, or other status codes returned by `validate_user_input`.
     """
+
+    llm = get_llm(x_jwt_assertion)
+
     # Convert Pydantic model to dict
     data = request.dict()
 
@@ -436,7 +439,7 @@ async def generate(request: ChatInput):
     token_usage = TokenUsage()
 
     # Determines whether the user's query is a greeting, nonsensical input or an API related prompt
-    validation_response = await validate_query_content(user_input, chat_history, token_usage)
+    validation_response = await validate_query_content(llm, user_input, chat_history, token_usage)
 
     # Returns response when user's query is a greeting or nonsensical input
     if validation_response != 'API prompt':
@@ -464,7 +467,7 @@ async def generate(request: ChatInput):
         
 
     # Determines whether the user's API related prompt requests for an API specification generation
-    is_spec_generation_requested = await check_for_spec_gen_request(user_input, chat_history, specification, token_usage)
+    is_spec_generation_requested = await check_for_spec_gen_request(llm, user_input, chat_history, specification, token_usage)
 
     # Response template
     response = {
@@ -477,11 +480,11 @@ async def generate(request: ChatInput):
     if is_spec_generation_requested == "spec generation required":
         # Invokes LLM to suggest a suitable API type for the given use case and saves it in chat history
         chat_history += [{"user_input": user_input}, {"API TYPE": f"Create this type of API: {api_type}"}]
-        api_type = await suggest_api_type(user_input, chat_history, token_usage)
+        api_type = await suggest_api_type(llm, user_input, chat_history, token_usage)
         chat_history += [{"user_input": user_input}, {"API TYPE": f"Create this type of API: {api_type}"}]
 
         # Invokes LLM to generate the API spec, paths and chat response according to the provided information
-        specification, paths, chat_response = await generate_spec(api_type, user_input, chat_history, token_usage, specification)
+        specification, paths, chat_response = await generate_spec(llm, api_type, user_input, chat_history, token_usage, specification)
 
         # Adds specification, paths, api type and chat response to the response template
         response["apiTypeSuggestion"] = chat_response
@@ -491,7 +494,7 @@ async def generate(request: ChatInput):
 
     # Generates an answer for user's prompt when it does not request for an API specification generation
     else:
-        answer = await form_answer_general_question(user_input, chat_history, specification, token_usage)
+        answer = await form_answer_general_question(llm, user_input, chat_history, specification, token_usage)
         # Saves response to chat history and response template
         chat_history += [{"user's general question": user_input}, {"response to user's general question": answer}]
         response["apiTypeSuggestion"] = answer
@@ -518,7 +521,9 @@ async def generate(request: ChatInput):
 
 
 @app.post("/regenerate-spec")
-async def regenerate_spec(body: ChatInput):
+async def regenerate_spec(body: ChatInput, x_jwt_assertion: str = Header(None)):
+    llm = get_llm(x_jwt_assertion)
+
     # Convert Pydantic model to dict
     data = body.dict()
 
@@ -537,7 +542,7 @@ async def regenerate_spec(body: ChatInput):
     token_usage = TokenUsage()
 
     # Call LLM to regenerate new spec
-    specification = await regenerate_spec_method(user_input, token_usage, specification)
+    specification = await regenerate_spec_method(llm, user_input, token_usage, specification)
 
     # Updates Redis with data 
     await update_task_data(session_id, specification=specification)
