@@ -40,14 +40,9 @@ from langchain_community.vectorstores import Milvus
 from langchain.retrievers.multi_query import MultiQueryRetriever
 
 from app.constants import *
+import time
 from app.prompts import qa_system_prompt_choreo_stream, qa_system_prompt_choreo, qa_system_prompt_apim, \
     query_prompt_template, context_q_system_prompt
-
-def get_api_key(auth_token: str):
-    if USE_PROXY:
-        return auth_token
-    else:
-        return AZURE_API_KEY
 
 api = FastAPI(
     title="API Marketplace Chatbot",
@@ -166,23 +161,64 @@ class MilvusProxy(Milvus):
 
         return ret
 
+
+@lru_cache(maxsize=2)
+def validate_endpoint(endpoint: str) -> tuple:
+    try:
+        response = requests.options(endpoint, timeout=2)
+        is_valid = response.status_code < 300
+        return (is_valid, time.time())
+    except:
+        return (False, time.time())
+
+def validate_endpoint_cached(endpoint: str) -> bool:
+    is_valid, timestamp = validate_endpoint(endpoint)
+    
+    if time.time() - timestamp > 900:
+        validate_endpoint.cache_clear()
+        is_valid, _ = validate_endpoint(endpoint)
+    
+    return is_valid
+
 def get_llm(auth_token: str = None):
-    api_key = get_api_key(auth_token)
+    """
+    Get LLM client with automatic fallback from proxy to direct connection.
+    If proxy is enabled but fails, it will automatically fallback to direct connection.
+    """
+    if USE_PROXY:
+        if validate_endpoint_cached(AZURE_CHAT_PROXY_ENDPOINT + "/chat/completions?api-version=2025-01-01-preview"):
+            return AzureAIChatCompletionsModel(
+                endpoint=AZURE_CHAT_PROXY_ENDPOINT,
+                credential=AzureKeyCredential(auth_token),
+                model=AZURE_CHAT_DEPLOYMENT,
+                api_version=AZURE_CHAT_VERSION,
+            )
+        else:
+            print(f"Warning: Proxy endpoint {AZURE_CHAT_PROXY_ENDPOINT} is not reachable, falling back to direct connection.")
+
     return AzureAIChatCompletionsModel(
-            endpoint=AZURE_CHAT_ENDPOINT,
-            credential=AzureKeyCredential(api_key),
-            model=AZURE_CHAT_DEPLOYMENT,
-            api_version=AZURE_CHAT_VERSION,
-        )
+        endpoint=AZURE_ENDPOINT + "/" + AZURE_CHAT_DEPLOYMENT,
+        credential=AzureKeyCredential(AZURE_API_KEY),
+        model=AZURE_CHAT_DEPLOYMENT,
+        api_version=AZURE_CHAT_VERSION,
+    )
 
 def get_embeddings(auth_token: str = None):
-    """Get or create cached embeddings instance"""
-    api_key = get_api_key(auth_token)
+    if USE_PROXY:
+        if validate_endpoint_cached(AZURE_EMBEDDING_PROXY_ENDPOINT + "/embeddings?api-version=2025-01-01-preview"):
+            return AzureAIEmbeddingsModel(
+                model=AZURE_EMBEDDING_DEPLOYMENT,
+                credential=AzureKeyCredential(auth_token),
+                endpoint=AZURE_EMBEDDING_PROXY_ENDPOINT,
+            )
+        else:
+            print(f"Warning: Proxy endpoint {AZURE_EMBEDDING_PROXY_ENDPOINT} is not reachable, falling back to direct connection.")
+
     return AzureAIEmbeddingsModel(
-            model=AZURE_EMBEDDING_DEPLOYMENT,
-            credential=AzureKeyCredential(api_key),
-            endpoint=AZURE_EMBEDDING_ENDPOINT,
-        )
+        model=AZURE_EMBEDDING_DEPLOYMENT,
+        credential=AzureKeyCredential(AZURE_API_KEY),
+        endpoint=AZURE_ENDPOINT + "/" + AZURE_EMBEDDING_DEPLOYMENT,
+    )
 
 def get_vectorstore(auth_token: str = None) -> Milvus:
     """Get or create cached APIM vectorstore instance"""
