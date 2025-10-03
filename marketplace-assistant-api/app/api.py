@@ -387,32 +387,27 @@ async def generate_choreo_response(messages: list, org_id: str, auth_token: str)
         prepare_history(history),
     )
 
-    rag_chain, llm = results[0]
+    rag_chain, _ = results[0]
     chat_history = results[1]
 
     questions = ""
     for message in messages:
         questions = f'{questions} {message} ? '
 
-    try:
-        with get_openai_callback() as cb:
-            assist_response = (rag_chain.invoke({
-                "question": questions,
-                "chat_history": chat_history},
-                # config={
-                #     'callbacks': [ConsoleCallbackHandler()]
-                # }
-            ))
+    with get_openai_callback() as cb:
+        assist_response = (rag_chain.invoke({
+            "question": questions,
+            "chat_history": chat_history},
+            # config={
+            #     'callbacks': [ConsoleCallbackHandler()]
+            # }
+        ))
 
-        assist_response_json = parse_choreo_json(assist_response.content, cb)
-        response.content = create_str_markdown(assist_response_json["response"])
-        response.usage = assist_response_json["usage"]
+    assist_response_json = parse_choreo_json(assist_response.content, cb)
+    response.content = create_str_markdown(assist_response_json["response"])
+    response.usage = assist_response_json["usage"]
 
-        return response
-    finally:
-        # Close the LLM client session to prevent unclosed connection warnings
-        if hasattr(llm, 'aclose'):
-            await llm.aclose()
+    return response
 
 
 async def generate_sse_response(
@@ -422,7 +417,7 @@ async def generate_sse_response(
         in_thread(prepare_rag_chain, tenant_domain, org_id, True),
         prepare_history(history),
     )
-    rag_chain, llm = results[0]
+    rag_chain, _ = results[0]
     chat_history = results[1]
 
     try:
@@ -459,10 +454,6 @@ async def generate_sse_response(
 
     except Exception as e:  # TODO: Add proper exception handling
         yield QuerySSEResponse(type="error", value=str(e)).json()
-    finally:
-        # Close the LLM client session to prevent unclosed connection warnings
-        if hasattr(llm, 'aclose'):
-            await llm.aclose()
 
 
 async def process_sse_response(stage, token_content):
