@@ -244,7 +244,7 @@ async def prepare(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT validation failed: {str(e)}")
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
-    headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {x_jwt_assertion}"}
+    headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
    
     if apiType == "GRAPHQL":
         service_url = graphql_api_chat_endpoint + "/prepare"
@@ -263,7 +263,7 @@ async def execute(req: dict, apiChatRequestId: str = Header(None), x_jwt_asserti
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     if do_throttle == "true":
         await throttle(handle)
-    headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {x_jwt_assertion}"}
+    headers = {"apiChatRequestId": apiChatRequestId, "Authorization": f"Bearer {api_chat_access_token}"}
     
     if apiType == "GRAPHQL":
         service_url = graphql_api_chat_endpoint + "/chat"
@@ -303,7 +303,10 @@ async def chat(req: dict, x_jwt_assertion: str = Header(None)):
         payload['user_roles'] = req['user_roles']
 
     async with aiohttp.ClientSession() as session:
-        headers = {"Authorization": f"Bearer {x_jwt_assertion}"}
+        headers = {
+            "Authorization": f"Bearer {marketplace_chat_access_token}",
+            "x-jwt-assertion": x_jwt_assertion
+        }
         async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'keyID': handle},
                                 json=payload, headers=headers) as response:
             if response.status == 200:
@@ -331,7 +334,7 @@ async def publish_api(req: dict, x_jwt_assertion: str = Header(None)):
     count = await fetch_api_count(orgID, handle)
     if count <= api_count_limit:
         async with aiohttp.ClientSession() as session:
-            headers = {"Authorization": f"Bearer {x_jwt_assertion}"}
+            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             async with session.post(api_publisher_endpoint + '/add_vector/' + req["uuid"], json=req,
                                     params={'orgID': orgID, 'keyID': handle}, headers=headers) as response:
                 if response.status == 200:
@@ -351,7 +354,7 @@ async def remove_api(uuid: str, x_jwt_assertion: str = Header(None)):
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     async with aiohttp.ClientSession() as session:
-        headers = {"Authorization": f"Bearer {x_jwt_assertion}"}
+        headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
         async with session.delete(api_publisher_endpoint + "/remove_vector/" + uuid, params={'keyID': handle},
                                     headers=headers) as response:
             if response.status == 200:
@@ -384,7 +387,7 @@ async def upload_bulk_apis(req: dict, x_jwt_assertion: str = Header(None)):
     if count < api_count_limit:
         req["apis"] = req["apis"][:api_count_limit-count]
         async with aiohttp.ClientSession() as session:
-            headers = {"Authorization": f"Bearer {x_jwt_assertion}"}
+            headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
             async with session.post(api_publisher_endpoint + '/bulk_add_vector', json=req,
                                     params={'orgID': orgID, 'keyID': handle}, headers=headers) as response:
                 if response.status == 200:
@@ -404,7 +407,7 @@ async def remove_bulk_apis(x_jwt_assertion: str = Header(None), TENANT_DOMAIN: s
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
 
     async with aiohttp.ClientSession() as session:
-        headers = {"Authorization": f"Bearer {x_jwt_assertion}"}
+        headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
         async with session.delete(api_publisher_endpoint + '/bulk_remove_vector',
                                 params={'orgID': orgID, 'keyID': handle, "tenantDomain": TENANT_DOMAIN}, headers=headers) as response:
             if response.status == 200:
@@ -421,7 +424,7 @@ async def remove_bulk_apis_all_tenants(x_jwt_assertion: str = Header(None)):
     
     orgID, handle = await get_org_info_from_token(x_jwt_assertion)
     async with aiohttp.ClientSession() as session:
-        headers = {"Authorization": f"Bearer {x_jwt_assertion}"}
+        headers = {"Authorization": f"Bearer {api_publisher_endpoint_access_token}"}
         async with session.delete(api_publisher_endpoint + '/bulk_remove_all_tenant',
                                 params={'orgID': orgID, 'keyID': handle}, headers=headers) as response:
             if response.status == 200:
@@ -444,7 +447,7 @@ async def design_assistant_chat(req: dict, x_jwt_assertion: str = Header(None)):
         await throttle(handle)
 
     async with aiohttp.ClientSession() as session:
-        headers = {"Authorization": f"Bearer {x_jwt_assertion}"}
+        headers = {"x-jwt-assertion": x_jwt_assertion}
         async with session.post(
             api_design_assistant_endpoint + "/chat",
             json={"text": text, "sessionId": sessionId},
@@ -476,9 +479,10 @@ async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(
 
     async with aiohttp.ClientSession() as session:
         sessionId = req["sessionId"]
-        headers = {"Authorization": f"Bearer {x_jwt_assertion}"}
+        headers = {"x-jwt-assertion": x_jwt_assertion}
         async with session.post(api_design_assistant_endpoint + "/generate-api-payload", 
-                                json={'sessionId': sessionId}, headers=headers) as response:
+                                json={'sessionId': sessionId},
+                                headers=headers) as response:
             if response.status == 200:
                 response_json = await response.json()
                 if 'usage' in response_json:
@@ -507,10 +511,11 @@ async def design_assistant_regenerate_spec(req: dict, x_jwt_assertion: str = Hea
         await throttle(handle)
 
     async with aiohttp.ClientSession() as session:
-        headers = {"Authorization": f"Bearer {x_jwt_assertion}"}
+        headers = {"x-jwt-assertion": x_jwt_assertion}
         async with session.post(
             api_design_assistant_endpoint + "/regenerate-spec",
-            json={"text": text, "sessionId": sessionId}, headers=headers
+            json={"text": text, "sessionId": sessionId},
+            headers=headers
         ) as response:
             if response.status == 200:
                 response_json = await response.json()

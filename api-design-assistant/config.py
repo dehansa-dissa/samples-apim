@@ -22,8 +22,11 @@ load_dotenv()
 
 # openai proxy related env variables
 USE_PROXY = os.getenv("USE_PROXY", "false").lower() == "true"
-AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT")
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+TOKEN_ENDPOINT_URL = os.getenv("TOKEN_ENDPOINT_URL")
 AZURE_PROXY_ENDPOINT = os.getenv("AZURE_PROXY_ENDPOINT")
+AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT")
 AZURE_CHAT_VERSION = os.getenv("AZURE_CHAT_VERSION", "2025-01-01-preview")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AZURE_CHAT_DEPLOYMENT = os.getenv("AZURE_CHAT_DEPLOYMENT")
@@ -46,16 +49,33 @@ def validate_endpoint_cached(endpoint: str) -> bool:
     
     return is_valid
 
-def get_llm(auth_token: str = None):
+def exchange_assertion_for_token(x_jwt_assertion: str):
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    data = {
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "subject_token": x_jwt_assertion,
+        "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
+        "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET
+    }
+    response = requests.post(TOKEN_ENDPOINT_URL, headers=headers, data=data)
+    response.raise_for_status()
+    return response.json().get("access_token")
+
+def get_llm(x_jwt_assertion: str = None):
     """
     Get LLM client with automatic fallback from proxy to direct connection.
     If proxy is enabled but fails, it will automatically fallback to direct connection.
     """
     if USE_PROXY:
+        api_key = exchange_assertion_for_token(x_jwt_assertion)
         if validate_endpoint_cached(AZURE_PROXY_ENDPOINT + "/chat/completions?api-version=2025-01-01-preview"):
             return AzureAIChatCompletionsModel(
                 endpoint=AZURE_PROXY_ENDPOINT,
-                credential=AzureKeyCredential(auth_token),
+                credential=AzureKeyCredential(api_key),
                 model=AZURE_CHAT_DEPLOYMENT,
                 api_version=AZURE_CHAT_VERSION,
             )
