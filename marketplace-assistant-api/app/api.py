@@ -180,7 +180,7 @@ def validate_endpoint_cached(endpoint: str) -> bool:
     
     return is_valid
 
-def exchange_assertion_for_token(x_jwt_assertion: str):
+def exchange_assertion_for_api_key(x_jwt_assertion: str):
     headers = {
         "Content-Type": "application/x-www-form-urlencoded"
     }
@@ -202,7 +202,7 @@ def get_llm(x_jwt_assertion: str = None):
     If proxy is enabled but fails, it will automatically fallback to direct connection.
     """
     if USE_PROXY:
-        api_key = exchange_assertion_for_token(x_jwt_assertion)
+        api_key = exchange_assertion_for_api_key(x_jwt_assertion)
         if validate_endpoint_cached(AZURE_CHAT_PROXY_ENDPOINT + "/chat/completions?api-version=2025-01-01-preview"):
             return AzureAIChatCompletionsModel(
                 endpoint=AZURE_CHAT_PROXY_ENDPOINT,
@@ -220,13 +220,14 @@ def get_llm(x_jwt_assertion: str = None):
         api_version=AZURE_CHAT_VERSION,
     )
 
-def get_embeddings(auth_token: str = None):
+def get_embeddings(x_jwt_assertion: str = None):
     if USE_PROXY:
         if validate_endpoint_cached(AZURE_EMBEDDING_PROXY_ENDPOINT + "/embeddings?api-version=2025-01-01-preview"):
+            api_key = exchange_assertion_for_api_key(x_jwt_assertion)
             return AzureAIEmbeddingsModel(
-                model=AZURE_EMBEDDING_DEPLOYMENT,
-                credential=AzureKeyCredential(auth_token),
                 endpoint=AZURE_EMBEDDING_PROXY_ENDPOINT,
+                credential=AzureKeyCredential(api_key),
+                model=AZURE_EMBEDDING_DEPLOYMENT,
             )
         else:
             print(f"Warning: Proxy endpoint {AZURE_EMBEDDING_PROXY_ENDPOINT} is not reachable, falling back to direct connection.")
@@ -237,10 +238,10 @@ def get_embeddings(auth_token: str = None):
         endpoint=AZURE_ENDPOINT + "/" + AZURE_EMBEDDING_DEPLOYMENT,
     )
 
-def get_vectorstore(auth_token: str = None) -> Milvus:
+def get_vectorstore(x_jwt_assertion: str = None) -> Milvus:
     """Get or create cached APIM vectorstore instance"""
     return Milvus(
-        get_embeddings(auth_token),
+        get_embeddings(x_jwt_assertion),
         connection_args={
             "uri": ZILLIZ_CLOUD_URI,
             "token": ZILLIZ_CLOUD_API_KEY,
