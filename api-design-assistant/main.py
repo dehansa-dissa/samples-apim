@@ -208,15 +208,32 @@ async def async_llm_invoke(llm, prompt, token_usage: TokenUsage, max_retries=3, 
     while retries < max_retries:
         try:
             response = await llm.ainvoke(prompt)
-            if hasattr(response, 'usage') and response.usage:
-                usage = response.usage
+            
+            # Extract usage metadata if available
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                usage = response.usage_metadata
                 token_usage.add_usage(type('TokenUsage', (), {
-                    'prompt_tokens': usage.get('prompt_tokens', 0),
-                    'completion_tokens': usage.get('completion_tokens', 0),
+                    'prompt_tokens': usage.get('input_tokens', 0),
+                    'completion_tokens': usage.get('output_tokens', 0),
                     'total_tokens': usage.get('total_tokens', 0)
                 })())
 
-            return response
+            
+
+            # Extract text content from AIMessage
+            if hasattr(response, 'content'):
+                # Handle list of content blocks
+                if isinstance(response.content, list):
+                    text_content = ""
+                    for block in response.content:
+                        if isinstance(block, dict) and block.get('type') == 'text':
+                            text_content += block.get('text', '')
+                    return text_content
+                # Handle string content
+                elif isinstance(response.content, str):
+                    return response.content
+
+            return str(response)
         except Exception as e:
             retries += 1
             if retries >= max_retries:
@@ -227,28 +244,28 @@ async def async_llm_invoke(llm, prompt, token_usage: TokenUsage, max_retries=3, 
 async def validate_query_content(llm, user_input, chat_history, token_usage: TokenUsage):
     prompt = check_user_input_validity.format(user_input=user_input, chat_history=chat_history)
     response = await async_llm_invoke(llm, prompt, token_usage)
-    return response.content.strip()
+    return response.strip()
 
 
 # Invokes LLM to suggest a type of API for the given use case
 async def suggest_api_type(llm, user_input, chat_history, token_usage: TokenUsage):
     prompt = identify_api_type.format(user_input=user_input, history=chat_history)
     response = await async_llm_invoke(llm, prompt, token_usage)
-    return response.content.strip()
+    return response.strip()
 
 
 # Invokes LLM to check user's query if spec generation is requested
 async def check_for_spec_gen_request(llm, user_input, chat_history, specification, token_usage: TokenUsage):
     prompt = check_for_spec_generation_request.format(user_input=user_input, chat_history=chat_history, specification=specification)
     response = await async_llm_invoke(llm, prompt, token_usage)
-    return response.content.strip()
+    return response.strip()
 
 
 # Invokes LLM to answer user's general question
 async def form_answer_general_question(llm, user_input, chat_history, specification, token_usage: TokenUsage):
     prompt = answer_general_question.format(user_input=user_input, chat_history=chat_history, specification=specification)
     response = await async_llm_invoke(llm, prompt, token_usage)
-    return response.content.strip()
+    return response.strip()
 
 
 # Invokes LLM to generate the spec according to API type and provided information
@@ -290,12 +307,17 @@ async def generate_spec(llm, api_type, final_input, chat_history, token_usage: T
         )
 
         llm_response = await async_llm_invoke(llm, prompt, token_usage)
-        answer_text = llm_response.content.strip()
+        answer_text = llm_response.strip()
 
-
-        # Parses LLM response as JSON so the spec, resoures list and chat response can be extracted
+        # Strip code block markers (```json ... ``` or ``` ... ```)
+        cleaned_answer_text = answer_text.strip()
+        if cleaned_answer_text.startswith("```"):
+            cleaned_answer_text = cleaned_answer_text.split("\n", 1)[-1]
+            if cleaned_answer_text.endswith("```"):
+                cleaned_answer_text = cleaned_answer_text.rsplit("```", 1)[0]
+            cleaned_answer_text = cleaned_answer_text.strip()
         try:
-            data = json.loads(answer_text)
+            data = json.loads(cleaned_answer_text)
         except json.JSONDecodeError as e:
             if attempt < max_attempts:
                 # Regenerates spec if there is a JSON error when parsing
@@ -362,7 +384,7 @@ async def regenerate_spec_method(llm, final_input, token_usage: TokenUsage, spec
         )
 
         llm_response = await async_llm_invoke(llm, prompt, token_usage)
-        answer_text = llm_response.content.strip()
+        answer_text = llm_response.strip()
 
         # Parses LLM response as JSON so the spec, resoures list and chat response can be extracted
         try:

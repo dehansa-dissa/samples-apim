@@ -13,7 +13,7 @@ import os
 from typing import List, Tuple
 import json
 from typing import Optional, Any
-from langchain_openai import AzureOpenAIEmbeddings
+from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 from operator import itemgetter
 from fastapi import FastAPI, Header
 from fastapi.responses import StreamingResponse
@@ -32,10 +32,8 @@ from functools import partial
 from functools import lru_cache
 from typing import AsyncGenerator, Literal
 
-from langchain_azure_ai.chat_models import AzureAIChatCompletionsModel
 from langchain_azure_ai.embeddings import AzureAIEmbeddingsModel
 from azure.core.credentials import AzureKeyCredential
-from langchain.chat_models import AzureChatOpenAI
 from langchain_community.vectorstores import Milvus
 from langchain.retrievers.multi_query import MultiQueryRetriever
 
@@ -174,7 +172,7 @@ def validate_endpoint(endpoint: str) -> tuple:
 def validate_endpoint_cached(endpoint: str) -> bool:
     is_valid, timestamp = validate_endpoint(endpoint)
     
-    if time.time() - timestamp > 900:
+    if time.time() - timestamp > PROXY_HEALTH_CHECK_CACHE_TIME:
         validate_endpoint.cache_clear()
         is_valid, _ = validate_endpoint(endpoint)
     
@@ -203,21 +201,23 @@ def get_llm(x_jwt_assertion: str = None):
     """
     if USE_PROXY:
         api_key = exchange_assertion_for_api_key(x_jwt_assertion)
-        if validate_endpoint_cached(AZURE_CHAT_PROXY_ENDPOINT + "/chat/completions?api-version=2025-01-01-preview"):
-            return AzureAIChatCompletionsModel(
-                endpoint=AZURE_CHAT_PROXY_ENDPOINT,
-                credential=AzureKeyCredential(api_key),
-                model=AZURE_CHAT_DEPLOYMENT,
+        if validate_endpoint_cached(AZURE_CHAT_PROXY_ENDPOINT + "/openai/responses?api-version=2025-04-01-preview"):
+            return AzureChatOpenAI(
+                azure_endpoint=AZURE_CHAT_PROXY_ENDPOINT,
+                azure_deployment=AZURE_CHAT_DEPLOYMENT,
+                api_key=api_key,
                 api_version=AZURE_CHAT_VERSION,
+                output_version="responses/v1"
             )
         else:
             print(f"Warning: Proxy endpoint {AZURE_CHAT_PROXY_ENDPOINT} is not reachable, falling back to direct connection.")
 
-    return AzureAIChatCompletionsModel(
-        endpoint=AZURE_ENDPOINT + "/" + AZURE_CHAT_DEPLOYMENT,
-        credential=AzureKeyCredential(AZURE_API_KEY),
-        model=AZURE_CHAT_DEPLOYMENT,
+    return AzureChatOpenAI(
+        azure_endpoint=AZURE_ENDPOINT,
+        azure_deployment=AZURE_CHAT_DEPLOYMENT,
+        api_key=AZURE_API_KEY,
         api_version=AZURE_CHAT_VERSION,
+        output_version="responses/v1"
     )
 
 def get_embeddings(x_jwt_assertion: str = None):
@@ -235,7 +235,7 @@ def get_embeddings(x_jwt_assertion: str = None):
     return AzureAIEmbeddingsModel(
         model=AZURE_EMBEDDING_DEPLOYMENT,
         credential=AzureKeyCredential(AZURE_API_KEY),
-        endpoint=AZURE_ENDPOINT + "/" + AZURE_EMBEDDING_DEPLOYMENT,
+        endpoint=AZURE_ENDPOINT + "/openai/deployments/" + AZURE_EMBEDDING_DEPLOYMENT,
     )
 
 def get_vectorstore(x_jwt_assertion: str = None) -> Milvus:
@@ -418,14 +418,23 @@ async def generate_response(
 
     try:
         with get_openai_callback() as cb:
-            chain_response = await rag_chain.ainvoke({
-                "question": message,
-                "chat_history": chat_history},
-                # config={
-                #     'callbacks': [ConsoleCallbackHandler()]
-                #     }
-            )
-            chain_response = parse_json(chain_response.content, cb)
+                chain_response_raw = await rag_chain.ainvoke({
+                    "question": message,
+                    "chat_history": chat_history},
+                    # config={
+                    #     'callbacks': [ConsoleCallbackHandler()]
+                    #     }
+                )
+                # chain_response_raw.content may be a list of blocks, extract text
+                if hasattr(chain_response_raw, "content") and isinstance(chain_response_raw.content, list):
+                    text_content = "".join(
+                        block.get("text", "") for block in chain_response_raw.content if block.get("type") == "text"
+                    )
+                elif hasattr(chain_response_raw, "content") and isinstance(chain_response_raw.content, str):
+                    text_content = chain_response_raw.content
+                else:
+                    text_content = str(chain_response_raw)
+                chain_response = parse_json(text_content, cb)
         return chain_response
     finally:
         # Close the LLM client session to prevent unclosed connection warnings

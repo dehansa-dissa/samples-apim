@@ -19,9 +19,10 @@ AZURE_ENDPOINT = os.getenv('AZURE_ENDPOINT')
 AZURE_API_KEY = os.getenv("OPENAI_API_KEY")
 AZURE_EMBEDDING_DEPLOYMENT = os.getenv('AZURE_EMBEDDING_DEPLOYMENT', "OpenAPIEmbeddings")
 AZURE_CHAT_DEPLOYMENT = os.getenv('AZURE_CHAT_DEPLOYMENT', "APIM-Deployment")
-AZURE_CHAT_VERSION = os.getenv('AZURE_CHAT_VERSION', "2023-12-01-preview")
+AZURE_CHAT_VERSION = os.getenv('AZURE_CHAT_VERSION', "2025-04-01-preview")
 SOURCE_PLATFORM = os.getenv('SOURCE_PLATFORM')
 PROXY_URL = os.getenv('PROXY_URL')
+PROXY_HEALTH_CHECK_CACHE_TIME = int(os.getenv('PROXY_HEALTH_CHECK_CACHE_TIME', '900'))
 
 # azure openai proxy related env variables
 USE_PROXY = os.getenv("USE_PROXY", "false").lower() == "true"

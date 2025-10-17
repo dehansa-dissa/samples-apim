@@ -12,8 +12,7 @@
 import redis.asyncio as redis
 import os
 from dotenv import load_dotenv
-from langchain_azure_ai.chat_models import AzureAIChatCompletionsModel
-from azure.core.credentials import AzureKeyCredential
+from langchain_openai import AzureChatOpenAI
 from functools import lru_cache
 import requests
 import time
@@ -27,9 +26,10 @@ CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET") 
 TOKEN_ENDPOINT_URL = os.getenv("TOKEN_ENDPOINT_URL")
 AZURE_PROXY_ENDPOINT = os.getenv("AZURE_PROXY_ENDPOINT")
-AZURE_CHAT_VERSION = os.getenv("AZURE_CHAT_VERSION", "2025-01-01-preview")
+AZURE_CHAT_VERSION = os.getenv("AZURE_CHAT_VERSION", "2025-04-01-preview")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AZURE_CHAT_DEPLOYMENT = os.getenv("AZURE_CHAT_DEPLOYMENT")
+PROXY_HEALTH_CHECK_CACHE_TIME = int(os.getenv('PROXY_HEALTH_CHECK_CACHE_TIME', '900'))
 
 @lru_cache(maxsize=2)
 def validate_endpoint(endpoint: str) -> tuple:
@@ -43,7 +43,7 @@ def validate_endpoint(endpoint: str) -> tuple:
 def validate_endpoint_cached(endpoint: str) -> bool:
     is_valid, timestamp = validate_endpoint(endpoint)
     
-    if time.time() - timestamp > 900:
+    if time.time() - timestamp > PROXY_HEALTH_CHECK_CACHE_TIME:
         validate_endpoint.cache_clear()
         is_valid, _ = validate_endpoint(endpoint)
     
@@ -72,21 +72,23 @@ def get_llm(x_jwt_assertion: str = None):
     """
     if USE_PROXY:
         api_key = exchange_assertion_for_api_key(x_jwt_assertion)
-        if validate_endpoint_cached(AZURE_PROXY_ENDPOINT + "/chat/completions?api-version=2025-01-01-preview"):
-            return AzureAIChatCompletionsModel(
-                endpoint=AZURE_PROXY_ENDPOINT,
-                credential=AzureKeyCredential(api_key),
-                model=AZURE_CHAT_DEPLOYMENT,
-                api_version=AZURE_CHAT_VERSION,
+        if validate_endpoint_cached(AZURE_PROXY_ENDPOINT + "/openai/responses?api-version=2025-04-01-preview"):
+            return AzureChatOpenAI(
+                azure_endpoint=AZURE_PROXY_ENDPOINT,
+                azure_deployment=AZURE_CHAT_DEPLOYMENT,
+                api_key=api_key,
+                api_version="2025-04-01-preview",
+                output_version="responses/v1"
             )
         else:
             print(f"Warning: Proxy endpoint {AZURE_PROXY_ENDPOINT} is not reachable, falling back to direct connection.")
 
-    return AzureAIChatCompletionsModel(
-        endpoint=AZURE_ENDPOINT + "/" + AZURE_CHAT_DEPLOYMENT,
-        credential=AzureKeyCredential(OPENAI_API_KEY),
-        model=AZURE_CHAT_DEPLOYMENT,
+    return AzureChatOpenAI(
+        azure_endpoint=AZURE_ENDPOINT,
+        azure_deployment=AZURE_CHAT_DEPLOYMENT,
+        api_key=OPENAI_API_KEY,
         api_version=AZURE_CHAT_VERSION,
+        output_version="responses/v1"
     )
 
 r = redis.Redis(
