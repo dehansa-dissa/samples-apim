@@ -30,6 +30,7 @@ import requests
 
 from functools import partial
 from functools import lru_cache
+from cachetools import cached, TTLCache
 from typing import AsyncGenerator, Literal
 
 from langchain_azure_ai.embeddings import AzureAIEmbeddingsModel
@@ -38,7 +39,7 @@ from langchain_community.vectorstores import Milvus
 from langchain.retrievers.multi_query import MultiQueryRetriever
 
 from app.constants import *
-import time
+import jwt
 from app.prompts import qa_system_prompt_choreo_stream, qa_system_prompt_choreo, qa_system_prompt_apim, \
     query_prompt_template, context_q_system_prompt
 
@@ -160,24 +161,21 @@ class MilvusProxy(Milvus):
         return ret
 
 
-@lru_cache(maxsize=2)
-def validate_endpoint(endpoint: str) -> tuple:
+@cached(cache=TTLCache(maxsize=2, ttl=PROXY_HEALTH_CHECK_CACHE_TIME))
+def validate_endpoint(endpoint: str) -> bool:
     try:
         response = requests.options(endpoint, timeout=2)
-        is_valid = response.status_code < 300
-        return (is_valid, time.time())
+        return response.status_code < 300
     except:
-        return (False, time.time())
+        return False
 
-def validate_endpoint_cached(endpoint: str) -> bool:
-    is_valid, timestamp = validate_endpoint(endpoint)
-    
-    if time.time() - timestamp > PROXY_HEALTH_CHECK_CACHE_TIME:
-        validate_endpoint.cache_clear()
-        is_valid, _ = validate_endpoint(endpoint)
-    
-    return is_valid
+def _get_org_id_key(x_jwt_assertion: str):
+    """Extract org_id from JWT assertion to use as cache key"""
+    payload = jwt.decode(x_jwt_assertion, options={"verify_signature": False})
+    aud = payload.get("aud")
+    return aud[0]
 
+@cached(cache=TTLCache(maxsize=50, ttl=870), key=_get_org_id_key)
 def exchange_assertion_for_api_key(x_jwt_assertion: str):
     headers = {
         "Content-Type": "application/x-www-form-urlencoded"
@@ -201,7 +199,7 @@ def get_llm(x_jwt_assertion: str = None):
     """
     if USE_PROXY:
         api_key = exchange_assertion_for_api_key(x_jwt_assertion)
-        if validate_endpoint_cached(AZURE_CHAT_PROXY_ENDPOINT + "/openai/responses?api-version=2025-04-01-preview"):
+        if validate_endpoint(AZURE_CHAT_PROXY_ENDPOINT + "/openai/responses?api-version=2025-04-01-preview"):
             return AzureChatOpenAI(
                 azure_endpoint=AZURE_CHAT_PROXY_ENDPOINT,
                 azure_deployment=AZURE_CHAT_DEPLOYMENT,
@@ -222,7 +220,7 @@ def get_llm(x_jwt_assertion: str = None):
 
 def get_embeddings(x_jwt_assertion: str = None):
     if USE_PROXY:
-        if validate_endpoint_cached(AZURE_EMBEDDING_PROXY_ENDPOINT + "/embeddings?api-version=2025-01-01-preview"):
+        if validate_endpoint(AZURE_EMBEDDING_PROXY_ENDPOINT + "/embeddings?api-version=2025-01-01-preview"):
             api_key = exchange_assertion_for_api_key(x_jwt_assertion)
             return AzureAIEmbeddingsModel(
                 endpoint=AZURE_EMBEDDING_PROXY_ENDPOINT,

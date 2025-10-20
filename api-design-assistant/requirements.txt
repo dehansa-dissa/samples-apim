@@ -5,3 +5,5 @@ graphql-core==3.2.6
 fastapi==0.116.1
 langchain-openai==0.3.33
 uvicorn==0.36.0
+cachetools==5.3.2
+PyJWT==2.8.0

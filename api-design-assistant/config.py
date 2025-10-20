@@ -13,9 +13,9 @@ import redis.asyncio as redis
 import os
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
-from functools import lru_cache
+from cachetools import cached, TTLCache
 import requests
-import time
+import jwt
 
 load_dotenv()
 
@@ -31,24 +31,21 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AZURE_CHAT_DEPLOYMENT = os.getenv("AZURE_CHAT_DEPLOYMENT")
 PROXY_HEALTH_CHECK_CACHE_TIME = int(os.getenv('PROXY_HEALTH_CHECK_CACHE_TIME', '900'))
 
-@lru_cache(maxsize=2)
-def validate_endpoint(endpoint: str) -> tuple:
+@cached(cache=TTLCache(maxsize=2, ttl=PROXY_HEALTH_CHECK_CACHE_TIME))
+def validate_endpoint(endpoint: str) -> bool:
     try:
         response = requests.options(endpoint, timeout=2)
-        is_valid = response.status_code < 300
-        return (is_valid, time.time())
+        return response.status_code < 300
     except:
-        return (False, time.time())
+        return False
 
-def validate_endpoint_cached(endpoint: str) -> bool:
-    is_valid, timestamp = validate_endpoint(endpoint)
-    
-    if time.time() - timestamp > PROXY_HEALTH_CHECK_CACHE_TIME:
-        validate_endpoint.cache_clear()
-        is_valid, _ = validate_endpoint(endpoint)
-    
-    return is_valid
+def _get_org_id_key(x_jwt_assertion: str):
+    """Extract org_id from JWT assertion to use as cache key"""
+    payload = jwt.decode(x_jwt_assertion, options={"verify_signature": False})
+    aud = payload.get("aud")
+    return aud[0]
 
+@cached(cache=TTLCache(maxsize=50, ttl=870), key=_get_org_id_key)
 def exchange_assertion_for_api_key(x_jwt_assertion: str):
     headers = {
         "Content-Type": "application/x-www-form-urlencoded"
@@ -72,7 +69,7 @@ def get_llm(x_jwt_assertion: str = None):
     """
     if USE_PROXY:
         api_key = exchange_assertion_for_api_key(x_jwt_assertion)
-        if validate_endpoint_cached(AZURE_PROXY_ENDPOINT + "/openai/responses?api-version=2025-04-01-preview"):
+        if validate_endpoint(AZURE_PROXY_ENDPOINT + "/openai/responses?api-version=2025-04-01-preview"):
             return AzureChatOpenAI(
                 azure_endpoint=AZURE_PROXY_ENDPOINT,
                 azure_deployment=AZURE_CHAT_DEPLOYMENT,
