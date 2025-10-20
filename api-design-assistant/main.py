@@ -13,7 +13,7 @@ import redis
 import asyncio
 import json
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -27,7 +27,7 @@ from prompts import (
     generate_graphql_spec,
     generate_asyncapi_spec
 )
-from config import r, llm
+from config import r, get_llm
 from graphql import parse, validate, build_schema, GraphQLError
 
 app = FastAPI(
@@ -187,7 +187,7 @@ async def update_task_data(session_id, state=None, chat_history=None, specificat
 
 
 # Invokes LLM and handles errors
-async def async_llm_invoke(prompt, token_usage: TokenUsage, max_retries=3, delay=2):
+async def async_llm_invoke(llm, prompt, token_usage: TokenUsage, max_retries=3, delay=2):
     """
     Asynchronously invokes the LLM with the given prompt, retrying on failure.
 
@@ -208,15 +208,32 @@ async def async_llm_invoke(prompt, token_usage: TokenUsage, max_retries=3, delay
     while retries < max_retries:
         try:
             response = await llm.ainvoke(prompt)
-            if hasattr(response, 'usage') and response.usage:
-                usage = response.usage
+            
+            # Extract usage metadata if available
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                usage = response.usage_metadata
                 token_usage.add_usage(type('TokenUsage', (), {
-                    'prompt_tokens': usage.get('prompt_tokens', 0),
-                    'completion_tokens': usage.get('completion_tokens', 0),
+                    'prompt_tokens': usage.get('input_tokens', 0),
+                    'completion_tokens': usage.get('output_tokens', 0),
                     'total_tokens': usage.get('total_tokens', 0)
                 })())
 
-            return response
+            
+
+            # Extract text content from AIMessage
+            if hasattr(response, 'content'):
+                # Handle list of content blocks
+                if isinstance(response.content, list):
+                    text_content = ""
+                    for block in response.content:
+                        if isinstance(block, dict) and block.get('type') == 'text':
+                            text_content += block.get('text', '')
+                    return text_content
+                # Handle string content
+                elif isinstance(response.content, str):
+                    return response.content
+
+            return str(response)
         except Exception as e:
             retries += 1
             if retries >= max_retries:
@@ -224,35 +241,35 @@ async def async_llm_invoke(prompt, token_usage: TokenUsage, max_retries=3, delay
             await asyncio.sleep(delay)
 
 # Invokes LLM to check user's query's validity
-async def validate_query_content(user_input, chat_history, token_usage: TokenUsage):
+async def validate_query_content(llm, user_input, chat_history, token_usage: TokenUsage):
     prompt = check_user_input_validity.format(user_input=user_input, chat_history=chat_history)
-    response = await async_llm_invoke(prompt, token_usage)
-    return response.content.strip()
+    response = await async_llm_invoke(llm, prompt, token_usage)
+    return response.strip()
 
 
 # Invokes LLM to suggest a type of API for the given use case
-async def suggest_api_type(user_input, chat_history, token_usage: TokenUsage):
+async def suggest_api_type(llm, user_input, chat_history, token_usage: TokenUsage):
     prompt = identify_api_type.format(user_input=user_input, history=chat_history)
-    response = await async_llm_invoke(prompt, token_usage)
-    return response.content.strip()
+    response = await async_llm_invoke(llm, prompt, token_usage)
+    return response.strip()
 
 
 # Invokes LLM to check user's query if spec generation is requested
-async def check_for_spec_gen_request(user_input, chat_history, specification, token_usage: TokenUsage):
+async def check_for_spec_gen_request(llm, user_input, chat_history, specification, token_usage: TokenUsage):
     prompt = check_for_spec_generation_request.format(user_input=user_input, chat_history=chat_history, specification=specification)
-    response = await async_llm_invoke(prompt, token_usage)
-    return response.content.strip()
+    response = await async_llm_invoke(llm, prompt, token_usage)
+    return response.strip()
 
 
 # Invokes LLM to answer user's general question
-async def form_answer_general_question(user_input, chat_history, specification, token_usage: TokenUsage):
+async def form_answer_general_question(llm, user_input, chat_history, specification, token_usage: TokenUsage):
     prompt = answer_general_question.format(user_input=user_input, chat_history=chat_history, specification=specification)
-    response = await async_llm_invoke(prompt, token_usage)
-    return response.content.strip()
+    response = await async_llm_invoke(llm, prompt, token_usage)
+    return response.strip()
 
 
 # Invokes LLM to generate the spec according to API type and provided information
-async def generate_spec(api_type, final_input, chat_history, token_usage: TokenUsage, specification=None, schema_validation_error=None, attempt=1, max_attempts=10):
+async def generate_spec(llm, api_type, final_input, chat_history, token_usage: TokenUsage, specification=None, schema_validation_error=None, attempt=1, max_attempts=10):
     """
     Generates an API specification using an LLM based on the given API type and user input.
 
@@ -289,13 +306,18 @@ async def generate_spec(api_type, final_input, chat_history, token_usage: TokenU
             schema_validation_error=schema_validation_error
         )
 
-        llm_response = await async_llm_invoke(prompt, token_usage)
-        answer_text = llm_response.content.strip()
+        llm_response = await async_llm_invoke(llm, prompt, token_usage)
+        answer_text = llm_response.strip()
 
-
-        # Parses LLM response as JSON so the spec, resoures list and chat response can be extracted
+        # Strip code block markers (```json ... ``` or ``` ... ```)
+        cleaned_answer_text = answer_text.strip()
+        if cleaned_answer_text.startswith("```"):
+            cleaned_answer_text = cleaned_answer_text.split("\n", 1)[-1]
+            if cleaned_answer_text.endswith("```"):
+                cleaned_answer_text = cleaned_answer_text.rsplit("```", 1)[0]
+            cleaned_answer_text = cleaned_answer_text.strip()
         try:
-            data = json.loads(answer_text)
+            data = json.loads(cleaned_answer_text)
         except json.JSONDecodeError as e:
             if attempt < max_attempts:
                 # Regenerates spec if there is a JSON error when parsing
@@ -340,7 +362,7 @@ async def generate_spec(api_type, final_input, chat_history, token_usage: TokenU
 
 
 # Invokes LLM to generate the spec according to API type and provided information
-async def regenerate_spec_method(final_input, token_usage: TokenUsage, specification=None, schema_validation_error=None, attempt=1, max_attempts=10):
+async def regenerate_spec_method(llm, final_input, token_usage: TokenUsage, specification=None, schema_validation_error=None, attempt=1, max_attempts=10):
     """
     Regenerates an API specification using an LLM based on the previous governance validation errors.
 
@@ -361,8 +383,8 @@ async def regenerate_spec_method(final_input, token_usage: TokenUsage, specifica
             schema_validation_error=schema_validation_error
         )
 
-        llm_response = await async_llm_invoke(prompt, token_usage)
-        answer_text = llm_response.content.strip()
+        llm_response = await async_llm_invoke(llm, prompt, token_usage)
+        answer_text = llm_response.strip()
 
         # Parses LLM response as JSON so the spec, resoures list and chat response can be extracted
         try:
@@ -386,7 +408,7 @@ async def regenerate_spec_method(final_input, token_usage: TokenUsage, specifica
 
 # Chat Endpoint generates the API specifications and other related details
 @app.post("/chat")
-async def generate(request: ChatInput):
+async def generate(request: ChatInput, x_jwt_assertion: str = Header(None)):
     """
     Handles POST requests to the /chat endpoint for generating API specifications.
 
@@ -435,90 +457,97 @@ async def generate(request: ChatInput):
 
     token_usage = TokenUsage()
 
-    # Determines whether the user's query is a greeting, nonsensical input or an API related prompt
-    validation_response = await validate_query_content(user_input, chat_history, token_usage)
+    # Use context manager for automatic cleanup of LLM client
+    llm = get_llm(x_jwt_assertion)
+    try:
+        # Determines whether the user's query is a greeting, nonsensical input or an API related prompt
+        validation_response = await validate_query_content(llm, user_input, chat_history, token_usage)
 
-    # Returns response when user's query is a greeting or nonsensical input
-    if validation_response != 'API prompt':
-        chat_history += [
-            {"user_input": user_input},
-            {"response to above user_input": validation_response}
-        ]
-        await update_task_data(session_id, chat_history=chat_history)
+        # Returns response when user's query is a greeting or nonsensical input
+        if validation_response != 'API prompt':
+            chat_history += [
+                {"user_input": user_input},
+                {"response to above user_input": validation_response}
+            ]
+            await update_task_data(session_id, chat_history=chat_history)
 
-        return {
+            return {
+                "backendResponse": None,
+                "isSuggestions": False,
+                "typeOfApi": api_type if specification else '',
+                "code": specification if specification else '',
+                "paths": paths if specification else ['No Resources'],
+                "apiTypeSuggestion": validation_response,
+                "missingValues": None,
+                "state": "COMPLETE" if specification else None,
+                "usage": {
+                    "prompt_tokens": token_usage.prompt_tokens,
+                    "completion_tokens": token_usage.completion_tokens,
+                    "total_tokens": token_usage.total_tokens
+                }
+            }
+            
+
+        # Determines whether the user's API related prompt requests for an API specification generation
+        is_spec_generation_requested = await check_for_spec_gen_request(llm, user_input, chat_history, specification, token_usage)
+
+        # Response template
+        response = {
             "backendResponse": None,
             "isSuggestions": False,
-            "typeOfApi": api_type if specification else '',
-            "code": specification if specification else '',
-            "paths": paths if specification else ['No Resources'],
-            "apiTypeSuggestion": validation_response,
-            "missingValues": None,
-            "state": "COMPLETE" if specification else None,
-            "usage": {
-                "prompt_tokens": token_usage.prompt_tokens,
-                "completion_tokens": token_usage.completion_tokens,
-                "total_tokens": token_usage.total_tokens
-            }
+            "missingValues": None
+        }
+
+        # Generates API spec and other details when user's prompt requests for an API specification generation
+        if is_spec_generation_requested == "spec generation required":
+            # Invokes LLM to suggest a suitable API type for the given use case and saves it in chat history
+            chat_history += [{"user_input": user_input}, {"API TYPE": f"Create this type of API: {api_type}"}]
+            api_type = await suggest_api_type(llm, user_input, chat_history, token_usage)
+            chat_history += [{"user_input": user_input}, {"API TYPE": f"Create this type of API: {api_type}"}]
+
+            # Invokes LLM to generate the API spec, paths and chat response according to the provided information
+            specification, paths, chat_response = await generate_spec(llm, api_type, user_input, chat_history, token_usage, specification)
+
+            # Adds specification, paths, api type and chat response to the response template
+            response["apiTypeSuggestion"] = chat_response
+            response["paths"] = paths
+            response["typeOfApi"] = api_type
+            response["code"] = specification
+
+        # Generates an answer for user's prompt when it does not request for an API specification generation
+        else:
+            answer = await form_answer_general_question(llm, user_input, chat_history, specification, token_usage)
+            # Saves response to chat history and response template
+            chat_history += [{"user's general question": user_input}, {"response to user's general question": answer}]
+            response["apiTypeSuggestion"] = answer
+
+        # Handles suitations when chat response is empty
+        if not response.get("apiTypeSuggestion"):
+            response["apiTypeSuggestion"] = "Apologies for the inconvenience. It seems that something went wrong with the API Design Assistant. Please try again with more detailed requirements."
+
+        # Set response state to "COMPLETE" only if a valid specification was generated
+        response["state"] = "COMPLETE" if specification else None
+
+        # Updates Redis with data if the session state is "COMPLETE"
+        if response["state"] == "COMPLETE":
+            await update_task_data(session_id, chat_history=chat_history, api_type=api_type, specification=specification, paths=paths, state="COMPLETE")
+
+        response["usage"] = {
+            "prompt_tokens": token_usage.prompt_tokens,
+            "completion_tokens": token_usage.completion_tokens, 
+            "total_tokens": token_usage.total_tokens
         }
         
-
-    # Determines whether the user's API related prompt requests for an API specification generation
-    is_spec_generation_requested = await check_for_spec_gen_request(user_input, chat_history, specification, token_usage)
-
-    # Response template
-    response = {
-        "backendResponse": None,
-        "isSuggestions": False,
-        "missingValues": None
-    }
-
-    # Generates API spec and other details when user's prompt requests for an API specification generation
-    if is_spec_generation_requested == "spec generation required":
-        # Invokes LLM to suggest a suitable API type for the given use case and saves it in chat history
-        chat_history += [{"user_input": user_input}, {"API TYPE": f"Create this type of API: {api_type}"}]
-        api_type = await suggest_api_type(user_input, chat_history, token_usage)
-        chat_history += [{"user_input": user_input}, {"API TYPE": f"Create this type of API: {api_type}"}]
-
-        # Invokes LLM to generate the API spec, paths and chat response according to the provided information
-        specification, paths, chat_response = await generate_spec(api_type, user_input, chat_history, token_usage, specification)
-
-        # Adds specification, paths, api type and chat response to the response template
-        response["apiTypeSuggestion"] = chat_response
-        response["paths"] = paths
-        response["typeOfApi"] = api_type
-        response["code"] = specification
-
-    # Generates an answer for user's prompt when it does not request for an API specification generation
-    else:
-        answer = await form_answer_general_question(user_input, chat_history, specification, token_usage)
-        # Saves response to chat history and response template
-        chat_history += [{"user's general question": user_input}, {"response to user's general question": answer}]
-        response["apiTypeSuggestion"] = answer
-
-    # Handles suitations when chat response is empty
-    if not response.get("apiTypeSuggestion"):
-        response["apiTypeSuggestion"] = "Apologies for the inconvenience. It seems that something went wrong with the API Design Assistant. Please try again with more detailed requirements."
-
-    # Set response state to "COMPLETE" only if a valid specification was generated
-    response["state"] = "COMPLETE" if specification else None
-
-    # Updates Redis with data if the session state is "COMPLETE"
-    if response["state"] == "COMPLETE":
-        await update_task_data(session_id, chat_history=chat_history, api_type=api_type, specification=specification, paths=paths, state="COMPLETE")
-
-    response["usage"] = {
-        "prompt_tokens": token_usage.prompt_tokens,
-        "completion_tokens": token_usage.completion_tokens, 
-        "total_tokens": token_usage.total_tokens
-    }
-    
-    # Returns response successfully
-    return response
+        # Returns response successfully
+        return response
+    finally:
+        # Close the LLM client session to prevent unclosed connection warnings
+        if hasattr(llm, 'aclose'):
+            await llm.aclose()
 
 
 @app.post("/regenerate-spec")
-async def regenerate_spec(body: ChatInput):
+async def regenerate_spec(body: ChatInput, x_jwt_assertion: str = Header(None)):
     # Convert Pydantic model to dict
     data = body.dict()
 
@@ -536,18 +565,24 @@ async def regenerate_spec(body: ChatInput):
     specification = task_data.get("specification", "")
     token_usage = TokenUsage()
 
-    # Call LLM to regenerate new spec
-    specification = await regenerate_spec_method(user_input, token_usage, specification)
+    llm = get_llm(x_jwt_assertion)
+    try:
+        # Call LLM to regenerate new spec
+        specification = await regenerate_spec_method(llm, user_input, token_usage, specification)
 
-    # Updates Redis with data 
-    await update_task_data(session_id, specification=specification)
+        # Updates Redis with data 
+        await update_task_data(session_id, specification=specification)
 
-    # Return final response
-    return {
-        "regeneratedSpec": specification,
-        "usage": {
-            "prompt_tokens": token_usage.prompt_tokens,
-            "completion_tokens": token_usage.completion_tokens,
-            "total_tokens": token_usage.total_tokens
+        # Return final response
+        return {
+            "regeneratedSpec": specification,
+            "usage": {
+                "prompt_tokens": token_usage.prompt_tokens,
+                "completion_tokens": token_usage.completion_tokens,
+                "total_tokens": token_usage.total_tokens
+            }
         }
-    }
+    finally:
+        # Close the LLM client session to prevent unclosed connection warnings
+        if hasattr(llm, 'aclose'):
+            await llm.aclose()

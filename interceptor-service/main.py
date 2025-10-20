@@ -303,7 +303,10 @@ async def chat(req: dict, x_jwt_assertion: str = Header(None)):
         payload['user_roles'] = req['user_roles']
 
     async with aiohttp.ClientSession() as session:
-        headers = {"Authorization": f"Bearer {marketplace_chat_access_token}"}
+        headers = {
+            "Authorization": f"Bearer {marketplace_chat_access_token}",
+            "x-jwt-assertion": x_jwt_assertion
+        }
         async with session.post(marketplace_chat_endpoint + "/marketplace-assistant", params={'keyID': handle},
                                 json=payload, headers=headers) as response:
             if response.status == 200:
@@ -444,9 +447,11 @@ async def design_assistant_chat(req: dict, x_jwt_assertion: str = Header(None)):
         await throttle(handle)
 
     async with aiohttp.ClientSession() as session:
+        headers = {"x-jwt-assertion": x_jwt_assertion}
         async with session.post(
             api_design_assistant_endpoint + "/chat",
-            json={"text": text, "sessionId": sessionId}
+            json={"text": text, "sessionId": sessionId},
+            headers=headers
         ) as response:
             if response.status == 200:
                 response_json = await response.json()
@@ -474,8 +479,10 @@ async def design_assistant_gen_payload(req: dict, x_jwt_assertion: str = Header(
 
     async with aiohttp.ClientSession() as session:
         sessionId = req["sessionId"]
+        headers = {"x-jwt-assertion": x_jwt_assertion}
         async with session.post(api_design_assistant_endpoint + "/generate-api-payload", 
-                                json={'sessionId': sessionId}) as response:
+                                json={'sessionId': sessionId},
+                                headers=headers) as response:
             if response.status == 200:
                 response_json = await response.json()
                 if 'usage' in response_json:
@@ -504,9 +511,11 @@ async def design_assistant_regenerate_spec(req: dict, x_jwt_assertion: str = Hea
         await throttle(handle)
 
     async with aiohttp.ClientSession() as session:
+        headers = {"x-jwt-assertion": x_jwt_assertion}
         async with session.post(
             api_design_assistant_endpoint + "/regenerate-spec",
-            json={"text": text, "sessionId": sessionId}
+            json={"text": text, "sessionId": sessionId},
+            headers=headers
         ) as response:
             if response.status == 200:
                 response_json = await response.json()

@@ -12,12 +12,10 @@
 import redis.asyncio as redis
 import os
 from dotenv import load_dotenv
-from langchain_azure_ai.chat_models import AzureAIChatCompletionsModel
-from azure.core.credentials import AzureKeyCredential
-import datetime
-from datetime import datetime, timedelta
-import base64
+from langchain_openai import AzureChatOpenAI
+from cachetools import cached, TTLCache
 import requests
+import jwt
 
 load_dotenv()
 
@@ -27,66 +25,69 @@ AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT")
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET") 
 TOKEN_ENDPOINT_URL = os.getenv("TOKEN_ENDPOINT_URL")
-AZURE_CHAT_VERSION = os.getenv("AZURE_CHAT_VERSION", "2025-01-01-preview")
+AZURE_PROXY_ENDPOINT = os.getenv("AZURE_PROXY_ENDPOINT")
+AZURE_CHAT_VERSION = os.getenv("AZURE_CHAT_VERSION", "2025-04-01-preview")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AZURE_CHAT_DEPLOYMENT = os.getenv("AZURE_CHAT_DEPLOYMENT")
+PROXY_HEALTH_CHECK_CACHE_TTL = int(os.getenv('PROXY_HEALTH_CHECK_CACHE_TTL', '900'))
+TOKEN_CACHE_SIZE = int(os.getenv("TOKEN_CACHE_SIZE", "50"))
+TOKEN_CACHE_TTL = int(os.getenv("TOKEN_CACHE_TTL", "870"))
 
-# Token cache to store access token and expiry time
-_token_cache = {
-    "access_token": None,
-    "expires_at": None
-}
-
-def generate_access_token():
-
-    global _token_cache
-    
-    # Check if we have a valid cached token
-    if (_token_cache["access_token"] and 
-        _token_cache["expires_at"] and 
-        datetime.now() < _token_cache["expires_at"]):
-        return _token_cache["access_token"]
-
+@cached(cache=TTLCache(maxsize=2, ttl=PROXY_HEALTH_CHECK_CACHE_TTL))
+def validate_endpoint(endpoint: str) -> bool:
     try:
-        # Create Basic Auth header
-        credentials = f"{CLIENT_ID}:{CLIENT_SECRET}"
-        encoded_credentials = base64.b64encode(credentials.encode()).decode()
-        
-        headers = {
-            "Authorization": f"Basic {encoded_credentials}",
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
-        
-        payload = "grant_type=client_credentials"
+        response = requests.options(endpoint, timeout=2)
+        return response.status_code < 300
+    except:
+        return False
 
-        response = requests.post(TOKEN_ENDPOINT_URL, headers=headers, data=payload)
-        response.raise_for_status()
-        
-        token_data = response.json()
-        access_token = token_data.get("access_token")
-        expires_in = token_data.get("expires_in", 3600)  # Default to 1 hour
-        
-        # Cache the token with expiry time (subtract 60 seconds for safety margin)
-        _token_cache["access_token"] = access_token
-        _token_cache["expires_at"] = datetime.now() + timedelta(seconds=expires_in - 60)
-        
-        print(f"Successfully generated new access token, expires in {expires_in} seconds")
-        return access_token
-        
-    except Exception as e:
-        print(f"Failed to generate access token: {str(e)}")
+def _get_org_id_key(x_jwt_assertion: str):
+    """Extract org_id from JWT assertion to use as cache key"""
+    payload = jwt.decode(x_jwt_assertion, options={"verify_signature": False})
+    aud = payload.get("aud")
+    return aud[0]
 
-def get_api_key():
+@cached(cache=TTLCache(maxsize=TOKEN_CACHE_SIZE, ttl=TOKEN_CACHE_TTL), key=_get_org_id_key)
+def exchange_assertion_for_api_key(x_jwt_assertion: str):
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    data = {
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "subject_token": x_jwt_assertion,
+        "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
+        "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET
+    }
+    response = requests.post(TOKEN_ENDPOINT_URL, headers=headers, data=data)
+    response.raise_for_status()
+    return response.json().get("access_token")
+
+def get_llm(x_jwt_assertion: str = None):
+    """
+    Get LLM client with automatic fallback from proxy to direct connection.
+    If proxy is enabled but fails, it will automatically fallback to direct connection.
+    """
     if USE_PROXY:
-        return generate_access_token()
-    else:
-        return OPENAI_API_KEY
+        api_key = exchange_assertion_for_api_key(x_jwt_assertion)
+        if validate_endpoint(AZURE_PROXY_ENDPOINT + "/openai/responses?api-version=2025-04-01-preview"):
+            return AzureChatOpenAI(
+                azure_endpoint=AZURE_PROXY_ENDPOINT,
+                azure_deployment=AZURE_CHAT_DEPLOYMENT,
+                api_key=api_key,
+                api_version="2025-04-01-preview",
+                output_version="responses/v1"
+            )
+        else:
+            print(f"Warning: Proxy endpoint {AZURE_PROXY_ENDPOINT} is not reachable, falling back to direct connection.")
 
-llm = AzureAIChatCompletionsModel(
-        endpoint=AZURE_ENDPOINT,
-        credential=AzureKeyCredential(get_api_key()),
-        model_name=AZURE_CHAT_DEPLOYMENT,
+    return AzureChatOpenAI(
+        azure_endpoint=AZURE_ENDPOINT,
+        azure_deployment=AZURE_CHAT_DEPLOYMENT,
+        api_key=OPENAI_API_KEY,
         api_version=AZURE_CHAT_VERSION,
+        output_version="responses/v1"
     )
 
 r = redis.Redis(
