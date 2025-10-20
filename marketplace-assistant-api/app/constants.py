@@ -22,7 +22,9 @@ AZURE_CHAT_DEPLOYMENT = os.getenv('AZURE_CHAT_DEPLOYMENT', "APIM-Deployment")
 AZURE_CHAT_VERSION = os.getenv('AZURE_CHAT_VERSION', "2025-04-01-preview")
 SOURCE_PLATFORM = os.getenv('SOURCE_PLATFORM')
 PROXY_URL = os.getenv('PROXY_URL')
-PROXY_HEALTH_CHECK_CACHE_TIME = int(os.getenv('PROXY_HEALTH_CHECK_CACHE_TIME', '900'))
+PROXY_HEALTH_CHECK_CACHE_TTL = int(os.getenv('PROXY_HEALTH_CHECK_CACHE_TTL', '900'))
+TOKEN_CACHE_SIZE = int(os.getenv("TOKEN_CACHE_SIZE", "50"))
+TOKEN_CACHE_TTL = int(os.getenv("TOKEN_CACHE_TTL", "870"))
 
 # azure openai proxy related env variables
 USE_PROXY = os.getenv("USE_PROXY", "false").lower() == "true"

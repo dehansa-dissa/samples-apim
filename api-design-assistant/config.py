@@ -29,9 +29,11 @@ AZURE_PROXY_ENDPOINT = os.getenv("AZURE_PROXY_ENDPOINT")
 AZURE_CHAT_VERSION = os.getenv("AZURE_CHAT_VERSION", "2025-04-01-preview")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AZURE_CHAT_DEPLOYMENT = os.getenv("AZURE_CHAT_DEPLOYMENT")
-PROXY_HEALTH_CHECK_CACHE_TIME = int(os.getenv('PROXY_HEALTH_CHECK_CACHE_TIME', '900'))
+PROXY_HEALTH_CHECK_CACHE_TTL = int(os.getenv('PROXY_HEALTH_CHECK_CACHE_TTL', '900'))
+TOKEN_CACHE_SIZE = int(os.getenv("TOKEN_CACHE_SIZE", "50"))
+TOKEN_CACHE_TTL = int(os.getenv("TOKEN_CACHE_TTL", "870"))
 
-@cached(cache=TTLCache(maxsize=2, ttl=PROXY_HEALTH_CHECK_CACHE_TIME))
+@cached(cache=TTLCache(maxsize=2, ttl=PROXY_HEALTH_CHECK_CACHE_TTL))
 def validate_endpoint(endpoint: str) -> bool:
     try:
         response = requests.options(endpoint, timeout=2)
@@ -45,7 +47,7 @@ def _get_org_id_key(x_jwt_assertion: str):
     aud = payload.get("aud")
     return aud[0]
 
-@cached(cache=TTLCache(maxsize=50, ttl=870), key=_get_org_id_key)
+@cached(cache=TTLCache(maxsize=TOKEN_CACHE_SIZE, ttl=TOKEN_CACHE_TTL), key=_get_org_id_key)
 def exchange_assertion_for_api_key(x_jwt_assertion: str):
     headers = {
         "Content-Type": "application/x-www-form-urlencoded"
