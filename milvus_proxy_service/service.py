@@ -1,18 +1,16 @@
 import logging
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from typing import Dict, Any, Optional, List, Union
+from enum import Enum
 from pymilvus import DataType, MilvusClient
 from http import HTTPStatus
 import os
 from pydantic import BaseModel
 
-from milvus_proxy_service.log_filters import EndpointFilter
-from milvus_proxy_service.utils import get_field_values, authenticate_org
-import milvus_proxy_service.constants as const
-
-api_key = os.getenv(const.MILVUS_API_KEY)
-url = os.getenv(const.MILVUS_URL)
+from log_filters import EndpointFilter
+from utils import get_field_values, authenticate_org
+import constants as const
 
 # A proxy service to create a collection using flask and milvus
 app = FastAPI()
@@ -27,26 +25,51 @@ logging.getLogger("uvicorn.access").addFilter(EndpointFilter(const.EXCLUDED_ENDP
 
 X_JWT_ASSERTION = 'x-jwt-assertion'
 
+class ProductOrigin(str, Enum):
+    CHOREO = "CHOREO"
+    DEVANT = "DEVANT"
+
+
+def get_milvus_client(product_origin: str) -> MilvusClient:
+    if product_origin == ProductOrigin.CHOREO:
+        url = os.getenv(const.CHOREO_MILVUS_URL)
+        api_key = os.getenv(const.CHOREO_MILVUS_API_KEY)
+    elif product_origin == ProductOrigin.DEVANT:
+        url = os.getenv(const.DEVANT_MILVUS_URL)
+        api_key = os.getenv(const.DEVANT_MILVUS_API_KEY)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown product_origin: {product_origin}")
+
+    if not url or not api_key:
+        raise HTTPException(status_code=500,
+                            detail=f"Milvus credentials not configured for product: {product_origin}")
+
+    return MilvusClient(uri=url, token=api_key)
+
 
 class FilterReqBody(BaseModel):
     collection_name: str
     filter_query: str
     output_fields: list
+    product_origin: str
 
 
 class DeleteReqBody(BaseModel):
     collection_name: str
     id: list
+    product_origin: str
 
 
 class UpsertReqBody(BaseModel):
     collection_name: str
     data: Union[dict, list]
+    product_origin: str
 
 
 class CreateColReqBody(BaseModel):
     collection_name: str
     schema_fields: list
+    product_origin: str
 
 
 class SearchReqBody(BaseModel):
@@ -57,6 +80,7 @@ class SearchReqBody(BaseModel):
     timeout: int
     anns_field: Optional[str]
     limit: int
+    product_origin: str
 
 
 class DocSearchReqBody(BaseModel):
@@ -66,6 +90,7 @@ class DocSearchReqBody(BaseModel):
     timeout: int
     anns_field: Optional[str]
     limit: int
+    product_origin: str
 
 
 @app.post('/search')
@@ -107,7 +132,7 @@ def search(request: Request, response: Response, request_body: SearchReqBody):
     collection_name = request_body.collection_name
 
     # Create a Milvus client
-    mc = MilvusClient(uri=url, token=api_key)
+    mc = get_milvus_client(request_body.product_origin)
 
     # Check if the collection exists
     if not mc.has_collection(collection_name):
@@ -125,7 +150,7 @@ def search(request: Request, response: Response, request_body: SearchReqBody):
         timeout=timeout
     )
 
-    return results
+    return [[{"id": hit.id, "distance": hit.distance, "entity": hit.entity} for hit in result] for result in results]
 
 
 @app.post('/doc_search')
@@ -140,7 +165,7 @@ def doc_search(request: Request, response: Response, request_body: DocSearchReqB
     collection_name = request_body.collection_name
 
     # Create a Milvus client
-    mc = MilvusClient(uri=url, token=api_key)
+    mc = get_milvus_client(request_body.product_origin)
 
     # Check if the collection exists
     if not mc.has_collection(collection_name):
@@ -157,12 +182,12 @@ def doc_search(request: Request, response: Response, request_body: DocSearchReqB
         timeout=timeout
     )
 
-    return results
+    return [[{"id": hit.id, "distance": hit.distance, "entity": hit.entity} for hit in result] for result in results]
 
 
 @app.post('/create_collection')
 def create_collection(request: Request, request_body: CreateColReqBody):
-    mc = MilvusClient(uri=url, token=api_key)
+    mc = get_milvus_client(request_body.product_origin)
     collection_name = request_body.collection_name
     has = mc.has_collection(collection_name)
     if has:
@@ -214,20 +239,20 @@ def create_collection(request: Request, request_body: CreateColReqBody):
 
 @app.post('/upsert_vector')
 def upsert_vector(request: Request, request_body: UpsertReqBody):
-    mc = MilvusClient(uri=url, token=api_key)
+    mc = get_milvus_client(request_body.product_origin)
     collection_name = request_body.collection_name
     if not mc.has_collection(collection_name):
         return {"message": f"Collection {collection_name} doesn't exist, create collection first using "
                            f"/create_collection endpoint."}
 
-    response = mc.upsert(collection_name=collection_name, data=request_body.data)
+    mc.upsert(collection_name=collection_name, data=request_body.data)
 
-    return {"message": response}
+    return {"message": "Upsert successful"}
 
 
 @app.get('/filter_data')
 async def filter_data(request: Request, request_body: FilterReqBody):
-    mc = MilvusClient(uri=url, token=api_key)
+    mc = get_milvus_client(request_body.product_origin)
     collection_name = request_body.collection_name
     if not mc.has_collection(collection_name):
         return {"message": f"Collection {collection_name} doesn't exist"}
@@ -246,22 +271,22 @@ async def filter_data(request: Request, request_body: FilterReqBody):
 
 @app.delete('/delete_vectors')
 async def delete_vectors(request_body: DeleteReqBody):
-    mc = MilvusClient(uri=url, token=api_key)
+    mc = get_milvus_client(request_body.product_origin)
     collection_name = request_body.collection_name
     if not mc.has_collection(collection_name):
         return {"message": f"Collection {collection_name} doesn't exist"}
 
-    response = mc.delete(
+    mc.delete(
         collection_name=collection_name,
         ids=request_body.id
     )
 
-    return {"message": response}
+    return {"message": "Delete successful"}
 
 
 @app.get('/has_collection')
-def has_collection(collection_name: str):
-    mc = MilvusClient(uri=url, token=api_key)
+def has_collection(collection_name: str, product_origin: str):
+    mc = get_milvus_client(product_origin)
     exists = mc.has_collection(collection_name)
     return {
         "collection_exists": exists,
