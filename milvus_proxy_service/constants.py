@@ -10,8 +10,10 @@
   entered into with WSO2 governing the purchase of this software and any
 """
 
-MILVUS_API_KEY = "MILVERSE_API_KEY"
-MILVUS_URL = "MILVERSE_URL"
+CHOREO_MILVUS_URL = "CHOREO_MILVUS_URL"
+CHOREO_MILVUS_API_KEY = "CHOREO_MILVUS_API_KEY"
+DEVANT_MILVUS_URL = "DEVANT_MILVUS_URL"
+DEVANT_MILVUS_API_KEY = "DEVANT_MILVUS_API_KEY"
 
 # This list is added to exclude the info level http logs from FastAPI
 EXCLUDED_ENDPOINTS = ["/search", "/doc_search", "/create_collection", "/upsert_vector", "/filter_data",
