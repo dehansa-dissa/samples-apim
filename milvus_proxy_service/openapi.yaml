@@ -146,6 +146,12 @@ paths:
           schema:
             type: string
             title: Collection Name
+        - name: product_origin
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Product Origin
       responses:
         '200':
           description: Successful Response
@@ -185,10 +191,14 @@ components:
           items: {}
           type: array
           title: Schema Fields
+        product_origin:
+          type: string
+          title: Product Origin
       type: object
       required:
         - collection_name
         - schema_fields
+        - product_origin
       title: CreateColReqBody
     DeleteReqBody:
       properties:
@@ -199,10 +209,14 @@ components:
           items: {}
           type: array
           title: Id
+        product_origin:
+          type: string
+          title: Product Origin
       type: object
       required:
         - collection_name
         - id
+        - product_origin
       title: DeleteReqBody
     DocSearchReqBody:
       properties:
@@ -228,6 +242,9 @@ components:
         limit:
           type: integer
           title: Limit
+        product_origin:
+          type: string
+          title: Product Origin
       type: object
       required:
         - data
@@ -236,6 +253,7 @@ components:
         - timeout
         - anns_field
         - limit
+        - product_origin
       title: DocSearchReqBody
     FilterReqBody:
       properties:
@@ -249,11 +267,15 @@ components:
           items: {}
           type: array
           title: Output Fields
+        product_origin:
+          type: string
+          title: Product Origin
       type: object
       required:
         - collection_name
         - filter_query
         - output_fields
+        - product_origin
       title: FilterReqBody
     HTTPValidationError:
       properties:
@@ -291,6 +313,9 @@ components:
         limit:
           type: integer
           title: Limit
+        product_origin:
+          type: string
+          title: Product Origin
       type: object
       required:
         - data
@@ -300,6 +325,7 @@ components:
         - timeout
         - anns_field
         - limit
+        - product_origin
       title: SearchReqBody
     UpsertReqBody:
       properties:
@@ -307,12 +333,18 @@ components:
           type: string
           title: Collection Name
         data:
-          type: object
+          anyOf:
+            - type: object
+            - type: array
           title: Data
+        product_origin:
+          type: string
+          title: Product Origin
       type: object
       required:
         - collection_name
         - data
+        - product_origin
       title: UpsertReqBody
     ValidationError:
       properties:
