@@ -30,7 +30,7 @@ class ProductOrigin(str, Enum):
     DEVANT = "DEVANT"
 
 
-def get_milvus_client(product_origin: str) -> MilvusClient:
+def get_milvus_client(product_origin: ProductOrigin) -> MilvusClient:
     if product_origin == ProductOrigin.CHOREO:
         url = os.getenv(const.CHOREO_MILVUS_URL)
         api_key = os.getenv(const.CHOREO_MILVUS_API_KEY)
@@ -51,25 +51,25 @@ class FilterReqBody(BaseModel):
     collection_name: str
     filter_query: str
     output_fields: list
-    product_origin: str
+    product_origin: ProductOrigin = ProductOrigin.CHOREO
 
 
 class DeleteReqBody(BaseModel):
     collection_name: str
     id: list
-    product_origin: str
+    product_origin: ProductOrigin = ProductOrigin.CHOREO
 
 
 class UpsertReqBody(BaseModel):
     collection_name: str
     data: Union[dict, list]
-    product_origin: str
+    product_origin: ProductOrigin = ProductOrigin.CHOREO
 
 
 class CreateColReqBody(BaseModel):
     collection_name: str
     schema_fields: list
-    product_origin: str
+    product_origin: ProductOrigin = ProductOrigin.CHOREO
 
 
 class SearchReqBody(BaseModel):
@@ -80,7 +80,7 @@ class SearchReqBody(BaseModel):
     timeout: int
     anns_field: Optional[str]
     limit: int
-    product_origin: str
+    product_origin: ProductOrigin = ProductOrigin.CHOREO
 
 
 class DocSearchReqBody(BaseModel):
@@ -90,7 +90,7 @@ class DocSearchReqBody(BaseModel):
     timeout: int
     anns_field: Optional[str]
     limit: int
-    product_origin: str
+    product_origin: ProductOrigin = ProductOrigin.CHOREO
 
 
 @app.post('/search')
@@ -150,7 +150,7 @@ def search(request: Request, response: Response, request_body: SearchReqBody):
         timeout=timeout
     )
 
-    return [[{"id": hit.id, "distance": hit.distance, "entity": hit.entity} for hit in result] for result in results]
+    return results
 
 
 @app.post('/doc_search')
@@ -182,7 +182,7 @@ def doc_search(request: Request, response: Response, request_body: DocSearchReqB
         timeout=timeout
     )
 
-    return [[{"id": hit.id, "distance": hit.distance, "entity": hit.entity} for hit in result] for result in results]
+    return results
 
 
 @app.post('/create_collection')
@@ -245,9 +245,9 @@ def upsert_vector(request: Request, request_body: UpsertReqBody):
         return {"message": f"Collection {collection_name} doesn't exist, create collection first using "
                            f"/create_collection endpoint."}
 
-    mc.upsert(collection_name=collection_name, data=request_body.data)
+    response = mc.upsert(collection_name=collection_name, data=request_body.data)
 
-    return {"message": "Upsert successful"}
+    return {"message": response}
 
 
 @app.get('/filter_data')
@@ -276,16 +276,16 @@ async def delete_vectors(request_body: DeleteReqBody):
     if not mc.has_collection(collection_name):
         return {"message": f"Collection {collection_name} doesn't exist"}
 
-    mc.delete(
+    response = mc.delete(
         collection_name=collection_name,
         ids=request_body.id
     )
 
-    return {"message": "Delete successful"}
+    return {"message": response}
 
 
 @app.get('/has_collection')
-def has_collection(collection_name: str, product_origin: str):
+def has_collection(collection_name: str, product_origin: ProductOrigin = ProductOrigin.CHOREO):
     mc = get_milvus_client(product_origin)
     exists = mc.has_collection(collection_name)
     return {
