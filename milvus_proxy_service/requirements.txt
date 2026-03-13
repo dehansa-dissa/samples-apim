@@ -1,5 +1,4 @@
 fastapi==0.110.0
-langchain-openai~=0.0.8
 uvicorn==0.28.0
 pymilvus==2.3.7
 PyJWT==2.8.0
