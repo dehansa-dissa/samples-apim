@@ -8,9 +8,9 @@ from http import HTTPStatus
 import os
 from pydantic import BaseModel
 
-from log_filters import EndpointFilter
-from utils import get_field_values, authenticate_org
-import constants as const
+from milvus_proxy_service.log_filters import EndpointFilter
+from milvus_proxy_service.utils import get_field_values, authenticate_org
+import milvus_proxy_service.constants as const
 
 # A proxy service to create a collection using flask and milvus
 app = FastAPI()
