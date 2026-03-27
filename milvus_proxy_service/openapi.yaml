@@ -146,6 +146,13 @@ paths:
           schema:
             type: string
             title: Collection Name
+        - name: product_origin
+          in: query
+          required: false
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ProductOrigin'
+            default: CHOREO
       responses:
         '200':
           description: Successful Response
@@ -176,6 +183,12 @@ paths:
               schema: {}
 components:
   schemas:
+    ProductOrigin:
+      type: string
+      enum:
+        - CHOREO
+        - DEVANT
+      title: Product Origin
     CreateColReqBody:
       properties:
         collection_name:
@@ -185,6 +198,10 @@ components:
           items: {}
           type: array
           title: Schema Fields
+        product_origin:
+          allOf:
+            - $ref: '#/components/schemas/ProductOrigin'
+          default: CHOREO
       type: object
       required:
         - collection_name
@@ -199,6 +216,10 @@ components:
           items: {}
           type: array
           title: Id
+        product_origin:
+          allOf:
+            - $ref: '#/components/schemas/ProductOrigin'
+          default: CHOREO
       type: object
       required:
         - collection_name
@@ -228,6 +249,10 @@ components:
         limit:
           type: integer
           title: Limit
+        product_origin:
+          allOf:
+            - $ref: '#/components/schemas/ProductOrigin'
+          default: CHOREO
       type: object
       required:
         - data
@@ -249,6 +274,10 @@ components:
           items: {}
           type: array
           title: Output Fields
+        product_origin:
+          allOf:
+            - $ref: '#/components/schemas/ProductOrigin'
+          default: CHOREO
       type: object
       required:
         - collection_name
@@ -291,6 +320,10 @@ components:
         limit:
           type: integer
           title: Limit
+        product_origin:
+          allOf:
+            - $ref: '#/components/schemas/ProductOrigin'
+          default: CHOREO
       type: object
       required:
         - data
@@ -307,8 +340,14 @@ components:
           type: string
           title: Collection Name
         data:
-          type: object
+          anyOf:
+            - type: object
+            - type: array
           title: Data
+        product_origin:
+          allOf:
+            - $ref: '#/components/schemas/ProductOrigin'
+          default: CHOREO
       type: object
       required:
         - collection_name
