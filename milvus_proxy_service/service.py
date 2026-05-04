@@ -30,7 +30,13 @@ class ProductOrigin(str, Enum):
     DEVANT = "DEVANT"
 
 
+_milvus_clients: Dict[ProductOrigin, MilvusClient] = {}
+
+
 def get_milvus_client(product_origin: ProductOrigin) -> MilvusClient:
+    if product_origin in _milvus_clients:
+        return _milvus_clients[product_origin]
+
     if product_origin == ProductOrigin.CHOREO:
         url = os.getenv(const.CHOREO_MILVUS_URL)
         api_key = os.getenv(const.CHOREO_MILVUS_API_KEY)
@@ -44,7 +50,9 @@ def get_milvus_client(product_origin: ProductOrigin) -> MilvusClient:
         raise HTTPException(status_code=500,
                             detail=f"Milvus credentials not configured for product: {product_origin}")
 
-    return MilvusClient(uri=url, token=api_key)
+    client = MilvusClient(uri=url, token=api_key)
+    _milvus_clients[product_origin] = client
+    return client
 
 
 class FilterReqBody(BaseModel):
