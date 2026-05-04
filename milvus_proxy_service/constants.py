@@ -10,6 +10,7 @@
   entered into with WSO2 governing the purchase of this software and any
 """
 
+LOG_LEVEL = "LOG_LEVEL"
 CHOREO_MILVUS_URL = "MILVERSE_URL"
 CHOREO_MILVUS_API_KEY = "MILVERSE_API_KEY"
 DEVANT_MILVUS_URL = "DEVANT_MILVUS_URL"
