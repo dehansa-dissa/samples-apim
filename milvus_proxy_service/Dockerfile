@@ -8,8 +8,7 @@
 #  this license, please see the license as well as any agreement you’ve
 #  entered into with WSO2 governing the purchase of this software and any
 
-# FROM choreocontrolplane.azurecr.io/ubuntu:20.04 AS builder
-FROM ubuntu:20.04 AS builder
+FROM choreoanonymouspullable.azurecr.io/ubuntu:20.04 AS builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3.9=3.9.5-3ubuntu0~20.04.1 \
