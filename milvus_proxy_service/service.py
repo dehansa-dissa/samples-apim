@@ -1,11 +1,11 @@
 import logging
+import os
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from typing import Dict, Any, Optional, List, Union
 from enum import Enum
 from pymilvus import DataType, MilvusClient
 from http import HTTPStatus
-import os
 from pydantic import BaseModel
 
 from milvus_proxy_service.log_filters import EndpointFilter
@@ -15,13 +15,32 @@ import milvus_proxy_service.constants as const
 # A proxy service to create a collection using flask and milvus
 app = FastAPI()
 
-# Setting log levels
-log_level = os.getenv('LOG_LEVEL', logging.INFO)
-logging.basicConfig(level=log_level)
-for logger_name in logging.root.manager.loggerDict:
-    logging.getLogger(logger_name).setLevel(log_level)
+log_level = getattr(logging, os.environ.get(const.LOG_LEVEL, "INFO").upper(), logging.INFO)
+_pkg_logger = logging.getLogger(__name__.split(".")[0])
+_pkg_logger.setLevel(log_level)
+if not _pkg_logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s'))
+    _pkg_logger.addHandler(_handler)
 
 logging.getLogger("uvicorn.access").addFilter(EndpointFilter(const.EXCLUDED_ENDPOINTS))
+
+logger = logging.getLogger(__name__)
+
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Milvus proxy service starting. LOG_LEVEL=%s", os.environ.get(const.LOG_LEVEL, "INFO"))
+
+    for origin in ProductOrigin:
+        try:
+            logger.info("Initializing Milvus client for %s", origin.value)
+            get_milvus_client(origin)
+            logger.info("Successfully initialized Milvus client for %s", origin.value)
+        except Exception as e:
+            logger.error("Failed to initialize Milvus client for %s: %s", origin.value, e)
+
+    logger.info("Milvus proxy service startup complete.")
 
 X_JWT_ASSERTION = 'x-jwt-assertion'
 
@@ -30,7 +49,16 @@ class ProductOrigin(str, Enum):
     DEVANT = "DEVANT"
 
 
+_milvus_clients: Dict[ProductOrigin, MilvusClient] = {}
+
+
 def get_milvus_client(product_origin: ProductOrigin) -> MilvusClient:
+    if product_origin in _milvus_clients:
+        logger.info("Reusing existing Milvus client for product_origin=%s", product_origin)
+        return _milvus_clients[product_origin]
+
+    logger.info("Creating new Milvus client for product_origin=%s", product_origin)
+
     if product_origin == ProductOrigin.CHOREO:
         url = os.getenv(const.CHOREO_MILVUS_URL)
         api_key = os.getenv(const.CHOREO_MILVUS_API_KEY)
@@ -38,13 +66,19 @@ def get_milvus_client(product_origin: ProductOrigin) -> MilvusClient:
         url = os.getenv(const.DEVANT_MILVUS_URL)
         api_key = os.getenv(const.DEVANT_MILVUS_API_KEY)
     else:
+        logger.error("Unknown product_origin=%s", product_origin)
         raise HTTPException(status_code=400, detail=f"Unknown product_origin: {product_origin}")
 
     if not url or not api_key:
+        logger.error("Milvus credentials not configured for product_origin=%s", product_origin)
         raise HTTPException(status_code=500,
                             detail=f"Milvus credentials not configured for product: {product_origin}")
 
-    return MilvusClient(uri=url, token=api_key)
+    logger.info("Connecting to Milvus at url=%s for product_origin=%s", url, product_origin)
+    client = MilvusClient(uri=url, token=api_key)
+    _milvus_clients[product_origin] = client
+    logger.info("Milvus client created and cached for product_origin=%s", product_origin)
+    return client
 
 
 class FilterReqBody(BaseModel):
