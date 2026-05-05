@@ -8,8 +8,7 @@
 #  this license, please see the license as well as any agreement you’ve
 #  entered into with WSO2 governing the purchase of this software and any
 
-# FROM choreocontrolplane.azurecr.io/ubuntu:20.04 AS builder
-FROM ubuntu:20.04 AS builder
+FROM choreocontrolplane.azurecr.io/ubuntu:20.04 AS builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3.9=3.9.5-3ubuntu0~20.04.1 \
@@ -32,8 +31,7 @@ RUN pip3 install --upgrade pip && \
     # already installed. Hence the reason to execute a separate pip3
     # install for wheel before installing requirements
 
-# FROM choreocontrolplane.azurecr.io/ubuntu:20.04
-FROM ubuntu:20.04
+FROM choreocontrolplane.azurecr.io/ubuntu:20.04
 
 ARG GROUP=ai
 ARG USER=python-ai
