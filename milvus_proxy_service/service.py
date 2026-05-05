@@ -4,7 +4,7 @@ import os
 from fastapi import FastAPI, HTTPException, Request, Response
 from typing import Dict, Any, Optional, List, Union
 from enum import Enum
-from pymilvus import DataType, MilvusClient
+from pymilvus import DataType, MilvusClient, MilvusException
 from http import HTTPStatus
 from pydantic import BaseModel
 
@@ -37,10 +37,10 @@ async def startup_event():
             logger.info("Initializing Milvus client for %s", origin.value)
             get_milvus_client(origin)
             logger.info("Successfully initialized Milvus client for %s", origin.value)
+        except HTTPException:
+            pass  # already logged in get_milvus_client
         except Exception as e:
             logger.error("Failed to initialize Milvus client for %s: %s", origin.value, e)
-
-    logger.info("Milvus proxy service startup complete.")
 
 X_JWT_ASSERTION = 'x-jwt-assertion'
 
@@ -49,13 +49,17 @@ class ProductOrigin(str, Enum):
     DEVANT = "DEVANT"
 
 
-_milvus_clients: Dict[ProductOrigin, MilvusClient] = {}
+_milvus_clients: Dict[ProductOrigin, Optional[MilvusClient]] = {}
 
 
 def get_milvus_client(product_origin: ProductOrigin) -> MilvusClient:
     if product_origin in _milvus_clients:
+        cached = _milvus_clients[product_origin]
+        if cached is None:
+            logger.warning("Milvus client unavailable for product_origin=%s (connection failed at startup)", product_origin)
+            raise HTTPException(status_code=503, detail=f"Milvus unavailable for product: {product_origin}")
         logger.info("Reusing existing Milvus client for product_origin=%s", product_origin)
-        return _milvus_clients[product_origin]
+        return cached
 
     logger.info("Creating new Milvus client for product_origin=%s", product_origin)
 
@@ -75,7 +79,12 @@ def get_milvus_client(product_origin: ProductOrigin) -> MilvusClient:
                             detail=f"Milvus credentials not configured for product: {product_origin}")
 
     logger.info("Connecting to Milvus at url=%s for product_origin=%s", url, product_origin)
-    client = MilvusClient(uri=url, token=api_key)
+    try:
+        client = MilvusClient(uri=url, token=api_key)
+    except MilvusException as e:
+        logger.error("Failed to connect to Milvus for product_origin=%s: %s", product_origin, e)
+        _milvus_clients[product_origin] = None
+        raise HTTPException(status_code=503, detail=f"Milvus unavailable for product: {product_origin}") from e
     _milvus_clients[product_origin] = client
     logger.info("Milvus client created and cached for product_origin=%s", product_origin)
     return client
