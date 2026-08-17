@@ -1,0 +1,308 @@
+openapi: 3.0.0
+info:
+  title: FastAPI
+  version: 0.1.0
+paths:
+  /add_vector/{uuid}:
+    post:
+      summary: Add Vector
+      operationId: add_vector_add_vector__uuid__post
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Uuid
+        - name: orgID
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Orgid
+        - name: keyID
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+            title: Keyid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Req
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /add_bulk_vector_choreo:
+    post:
+      summary: Add Bulk Vector Choreo
+      operationId: add_bulk_vector_choreo_add_bulk_vector_choreo_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Request
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /remove_vector/{uuid}:
+    delete:
+      summary: Remove Vector
+      operationId: remove_vector_remove_vector__uuid__delete
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Uuid
+        - name: keyID
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+            title: Keyid
+        - name: orgID
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+            title: Orgid
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bulk_add_vector:
+    post:
+      summary: Bulk Add Vector
+      operationId: bulk_add_vector_bulk_add_vector_post
+      parameters:
+        - name: orgID
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Orgid
+        - name: keyID
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Keyid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Req
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api_count:
+    get:
+      summary: Get Api Count
+      operationId: get_api_count_api_count_get
+      parameters:
+        - name: orgID
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Orgid
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bulk_remove_vector:
+    delete:
+      summary: Bulk Remove Vector
+      operationId: bulk_remove_vector_bulk_remove_vector_delete
+      parameters:
+        - name: orgID
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Orgid
+        - name: keyID
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+            default: ''
+            title: Keyid
+        - name: tenantDomain
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+            default: ''
+            title: Tenantdomain
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    /bulk_remove_all_tenant:
+      delete:
+        summary: Bulk Remove All Tenant
+        operationId: bulk_remove_all_tenant_bulk_remove_all_tenant_delete
+        parameters:
+          - name: orgID
+            in: query
+            required: true
+            schema:
+              type: string
+              title: Orgid
+          - name: keyID
+            in: query
+            required: false
+            schema:
+              anyOf:
+                - type: string
+              default: ''
+              title: Keyid
+        responses:
+          '200':
+            description: Successful Response
+            content:
+              application/json:
+                schema: {}
+          '422':
+            description: Validation Error
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/HTTPValidationError'
+  /api_count_by_key:
+    get:
+      summary: Get Api Count By Key
+      operationId: get_api_count_by_key_get_api_count_by_key_get
+      parameters:
+        - name: keyID
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Keyid
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    title: Count
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /health:
+    get:
+      summary: Health
+      description: Check the api is running
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
