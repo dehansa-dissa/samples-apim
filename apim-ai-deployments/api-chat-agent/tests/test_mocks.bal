@@ -691,7 +691,10 @@ isolated function mockUpdateTestCaseCache(string testCaseId, CacheRecord value) 
             iteration: value.iteration,
             command: value.command,
             apiSpec: value.apiSpec.cloneReadOnly(),
-            executionHistory: value.executionHistory.cloneReadOnly()
+            executionHistory: value.executionHistory.cloneReadOnly(),
+            // The /chat (client-invoked) flow persists the agent's previous LLM
+            // response so the next call can rebuild the conversation. Preserve it.
+            previousLlmResponse: value?.previousLlmResponse.cloneReadOnly()
         };
     }
 
@@ -702,22 +705,34 @@ isolated function mockUpdateTestCaseCache(string testCaseId, CacheRecord value) 
     functionName: "retrieveCachedTestCase"
 }
 isolated function mockRetrieveCachedTestCase(string testCaseId) returns CacheRecord|error {
-    CacheRecord cachedRecord;
+    int iteration;
+    string command;
+    agent:HttpApiSpecification apiSpec;
+    readonly & TestExecutionStep[] executionHistory;
+    json previousLlmResponse;
 
+    // Only readonly (isolated) values may be transferred out of the lock.
     lock {
-        int retrievedIteration = mockCachedRecord.iteration;
-        string retrievedCommand = mockCachedRecord.command;
-        agent:HttpApiSpecification retrievedApiSpec = mockCachedRecord.apiSpec;
-        TestExecutionStep[] retrievedExecutionHistory = mockCachedRecord.executionHistory;
-
-        cachedRecord = {
-            iteration: retrievedIteration,
-            command: retrievedCommand,
-            apiSpec: retrievedApiSpec.cloneReadOnly(),
-            executionHistory: retrievedExecutionHistory.cloneReadOnly()
-        };
+        iteration = mockCachedRecord.iteration;
+        command = mockCachedRecord.command;
+        apiSpec = mockCachedRecord.apiSpec.cloneReadOnly();
+        executionHistory = mockCachedRecord.executionHistory.cloneReadOnly();
+        previousLlmResponse = mockCachedRecord?.previousLlmResponse.cloneReadOnly();
     }
-    return cachedRecord;
+
+    // Outside the lock, spread into a fresh MUTABLE array so the /chat resource can
+    // push onto it, mirroring production where the cached record deserializes as a
+    // mutable value. (`.clone()` of a readonly value returns the same readonly value,
+    // so a new list literal is used to guarantee a mutable container.)
+    TestExecutionStep[] mutableExecutionHistory = [...executionHistory];
+
+    return {
+        iteration,
+        command,
+        apiSpec,
+        executionHistory: mutableExecutionHistory,
+        previousLlmResponse
+    };
 }
 
 //mock function for the clearTestCaseCache function.

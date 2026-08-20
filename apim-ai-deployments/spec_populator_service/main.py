@@ -1,28 +1,29 @@
 import logging
 
-from fastapi import FastAPI, HTTPException
-from typing import Dict, Any, Optional
+from fastapi import FastAPI, HTTPException, Query
+from typing import Dict, Any, Optional, List
+from enum import Enum
 import asyncio
 from functools import partial
 import os
 from log_filters import EndpointFilter
 
+from pydantic import BaseModel, ConfigDict, model_validator
 from pymilvus import MilvusClient
 
-from milvus import upsert_vector_for_onprem, upsert_vector_for_choreo, delete_vector, \
-    upsert_bulk_vector_for_onprem, get_vector_count_for_org, get_vector_count_for_key, delete_bulk_vector_for_onprem, delete_vectors_for_all_tenants_onprem, delete_vector_for_choreo, \
-    upsert_bulk_vector_for_choreo, delete_org_wise_vectors_for_choreo
+from milvus import upsert_vector_for_onprem, delete_vector, \
+    upsert_bulk_vector_for_onprem, get_vector_count_for_key, delete_bulk_vector_for_onprem
 from utils import get_emb_model, pre_process_openapi, pre_process_graphql_sdl, \
-    pre_process_asyncapi_def, API, ChoreoAPI
+    pre_process_asyncapi_def, API
 
 import constants as const
 
 embed = get_emb_model()
-source = os.getenv(const.SOURCE_PLATFORM, const.APIM)
 api_key = os.getenv(const.MILVERSE_API_KEY)
 url = os.getenv(const.MILVERSE_URL)
 
-excluded_org_list = os.getenv(const.EXCLUDED_ORG_LIST, "").split(",")
+# Maximum number of APIs a single keyID may index, reported by GET /api_count_by_key.
+api_index_limit = int(os.getenv(const.API_INDEX_LIMIT, "100"))
 
 app = FastAPI()
 
@@ -33,6 +34,76 @@ for logger_name in logging.root.manager.loggerDict:
     logging.getLogger(logger_name).setLevel(log_level)
 
 logging.getLogger("uvicorn.access").addFilter(EndpointFilter(const.EXCLUDED_ENDPOINTS))
+
+
+class ApiType(str, Enum):
+    HTTP = "HTTP"
+    REST = "REST"
+    SOAP = "SOAP"
+    SOAPTOREST = "SOAPTOREST"
+    APIPRODUCT = "APIPRODUCT"
+    GRAPHQL = "GRAPHQL"
+    ASYNC = "ASYNC"
+    WS = "WS"
+    WEBSUB = "WEBSUB"
+    SSE = "SSE"
+    WEBHOOK = "WEBHOOK"
+
+
+# Which definition field each api_type reads. api_type sent without its matching,
+# non-null definition field is a request error (422).
+SPEC_FIELD_BY_TYPE = {
+    ApiType.HTTP: const.API_SPEC,
+    ApiType.REST: const.API_SPEC,
+    ApiType.SOAP: const.API_SPEC,
+    ApiType.SOAPTOREST: const.API_SPEC,
+    ApiType.APIPRODUCT: const.API_SPEC,
+    ApiType.GRAPHQL: "sdl_schema",
+    ApiType.ASYNC: "async_spec",
+    ApiType.WS: "async_spec",
+    ApiType.WEBSUB: "async_spec",
+    ApiType.SSE: "async_spec",
+    ApiType.WEBHOOK: "async_spec",
+}
+
+
+# request input format for a single API record. additionalProperties are allowed
+# because the gateway proxies through any top-level fields API Manager's request
+# property enricher adds; we read only what we need and ignore the rest.
+class ApiRecord(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    uuid: str
+    api_name: str
+    api_type: ApiType
+    version: str
+    # Required key, but frequently null: API Manager copies api.getDescription()
+    # with no null guard. A null description is treated as absent, not rejected.
+    description: Optional[str]
+    tenant_domain: str
+    api_spec: Optional[str] = None
+    sdl_schema: Optional[str] = None
+    async_spec: Optional[str] = None
+    visibility_roles: Optional[str] = None
+    apim_version: Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_selected_definition(self):
+        field = SPEC_FIELD_BY_TYPE[self.api_type]
+        value = getattr(self, field)
+        # Only the definition field selected by api_type may not be null/empty -
+        # there is nothing to embed without it.
+        if value is None or value == "":
+            raise ValueError(
+                f"'{field}' is required and must be non-null for api_type '{self.api_type.value}'"
+            )
+        return self
+
+
+class BulkApiRecords(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    apis: List[ApiRecord]
 
 
 async def get_pre_processed_spec(api_details):
@@ -60,73 +131,24 @@ async def get_pre_processed_spec(api_details):
     return api
 
 
-async def get_pre_processed_choreo_spec(api_details):
-    api_type = api_details[const.API_TYPE]
-    if api_type == const.REST:
-        record = await pre_process_openapi(api_details[const.API_SPEC])
-    else:
-        logging.info(f'Cannot process {api_type} APIs')
-        return
-
-    record[const.APIM_DESCRIPTION] = api_details[const.DESCRIPTION]
-    api = ChoreoAPI(
-        id=api_details['uuid'],
-        # The actual version is used instead of what is in the Spec,
-        # since we know this is the truth, and the spec version can be outdated
-        version=api_details[const.API_VERSION],
-        type=api_details[const.API_TYPE],
-        name=api_details[const.API_NAME],
-        spec=record,
-        api_uuid=api_details[const.API_UUID]
-    )
-
-    return api
-
-
-@app.post("/add_vector/{uuid}")
-async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional[str] = None):
+@app.post("/vectors", status_code=201)
+async def add_vector(req: ApiRecord, keyID: str = Query(..., min_length=1, max_length=64)):
     mc = MilvusClient(uri=url, token=api_key)
     try:
-        # TODO: Handle 400 error if request info not sufficient (eg: no KeyID)
-        if source == const.APIM:
-            api = await get_pre_processed_spec(req)
+        api = await get_pre_processed_spec(req.model_dump())
 
-            loop = asyncio.get_event_loop()
+        loop = asyncio.get_event_loop()
 
-            if "visibility_roles" in req:
-                response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, mc, embed, orgID, keyID, api,
-                                                                    req["tenant_domain"],req["visibility_roles"].split(",")))
-            else:
-                response = await loop.run_in_executor(None, partial(upsert_vector_for_onprem, mc, embed, orgID, keyID, api,
-                                                                req["tenant_domain"]), [''])
+        # Omitted / empty visibility_roles stores an empty role set, making the API
+        # visible to everyone in the tenant.
+        roles = req.visibility_roles.split(",") if req.visibility_roles else ['']
 
-        elif source == const.CHOREO:
-            if orgID in excluded_org_list:
-                logging.info("Organization has opted out of AI features, org-id: " + orgID)
-                return {const.MESSAGE: "Organization has opted out of AI features, org-id: " + orgID}
-
-            # TODO: Implement for APIs other that REST
-            api_type = req[const.API_TYPE]
-            if api_type == const.REST:
-                record = await pre_process_openapi(req[const.API_SPEC])
-            else:
-                message = f'Cannot process {api_type} APIs'
-                logging.info(message)
-                return {const.MESSAGE: message}
-
-            record[const.APIM_DESCRIPTION] = req[const.DESCRIPTION]
-            api = ChoreoAPI(
-                id=uuid,
-                # The actual version is used instead of what is in the Spec,
-                # since we know this is the truth, and the spec version can be outdated
-                version=req[const.API_VERSION],
-                type=req[const.API_TYPE],
-                name=req[const.API_NAME],
-                spec=record,
-                api_uuid=req[const.API_UUID]
-            )
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, partial(upsert_vector_for_choreo, mc, embed, orgID, api))
+        # keyID is the whole of the scoping. org_id is retained internally only for
+        # storage compatibility (never read back), so it is filled from keyID.
+        response = await loop.run_in_executor(
+            None,
+            partial(upsert_vector_for_onprem, mc, embed, keyID, keyID, api, req.tenant_domain, roles)
+        )
 
         return {const.MESSAGE: response}
     except Exception as e:
@@ -136,138 +158,57 @@ async def add_vector(uuid: str, req: Dict[str, Any], orgID: str, keyID: Optional
         mc.close()
 
 
-@app.post("/add_bulk_vector_choreo")
-async def add_bulk_vector_choreo(request: Dict[str, Any]):
-    api_details_list = request["apis"]
-
+@app.post("/vectors/bulk")
+async def bulk_add_vector(req: BulkApiRecords, keyID: str = Query(..., min_length=1, max_length=64)):
     api_list = []
 
-    for api_details in api_details_list:
-        try:
-            api = await get_pre_processed_choreo_spec(api_details)
-            embedding_response = embed.embed_query(str(api.__dict__))
-            payload = {
-                "page_content": str(api.spec),
-                "metadata": {
-                    "id": api.id,
-                    "api_name": api.name,
-                    "api_version": api.version,
-                    "api_type": api.type,
-                    "api_uuid": api.api_uuid
-                },
+    for api_details in req.apis:
+        api = await get_pre_processed_spec(api_details.model_dump())
+
+        embedding_response = embed.embed_query(str(api.__dict__))
+        payload = {
+            "page_content": str(api.spec),
+            "metadata": {
                 "id": api.id,
                 "api_name": api.name,
-                "vector": embedding_response,
-                "api_type": api.type,
-                "org_id": api_details[const.ORG_ID],
-            }
+                "api_version": api.version,
+                "api_type": api.type
+            },
+            "id": keyID + api.id,
+            "vector": embedding_response,
+            "api_type": api.type,
+            "org_id": keyID,
+            "key_id": keyID,
+            "tenant_domain": api_details.tenant_domain,
+            "visibility_roles": ''
+        }
 
-            api_list.append(payload)
-        except Exception as e:
-            logging.error(f"Error processing API: {api_details['uuid']}")
-            logging.error(e)
-            continue
+        if api_details.visibility_roles:
+            payload["visibility_roles"] = api_details.visibility_roles.split(",")
+
+        api_list.append(payload)
+
     mc = MilvusClient(uri=url, token=api_key)
     try:
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(upsert_bulk_vector_for_choreo, mc, api_list))
+        response = await loop.run_in_executor(None, partial(upsert_bulk_vector_for_onprem, mc, api_list))
         return {const.MESSAGE: response}
     except Exception as e:
-        logging.error(f"An error occurred while adding bulk of vectors to choreo: {e}")
+        logging.error(f"An error occurred while adding bulk of vectors: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         mc.close()
 
 
-@app.delete("/remove_vector/{uuid}")
-async def remove_vector(uuid: str, keyID: Optional[str] = None, orgID: Optional[str] = None):
+@app.delete("/vectors")
+async def bulk_remove_vector(keyID: str = Query(..., min_length=1, max_length=64), tenant_domain: str = Query(..., min_length=1)):
     mc = MilvusClient(uri=url, token=api_key)
     try:
         loop = asyncio.get_event_loop()
-        if source == const.APIM:
-            response = await loop.run_in_executor(None, partial(delete_vector, mc, [uuid], keyID))
-        elif source == const.CHOREO:
-            response = await loop.run_in_executor(None, partial(delete_vector_for_choreo, mc, uuid))
-
-        return {const.MESSAGE: response}
-    except Exception as e:
-        logging.error(f"An error occurred while removing a vector: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        mc.close()
-
-
-@app.post("/bulk_add_vector")
-async def bulk_add_vector(req: Dict[str, Any], orgID: str, keyID: str):
-    api_details_list = req["apis"]
-
-    api_list = []
-
-    if source == const.APIM:
-
-        for api_details in api_details_list:
-            api = await get_pre_processed_spec(api_details)
-
-            embedding_response = embed.embed_query(str(api.__dict__))
-            payload = {
-                "page_content": str(api.spec),
-                "metadata": {
-                    "id": api.id,
-                    "api_name": api.name,
-                    "api_version": api.version,
-                    "api_type": api.type
-                },
-                "id": keyID + api.id,
-                "vector": embedding_response,
-                "api_type": api.type,
-                "org_id": orgID,
-                "key_id": keyID,
-                "tenant_domain": api_details["tenant_domain"],
-                "visibility_roles": '' 
-            }
-            
-            if "visibility_roles" in api_details:
-                payload["visibility_roles"] = api_details["visibility_roles"].split(",")
-
-            api_list.append(payload)
-
-        mc = MilvusClient(uri=url, token=api_key)
-        try:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, partial(upsert_bulk_vector_for_onprem, mc, api_list))
-            return {const.MESSAGE: response}
-        except Exception as e:
-            logging.error(f"An error occurred while adding bulk of vectors: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-        finally:
-            mc.close()
-
-
-@app.get("/api_count")
-async def get_api_count(orgID: str):
-    mc = MilvusClient(uri=url, token=api_key)
-    try:
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, partial(get_vector_count_for_org, mc, orgID))
-        logging.info(f"API count for org {orgID}: {response}")
-        return {"count": response}
-    except Exception as e:
-        logging.error(f"An error occurred while getting api count: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        mc.close()
-
-
-@app.delete("/bulk_remove_vector")
-async def bulk_remove_vector(orgID: str, keyID: Optional[str] = None, tenantDomain: Optional[str] = None):
-    mc = MilvusClient(uri=url, token=api_key)
-    try:
-        loop = asyncio.get_event_loop()
-        if source == const.APIM:
-            response = await loop.run_in_executor(None, partial(delete_bulk_vector_for_onprem, mc, orgID, keyID,
-                                                                tenantDomain))
-        elif source == const.CHOREO:
-            response = await loop.run_in_executor(None, partial(delete_org_wise_vectors_for_choreo, mc, orgID))
+        response = await loop.run_in_executor(
+            None,
+            partial(delete_bulk_vector_for_onprem, mc, keyID, keyID, tenant_domain)
+        )
         return {const.MESSAGE: response}
     except Exception as e:
         logging.error(f"An error occurred while removing bulk of vectors: {e}")
@@ -275,21 +216,6 @@ async def bulk_remove_vector(orgID: str, keyID: Optional[str] = None, tenantDoma
     finally:
         mc.close()
 
-@app.delete("/bulk_remove_all_tenant")
-async def bulk_remove_all_tenant(orgID: str, keyID: Optional[str] = None):
-    mc = MilvusClient(uri=url, token=api_key)
-    try:
-        loop = asyncio.get_event_loop()
-        if source == const.APIM:
-            response = await loop.run_in_executor(None, partial(delete_vectors_for_all_tenants_onprem, mc, orgID, keyID))
-        elif source == const.CHOREO:
-            response = await loop.run_in_executor(None, partial(delete_org_wise_vectors_for_choreo, mc, orgID))
-        return {const.MESSAGE: response}
-    except Exception as e:
-        logging.error(f"An error occurred while removing bulk of vectors: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        mc.close()
 
 @app.get("/health")
 def health():
@@ -297,17 +223,32 @@ def health():
     return {"status": "Running"}
 
 
-# New endpoint to fetch count by keyID
-@app.get("/api_count_by_key")
-async def get_api_count_by_key(keyID: str):
+@app.get("/vectors/count")
+async def get_api_count_by_key(keyID: str = Query(..., min_length=1, max_length=64)):
     mc = MilvusClient(uri=url, token=api_key)
     try:
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, partial(get_vector_count_for_key, mc, keyID))
         logging.info(f"API count for keyID {keyID}: {response}")
-        return {"count": response}
+        return {"count": response, "limit": api_index_limit}
     except Exception as e:
         logging.error(f"An error occurred while getting api count by key: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        mc.close()
+
+
+# Declared after /vectors/bulk and /vectors/count: both also match this {uuid}
+# template, and FastAPI resolves routes in declaration order.
+@app.delete("/vectors/{uuid}")
+async def remove_vector(uuid: str, keyID: str = Query(..., min_length=1, max_length=64)):
+    mc = MilvusClient(uri=url, token=api_key)
+    try:
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, partial(delete_vector, mc, [uuid], keyID))
+        return {const.MESSAGE: response}
+    except Exception as e:
+        logging.error(f"An error occurred while removing a vector: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         mc.close()

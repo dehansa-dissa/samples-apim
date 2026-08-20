@@ -1,169 +1,277 @@
-openapi: 3.0.0
+openapi: 3.0.3
+
 info:
-  title: API Design Assistant
-  description: Service for creating API specifications based on natural language descriptions
+  title: WSO2 APIM API Design Assistant
+  description: |
+    Creates API specifications from natural-language descriptions, and holds the
+    conversation that refines them.
+
+    ## Where this sits
+
+    A backend service deployed behind an API gateway. WSO2 API Manager calls it
+    through that gateway and proxied, so what API Manager builds is what arrives.
+
+    ## Access control
+
+    No service-level authentication. Access is controlled by the Frontier Gateway in
+    front of the deployment, so `security: []` below is deliberate.
+
+    ## Session state
+
+    `sessionId` keys everything the assistant remembers in Redis: the chat history,
+    the current specification, its resource paths, and the detected API type. Reusing
+    a `sessionId` continues that conversation; a fresh one starts over. Sessions are
+    never created explicitly — the first `/chat` call for an unseen id creates it.
+
+    ## How `/chat` decides what to do
+
+    Each message is classified before anything is generated:
+
+    1. Not an API-related prompt — a greeting or nonsense — gets a conversational
+       reply and nothing else changes.
+    2. An API prompt asking for a specification generates one, replacing whatever the
+       session held.
+    3. Any other API prompt is answered as a general question about the design so far.
+
+    Only the second path sets `state` to `COMPLETE` and persists a specification.
+
+    ## Status codes
+
+    **`POST /chat` must answer `201`.** API Manager reads the reply with
+    `APIUtil.invokeAIService`, which treats only `SC_CREATED` as success — a `200` is
+    read as a failure regardless of what the body says.
+
+    ## The response shape is strict
+
+    API Manager binds the `201` body to `DesignAssistantChatResponseDTO`, which
+    declares only the fields below, carries no `@JsonIgnoreProperties`, and is read
+    with a default `ObjectMapper`. **Any extra top-level field aborts deserialisation**
+    and surfaces to the user as a `500`. In particular, do not return a `usage` object.
   version: 1.0.0
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
 servers:
-  - url: http://127.0.0.1:8000
-    description: Local development server
+  - url: http://{host}:{port}
+    description: Internal service endpoint
+    variables:
+      host:
+        default: localhost
+      port:
+        default: '8000'
+
+tags:
+  - name: Design Assistant
+    description: Specification generation and refinement.
+
+security: []
+
 paths:
   /chat:
     post:
-      summary: Generate API specifications based on user input
-      description: Generates API specifications based on user input and tracks session state.
+      tags:
+        - Design Assistant
+      summary: Generate or refine an API specification from natural language
+      description: |
+        Interprets the message in the context of the session and replies with the
+        assistant's message plus, when one exists, the current specification.
+
+        `typeOfApi`, `code` and `paths` are absent when the session has never
+        produced a specification and this message did not ask for one.
       operationId: designAssistantChat
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                text:
-                  type: string
-                  description: Natural language description of the API to be created
-                  example: "create an API for a banking transaction."
-                sessionId:
-                  type: string
-                  description: Unique identifier for the user session
-                  example: "1234567890"
+              $ref: '#/components/schemas/ChatInput'
       responses:
-        "200":
-          description: Successful response with API specification.
+        '201':
+          description: Assistant response.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  backendResponse:
-                    type: string
-                    description: List of suggestions for API improvements
-                  isSuggestions:
-                    type: boolean
-                    description: Indicates if there are suggestions available
-                  typeOfApi:
-                    type: string
-                    description: Detected type of API to be created
-                  code:
-                    type: string
-                    description: Generated API specification
-                  paths:
-                    type: array
-                    description: API endpoint paths and operations
-                    items:
-                      type: string
-                  apiTypeSuggestion:
-                    type: string
-                    description: Suggested API type based on user input
-                  missingValues:
-                    type: string
-                    description: Prompts for any required missing information
-                  state:
-                    type: string
-                    description: Current state of the API generation process
-        "400":
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Invalid request. The 'text' field is missing or incorrectly named."
-        "415":
-          description: Unsupported Media Type (Invalid JSON format)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Request body must be in JSON format."
-  /generate-api-payload:
-    post:
-      summary: Generate API Payload
-      description: Generate an API payload using the stored specification.
-      operationId: designAssistantApiPayloadGen
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                sessionId:
-                  type: string
-                  description: Session ID to retrieve the generated API specification
-                  example: "1234567890"
-      responses:
-        "200":
-          description: API payload successfully created.
-          content:
-            application/json:
-              schema:
-                type: string
-                description: Generated payload for API
-        "400":
-          description: Invalid request or session ID
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    description: Error message
-    /regenerate-spec:
-      post:
-        summary: Regenerate API Specification
-        description: Regenerates the API specification based on updated user input and session state.
-        operationId: designAssistantRegenerateSpec
-        requestBody:
-          required: true # have to check
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  text:
-                    type: string
-                    description: Natural language description of the API to be created
-                    example: "create an API for a banking transaction."
-                  sessionId:
-                    type: string
-                    description: Unique identifier for the user session
-                    example: "1234567890"
-        responses:
-          "200":
-            description: Successfully regenerated API specification.
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    regeneratedSpec:
-                      type: string
-                      description: The regenerated API specification
-                    usage:
-                      type: object
-                      properties:
-                        prompt_tokens:
-                          type: integer
-                          description: Number of tokens used in the prompt
-                        completion_tokens:
-                          type: integer
-                          description: Number of tokens used in the completion
-                        total_tokens:
-                          type: integer
-                          description: Total number of tokens used
-          "400":
-            description: Invalid request or session ID
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    error:
-                      type: string
-                      description: Error message
+                $ref: '#/components/schemas/DesignAssistantChatResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  responses:
+    BadRequest:
+      description: |
+        `text` or `sessionId` is present but blank.
+
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+          examples:
+            blankText:
+              value:
+                error: Please provide the details of the API you would like to create.
+            blankSessionId:
+              value:
+                error: Please enter a Session ID.
+
+    ValidationError:
+      description: |
+        `text` or `sessionId` is missing entirely, or is not a string. Raised by the
+        request model before the handler runs.
+
+        Note the split with `400`: a field that is *absent or mistyped* fails model
+        validation and lands here; a field that is present, well-typed but *blank*
+        passes validation and is rejected by the handler as `400`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HTTPValidationError'
+
+    InternalServerError:
+      description: |
+        Unhandled failure — most often Redis being unreachable after the configured
+        retries, or the LLM call failing outright.
+
+        Note that a failure to *parse* the LLM output is not an error: the assistant
+        retries, then degrades to an apology in `apiTypeSuggestion` under `200`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDetail'
+
+  schemas:
+    ErrorDetail:
+      type: object
+      description: FastAPI-style error body.
+      properties:
+        detail:
+          type: string
+      required:
+        - detail
+
+    ErrorMessage:
+      type: object
+      description: Validation error body produced by the handlers themselves.
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    HTTPValidationError:
+      type: object
+      title: HTTPValidationError
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationError'
+      required:
+        - detail
+
+    ValidationError:
+      type: object
+      title: ValidationError
+      properties:
+        loc:
+          type: array
+          description: Path to the offending value.
+          items:
+            oneOf:
+              - type: string
+              - type: integer
+          example:
+            - body
+            - sessionId
+        msg:
+          type: string
+          example: field required
+        type:
+          type: string
+          example: value_error.missing
+      required:
+        - loc
+        - msg
+        - type
+
+    ChatInput:
+      type: object
+      description: |
+        Both fields are required and neither may be blank or whitespace-only.
+      properties:
+        text:
+          type: string
+          minLength: 1
+          description: The user's message.
+          example: Create an API for banking transactions.
+        sessionId:
+          type: string
+          minLength: 1
+          description: Identifies the design session.
+          example: '1234567890'
+      required:
+        - text
+        - sessionId
+      additionalProperties: true
+
+    DesignAssistantChatResponse:
+      type: object
+      properties:
+        apiTypeSuggestion:
+          type: string
+          description: |
+            The assistant's message to the user — commentary on a generated
+            specification, the answer to a general question, or a conversational
+            reply. Never empty; falls back to an apology when generation fails.
+        code:
+          type: string
+          description: |
+            The current API specification. An empty string when the session has none.
+            Absent when this message was answered as a general question.
+        paths:
+          type: array
+          description: |
+            Resource paths in the current specification, or `["No Resources"]` when
+            the specification could not be parsed. Absent when this message was
+            answered as a general question.
+          items:
+            type: string
+          example:
+            - /transactions
+            - /transactions/{transactionId}
+        typeOfApi:
+          type: string
+          description: |
+            API type the assistant selected. Absent when this message was answered as
+            a general question.
+          example: REST
+        state:
+          type: string
+          nullable: true
+          enum:
+            - COMPLETE
+            - null
+          description: |
+            `COMPLETE` once the session holds a stored specification, otherwise
+            `null`.
+        isSuggestions:
+          type: boolean
+          description: Whether the response carries design suggestions. Currently always `false`.
+        backendResponse:
+          type: string
+          nullable: true
+          description: Reserved for future use. Currently always `null`.
+        missingValues:
+          type: string
+          nullable: true
+          description: Reserved for prompting on missing information. Currently always `null`.
+      required:
+        - apiTypeSuggestion
+        - state
+        - isSuggestions
+        - backendResponse
+        - missingValues

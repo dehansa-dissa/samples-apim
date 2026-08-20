@@ -12,6 +12,7 @@ enum Task {
 };
 
 enum ErrorCode {
+    UNSUPPORTED_API_TYPE,
     INVALID_SPECIFICATION,
     INVALID_RESOURCE_PATH,
     UNSUPPORTED_MEDIA_TYPE,
@@ -28,10 +29,19 @@ enum ErrorCode {
     GENERIC
 }
 
+# Error body returned with every 4xx and 5xx. `detail` is the only field API Manager
+# reads (and only on a 500); it must be named `detail`, not `message`, or API Manager's
+# 500 branch cannot resolve the cause.
 type ErrorInfo record {|
     ErrorLevel level;
-    string message;
+    string detail;
     ErrorCode code;
+|};
+
+# 501 response returned when `apiType` names a type this service does not implement.
+type NotImplemented record {|
+    *http:NotImplemented;
+    ErrorInfo body;
 |};
 
 type InternalServerError record {|
@@ -173,17 +183,13 @@ isolated function createErrorMessage(string message, ErrorLevel level, ErrorCode
     } else {
         log:printWarn(message, 'error, keyValues = keyValuesWithCause);
     }
-    if code == LLM_CONNECTION {
-        return {
-            level,
-            message,
-            code
-        };
-    }
+    // Every error path returns a 500 (InternalServerError). Returning a bare ErrorInfo
+    // record from a POST resource would be sent as 201, which API Manager binds to
+    // ApiChatResponseDTO and rejects, surfacing to the user as an opaque 500.
     return {
         body: {
             level,
-            message,
+            detail: message,
             code
         }
     };

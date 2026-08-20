@@ -47,17 +47,13 @@ class ApiChatAgent {
         self.apiSpec = apiSpec;
     }
 
-    isolated function execute(json? restoredResponse, boolean isTestAll = false) returns ExecutionResult|string|error {
+    isolated function chat(boolean isTestAll = false) returns NextAction|string|error {
         // execute the agent
-        json? previousResponse = restoredResponse;
         retry<RetryManager> (APICHAT_RETRY_COUNT) {
             int iteration = self.iteration;
             // generate the thought
             json|error llmResponse;
-            if previousResponse !is () {
-                llmResponse = previousResponse;
-                previousResponse = ();
-            } else if isTestAll {
+            if isTestAll {
                 int resourceCount = self.apiSpec.tools.length();
                 if iteration > resourceCount {
                     log:printDebug(string `Task is completed in ${iteration == 1 ? iteration : iteration - 1} iteration(s).`, id = self.testCaseId);
@@ -72,73 +68,10 @@ class ApiChatAgent {
             if llmResponse is error {
                 fail handleLlmGenerationErrors(llmResponse);
             }
-            // execute the thought
-            agent:ExecutionResult|agent:LlmChatResponse|agent:ExecutionError executionResult = self.agentExecutor.act(llmResponse);
-            // handles execution errors due to invalid generation by the agent
-            if executionResult is agent:ExecutionError {
-                fail error agent:LlmInvalidGenerationError("Error due to invalid generation by the agent.", executionResult.'error, llmResponse = executionResult.llmResponse);
-            }
-            // handles the completion of the task
-            if executionResult is agent:LlmChatResponse {
-                log:printDebug(string `Task is completed in ${iteration == 1 ? iteration : iteration - 1} iteration(s).`, id = self.testCaseId);
-                string answer = executionResult.content;
-                return answer.length() > 1 ? answer.trim() : "Execution is completed.";
-            }
-
-            // handle tool output 
-            anydata|error observation = executionResult.observation;
-            // handles rest of the http tools
-            // check for http client errors 
-            if observation is http:ClientError {
-                return error ApiCommunicationError("Http client error when invoking API.", observation, llmResponse = llmResponse);
-            }
-            // check for response parsing errors
-            if observation is agent:HttpResponseParsingError {
-                return error ApiCommunicationError("Error while parsing the response.", observation, llmResponse = llmResponse);
-            }
-            // check for generation errors
-            if observation !is agent:HttpOutput {
-                fail error agent:LlmInvalidGenerationError("Error due to invalid generation by the agent.", observation is error ? observation : (), llmResponse = llmResponse, observation = observation is anydata ? observation : ());
-            }
-            ApiResourceDefinition|error 'resource = self.extractApiSpecFromThought(executionResult.tool);
-            if 'resource is error {
-                fail 'resource;
-            }
-            return {
-                'resource,
-                output: observation
-            };
-        }
-    }
-
-    isolated function chat(TokenCounts tokenCounts, boolean isTestAll = false) returns NextAction|string|error {
-        // execute the agent
-        retry<RetryManager> (APICHAT_RETRY_COUNT) {
-            int iteration = self.iteration;
-            // generate the thought
-            json|error llmResponse;
-            if isTestAll {
-                int resourceCount = self.apiSpec.tools.length();
-                if iteration > resourceCount {
-                    log:printDebug(string `Task is completed in ${iteration == 1 ? iteration : iteration - 1} iteration(s).`, id = self.testCaseId);
-                    return string `All ${resourceCount} resources were invoked.`;
-                }
-                llmResponse = self.getNextTool(tokenCounts);
-            } else {
-                llmResponse = self.agentExecutor.reason();
-            }
-            // fix the llm response if it is not a function call
-            llmResponse = self.fixLlmResponse(llmResponse);
-            if llmResponse is error {
-                fail handleLlmGenerationErrors(llmResponse);
-            }
             // handles the completion of the task
             if llmResponse is string {
                 log:printDebug(string `Task is completed in ${iteration == 1 ? iteration : iteration - 1} iteration(s).`);
                 string answer = llmResponse.toString();
-                int completion_tokens = getTokenCount(answer);
-                tokenCounts.completion_tokens += completion_tokens;
-                tokenCounts.total_tokens += completion_tokens;
                 return answer.length() > 1 ? answer.trim() : "Execution is completed.";
             }
 
@@ -157,7 +90,7 @@ class ApiChatAgent {
         }
     }
 
-    isolated function getNextTool(TokenCounts tokenCounts = {prompt_tokens: 0, completion_tokens: 0, total_tokens: 0}) returns agent:FunctionCall|agent:LlmError {
+    isolated function getNextTool() returns agent:FunctionCall|agent:LlmError {
         agent:AgentTool tool = self.tools[self.iteration - 1];
         string|agent:FunctionCall|agent:LlmError functionCall = model.functionCall(
             [{"role": agent:USER, "content": string `call ${tool.name} function with appropriate data`}],
@@ -171,27 +104,6 @@ class ApiChatAgent {
         if functionCall is string {
             return error agent:LlmInvalidGenerationError("Error due to invalid generation by the agent.");
         }
-
-        string command = string `call ${tool.name} function with appropriate data`;
-        (map<json>|string)? context = self.progress.context;
-        string contextString = "";
-        if context is string {
-            contextString = context;
-        }
-        else if context is map<json> {
-            contextString = context.toString();
-        }
-        string prompt = string `${command} ${tool.description} ${tool.variables.toString()} ${tool.name} ${self.progress.query} ${contextString} ${self.progress.history.toString()}`;
-        int promptTokens = getTokenCount(prompt);
-        int responseTokens = 0;
-
-        if functionCall is agent:FunctionCall {
-            responseTokens = getTokenCount(functionCall.toString());
-        }
-
-        tokenCounts.prompt_tokens += promptTokens;
-        tokenCounts.completion_tokens += responseTokens;
-        tokenCounts.total_tokens += promptTokens + responseTokens;
 
         return functionCall;
     }

@@ -10,16 +10,15 @@
   entered into with WSO2 governing the purchase of this software and any
 """
 
-APIM = "apim"
-CHOREO = "choreo"
-
 # environment variable names
-SOURCE_PLATFORM = "SOURCE_PLATFORM"
 MILVERSE_API_KEY = "MILVERSE_API_KEY"
 MILVERSE_URL = "MILVERSE_URL"
 EXCLUDED_ORG_LIST = "EXCLUDED_ORG_LIST"
 COLLECTION_NAME = "COLLECTION_NAME"
 CREATE_COLLECTION = "CREATE_COLLECTION"
+# Maximum number of APIs a single keyID may index, reported by GET /api_count_by_key.
+# Sourced only from this service's configuration; no request field carries it.
+API_INDEX_LIMIT = "API_INDEX_LIMIT"
 
 # API types
 APIPRODUCT = "APIPRODUCT"
@@ -49,5 +48,5 @@ DESCRIPTION = "description"
 MESSAGE = "message"
 
 # This list is added to exclude the info level http logs from FastAPI
-EXCLUDED_ENDPOINTS = ["/add_vector/{uuid}", "/add_bulk_vector_choreo", "/remove_vector/{uuid}", "/bulk_add_vector",
-                      "/api_count", "/bulk_remove_vector", "/health"]
+EXCLUDED_ENDPOINTS = ["/vectors", "/vectors/bulk", "/vectors/count",
+                      "/vectors/{uuid}", "/health"]

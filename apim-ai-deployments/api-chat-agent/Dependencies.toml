@@ -5,7 +5,7 @@
 
 [ballerina]
 dependencies-toml-version = "2"
-distribution-version = "2201.8.6"
+distribution-version = "2201.8.4"
 
 [[package]]
 org = "ballerina"
@@ -22,7 +22,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "cache"
-version = "3.7.1"
+version = "3.8.0"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -41,7 +41,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "crypto"
-version = "2.6.2"
+version = "2.6.3"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "time"}
@@ -67,7 +67,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "http"
-version = "2.10.12"
+version = "2.10.24"
 dependencies = [
 	{org = "ballerina", name = "auth"},
 	{org = "ballerina", name = "cache"},
@@ -99,7 +99,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "io"
-version = "1.6.0"
+version = "1.6.3"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.value"}
@@ -259,7 +259,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "observe"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
@@ -298,7 +298,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "time"
-version = "2.4.0"
+version = "2.5.0"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
@@ -314,7 +314,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "xmldata"
-version = "2.7.0"
+version = "2.7.1"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
@@ -346,7 +346,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "azure.openai.chat"
-version = "3.0.1"
+version = "3.0.3"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "http"},
@@ -360,7 +360,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "azure.openai.text"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
 	{org = "ballerina", name = "http"},
 	{org = "ballerina", name = "url"},
@@ -370,7 +370,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "openai.chat"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "http"},
@@ -381,7 +381,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "openai.text"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "http"},

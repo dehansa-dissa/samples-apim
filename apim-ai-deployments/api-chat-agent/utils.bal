@@ -11,9 +11,8 @@ import ballerina/lang.regexp;
 import ballerina/lang.runtime;
 import ballerina/log;
 import wso2/ai.agent;
-import ballerina/http;
 
-function enrichSpecification(string trackingId, map<json> openApi, TokenCounts tokenCounts) returns record {|map<json> openApiSpec; SampleQuery[] queries;|}|error {
+function enrichSpecification(string trackingId, map<json> openApi) returns record {|map<json> openApiSpec; SampleQuery[] queries;|}|error {
     agent:OpenApiSpec openApiSpec;
     agent:Paths? paths;
     final ApiResource[] & readonly resources;
@@ -34,10 +33,10 @@ function enrichSpecification(string trackingId, map<json> openApi, TokenCounts t
 
     fork {
         worker descriptionCreator returns ApiResourceDescriptor[]|error {
-            return generateDescriptions(trackingId, resources, tokenCounts, schemas);
+            return generateDescriptions(trackingId, resources, schemas);
         }
         worker queryCreator returns GeneratedQuerySet|error {
-            return generateSampleQuery(trackingId, resources, tokenCounts, schemas);
+            return generateSampleQuery(trackingId, resources, schemas);
         }
     }
 
@@ -68,7 +67,7 @@ function enrichSpecification(string trackingId, map<json> openApi, TokenCounts t
 
     GeneratedQuerySet generatedQuery;
     if queryResult is error {
-        generatedQuery = check generateSampleQuery(trackingId, resourceDescriptions, tokenCounts);
+        generatedQuery = check generateSampleQuery(trackingId, resourceDescriptions);
     } else {
         generatedQuery = queryResult;
     }
@@ -97,41 +96,6 @@ function enrichSpecification(string trackingId, map<json> openApi, TokenCounts t
     };
 }
 
-isolated function getTokenCount(string text) returns int {
-
-    http:Client|error interceptor = new (interceptorServiceUrl);
-
-    if interceptor is error {
-        return 0;
-    }
-
-    http:Response|error response = interceptor->post("/ai/api-chat/count-tokens", {"text" : text}, {"Content-Type": "text/plain"});
-
-    if response is error {
-        return 0;
-    }
-
-    json|error payload = response.getJsonPayload();
-
-    if payload is error {
-        return 0;
-    }
-
-    json|error tokenCount = payload.count;
-
-    if tokenCount is error {
-        return 0;
-    }
-
-    int|error count = int:fromString(tokenCount.toString());
-
-    if count is error {
-        return 0;
-    }
-
-    return count;
-}
-
 isolated function generateTextWithLlm(string prompt) returns string|LlmTokenLimitExceededError|agent:LlmError {
     agent:ChatMessage[] messages = [
         {
@@ -150,40 +114,42 @@ isolated function generateTextWithChatLlm(agent:ChatMessage[] messages) returns 
     return generatedText;
 }
 
-isolated function generateDescriptions(string trackingId, ApiResource[] resources, TokenCounts tokenCounts, map<agent:Schema|agent:Reference>? schemas) returns ApiResourceDescriptor[]|LlmTokenLimitExceededError|agent:LlmError {
+# Strips a leading/trailing markdown code fence (```json ... ```) from an LLM
+# response, so JSON wrapped in a fence still parses. Plain JSON is returned unchanged.
+#
+# + text - the raw LLM output
+# + return - the JSON body without any surrounding code fence
+isolated function stripCodeFence(string text) returns string {
+    string trimmed = text.trim();
+    if !trimmed.startsWith("```") {
+        return trimmed;
+    }
+    int? newlineIndex = trimmed.indexOf("\n");
+    string body = newlineIndex is int ? trimmed.substring(newlineIndex + 1) : trimmed;
+    if body.endsWith("```") {
+        body = body.substring(0, body.length() - 3);
+    }
+    return body.trim();
+}
+
+isolated function generateDescriptions(string trackingId, ApiResource[] resources, map<agent:Schema|agent:Reference>? schemas) returns ApiResourceDescriptor[]|LlmTokenLimitExceededError|agent:LlmError {
     string prompt = generateEnrichmentPrompt(resources, schemas);
     string strEnrichedResourceSpecs = check generateTextWithLlm(prompt);
 
-    int prompt_tokens = getTokenCount(prompt);
-    int completion_tokens = getTokenCount(strEnrichedResourceSpecs);
-    int total_tokens = prompt_tokens + completion_tokens;
-
-    tokenCounts.prompt_tokens += prompt_tokens;
-    tokenCounts.completion_tokens += completion_tokens;
-    tokenCounts.total_tokens += total_tokens;
-
     log:printDebug("Description generation was successful.", id = trackingId, enrichedApiSpec = strEnrichedResourceSpecs);
-    ApiResourceDescriptor[]|error enrichedResourceSpecs = strEnrichedResourceSpecs.fromJsonStringWithType();
+    ApiResourceDescriptor[]|error enrichedResourceSpecs = stripCodeFence(strEnrichedResourceSpecs).fromJsonStringWithType();
     if enrichedResourceSpecs is error {
         return error agent:LlmInvalidGenerationError("Generated descriptions does not follow expected format", handleLlmGenerationErrors(enrichedResourceSpecs));
     }
     return enrichedResourceSpecs;
 }
 
-isolated function generateSampleQuery(string trackingId, ApiResource[]|ApiResourceDescriptor[] resources, TokenCounts tokenCounts, map<agent:Schema|agent:Reference>? schemas = ()) returns GeneratedQuerySet|LlmTokenLimitExceededError|agent:LlmError {
+isolated function generateSampleQuery(string trackingId, ApiResource[]|ApiResourceDescriptor[] resources, map<agent:Schema|agent:Reference>? schemas = ()) returns GeneratedQuerySet|LlmTokenLimitExceededError|agent:LlmError {
     string prompt = generateQueryGenerationPrompt(resources, schemas);
     string strGeneratedQueries = check generateTextWithLlm(prompt);
 
-    int prompt_tokens = getTokenCount(prompt);
-    int completion_tokens = getTokenCount(strGeneratedQueries);
-    int total_tokens = prompt_tokens + completion_tokens;
-
-    tokenCounts.prompt_tokens += prompt_tokens;
-    tokenCounts.completion_tokens += completion_tokens;
-    tokenCounts.total_tokens += total_tokens;
-
     log:printDebug("Query generation was successful", id = trackingId, query = strGeneratedQueries);
-    GeneratedQuerySet|error queries = strGeneratedQueries.fromJsonStringWithType();
+    GeneratedQuerySet|error queries = stripCodeFence(strGeneratedQueries).fromJsonStringWithType();
     if queries is error {
         return error agent:LlmInvalidGenerationError("Generated queries does not follow expected format", handleLlmGenerationErrors(queries));
     }

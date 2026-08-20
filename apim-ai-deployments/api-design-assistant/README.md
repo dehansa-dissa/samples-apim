@@ -1,4 +1,4 @@
-# APIM API Design Assistant
+# API Design Assistant
 
 AI-based tool for designing APIs through natural language commands.
 
@@ -7,68 +7,50 @@ Follow these steps to set up the API Design Assistant service locally.
 
 ## Prerequisites
 
-### Configuring the API Design Assistant Service
-1. Clone this repo.
+Use Python 3.11 or later. From this directory, create and activate a virtual environment, then install the dependencies:
+
 ```bash
-git clone https://github.com/wso2-enterprise/apim-ai-deployments.git
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
-2. Create the `.env` with the following OpenAI and Redis configurations.
-```plaintext
-OPENAI_API_KEY= # OpenAI API Key
-AZURE_CHAT_DEPLOYMENT= # Azure chat model name
-AZURE_CHAT_VERSION= # Azure API version
-AZURE_ENDPOINT= # Azure API URL
-REDIS_HOST= # Redis Host
-REDIS_PASSWORD= # Redis Password
-REDIS_PORT= # Redis Port
-REDIS_DB= # Redis Database Number
-REDIS_SSL_CERT= # path/to/the/sslCertificate.pem
+
+### Configuring the API Design Assistant Service
+
+Create a `.env` file with your Azure OpenAI and Redis connection details:
+
+```dotenv
+# Azure OpenAI is used to generate and refine API specifications.
+OPENAI_API_KEY=
+AZURE_ENDPOINT=
+AZURE_CHAT_DEPLOYMENT=
+AZURE_CHAT_VERSION=
+
+# Redis stores conversation state for each sessionId.
+REDIS_HOST=
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
 ```
+
+The current Redis client uses TLS, so point these settings to a TLS-enabled Redis instance.
 
 # Run
 
-Follow the instructions below to run the API design assistant service and access the service.
-
-## Prerequisites
-
-- Ensure you have **Python 3.11.0 or higher** installed on your system.
-- Install the required dependencies listed in the `requirements.txt` file located in the `api-design-assistant` folder using the following command:
+Start the service:
 
 ```bash
-pip install -r requirements.txt
-```
-## Running the Project
-To run the service, execute the following command from the `api-design-assistant` folder to achieve this:
-```
-python main.py
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ## Accessing the Service
-Once the service is running, it will be accessible at the following URL:
 
-```arduino
-http://127.0.0.1:8000/{PATH}
-```
-Replace {PATH} with the appropriate endpoint path (`/chat` or `/generate-api-payload`) for the specific API functionality you want to access.
+The service is available at `http://localhost:8000`. The API contract is in [openapi.yaml](openapi.yaml).
 
 ## Example Request
-Test the service using tools such as curl or Postman. Here's an example curl command for the `/chat` endpoint:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/chat \
--H "Content-Type: application/json" \
--d '{
-  "text": "create an API for a banking transaction.",
-  "sessionId": "1234567890"
-}'
-```
-
-Here's an example curl command for the `/generate-api-payload` endpoint:
-
-```bash
-curl -X POST http://127.0.0.1:8000/generate-api-payload \
--H "Content-Type: application/json" \
--d '{
-  "sessionId": "1234567890"
-}'
+curl -X POST 'http://localhost:8000/chat' \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Create an API for a banking transaction.","sessionId":"local-test"}'
 ```

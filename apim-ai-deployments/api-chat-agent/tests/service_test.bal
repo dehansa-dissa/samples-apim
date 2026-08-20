@@ -49,77 +49,133 @@ function extractToolsFromOpenApiJsonSpecTest() returns error? {
     }
 }
 
-//to store execution and completion responses for each test case.
+// One resource the agent selected, paired with the output the harness obtained by
+// invoking it. Only the tests need this pairing: the service's `/chat` returns the
+// resource alone and never invokes the API under test itself.
+type ExecutionResult record {|
+    ApiResourceDefinition 'resource;
+    agent:HttpOutput output;
+|};
+
+// Test-local view of a single client-invoked step. `/chat` returns only the
+// resource the client should invoke (`TestExecutionOnPremResponse`); the harness
+// invokes the mock itself to obtain the output, then reassembles the old
+// {resource, output} shape so the accuracy assertors keep working unchanged.
+type TestExecutionResponse record {|
+    IN_PROGRESS|TERMINATED taskStatus;
+    ExecutionResult result;
+|};
+
+// to store execution and completion responses for each test case.
 type TestResponse record {|
     COMPLETED|TERMINATED|ERROR terminationCause;
     TestExecutionResponse[] executionResponseList;
     string completionResponseResult?;
 |};
 
-const header = {
-    "token": "token",
-    "x-request-id": "123"
+// `/chat` correlates session state by this header.
+map<string> header = {
+    "apiChatRequestId": "123"
 };
 
-//to call the service and return the received responses according to the command.
+// Invoke the currently selected mock service for the resource the agent chose,
+// mirroring what the agent's toolkit would have done in the self-invoking flow.
+function invokeMock(ApiResourceDefinition apiResource) returns agent:HttpOutput|error {
+    isolated function (HttpInput) returns (agent:HttpOutput|error) caller;
+    lock {
+        caller = <isolated function (HttpInput) returns (agent:HttpOutput|error)>mockResource;
+    }
+    HttpInput httpInput = {path: apiResource.path};
+    map<json>? inputs = apiResource.inputs;
+    if inputs is map<json> {
+        json params = inputs["parameters"];
+        if params is map<json> {
+            httpInput.parameters = params;
+        }
+        json requestBody = inputs["requestBody"];
+        if requestBody is map<json> {
+            httpInput.requestBody = requestBody;
+        }
+    }
+    return caller(httpInput);
+}
+
+// Drive a full session against the client-invoked `/chat` resource: send the
+// command, then for every returned resource invoke the mock and report the
+// result back, until the agent completes or the session terminates.
 function getTestResponse(string query, agent:HttpTool[] tools) returns TestResponse|ErrorInfo|error {
 
     TestExecutionResponse[] executionResponses = [];
-    TestExecutionResponse|ErrorInfo executionResponse = check serviceClient->/execute.post(
-        {
-            command: query,
-            apiSpec: {
-                serviceUrl: "http://localhost:8080",
-                tools
-            }
-        }, headers = header
-    );
 
-    if executionResponse is ErrorInfo {
-        return executionResponse;
+    TestInitializationRequest initializationRequest = {
+        command: query,
+        apiSpec: {
+            serviceUrl: "http://localhost:8080",
+            tools
+        }
+    };
+
+    TestExecutionOnPremResponse|TestCompletionOnPremResponse firstResponse =
+        check serviceClient->/chat.post(initializationRequest, headers = header);
+
+    if firstResponse is TestCompletionOnPremResponse {
+        return {
+            terminationCause: COMPLETED,
+            executionResponseList: executionResponses,
+            completionResponseResult: firstResponse.result
+        };
     }
-    executionResponses.push(executionResponse);
-    if executionResponse.result.output.path == "/" {
+
+    agent:HttpOutput output = check invokeMock(firstResponse.'resource);
+    executionResponses.push({
+        taskStatus: firstResponse.taskStatus,
+        result: {'resource: firstResponse.'resource, output}
+    });
+    if output.path == "/" {
         return {
             terminationCause: ERROR,
             executionResponseList: executionResponses
         };
     }
+    if firstResponse.taskStatus == TERMINATED {
+        return {
+            terminationCause: TERMINATED,
+            executionResponseList: executionResponses
+        };
+    }
 
     while true {
-        TestExecutionResponse|TestCompletionResponse|ErrorInfo response = check serviceClient->/execute.post({
-            tokenRefreshed: false
-        }, headers = header);
+        TestExecutionResultRequest resultRequest = {response: output};
+        TestExecutionOnPremResponse|TestCompletionOnPremResponse response =
+            check serviceClient->/chat.post(resultRequest, headers = header);
 
-        if response is ErrorInfo {
-            return response;
-        }
-        if response is TestCompletionResponse {
-            //break the loop when we get the completion response.
+        if response is TestCompletionOnPremResponse {
+            // break the loop when we get the completion response.
             return {
                 terminationCause: COMPLETED,
                 executionResponseList: executionResponses,
                 completionResponseResult: response.result
             };
         }
-        if response is TestExecutionResponse && response.result.output.path == "/" {
-            executionResponses.push(response);
+
+        output = check invokeMock(response.'resource);
+        executionResponses.push({
+            taskStatus: response.taskStatus,
+            result: {'resource: response.'resource, output}
+        });
+
+        if output.path == "/" {
             return {
                 terminationCause: ERROR,
                 executionResponseList: executionResponses
             };
         }
-        if response is TestExecutionResponse {
-            if response.taskStatus == TERMINATED {
-                executionResponses.push(response);
-                //break the loop when we get the termination response.
-                return {
-                    terminationCause: TERMINATED,
-                    executionResponseList: executionResponses
-                };
-            } else {
-                executionResponses.push(response);
-            }
+        if response.taskStatus == TERMINATED {
+            // break the loop when we get the termination response.
+            return {
+                terminationCause: TERMINATED,
+                executionResponseList: executionResponses
+            };
         }
     }
 }
@@ -155,7 +211,7 @@ TestExecutionResponse expectedGetUserResponse = {
     result: getUserResult
 };
 
-//test case for the correct TestInitializationRequest and TestExecutionRequest.
+//test case for the correct TestInitializationRequest and TestExecutionResultRequest.
 @test:Config {
     groups: ["logic"]
 }
@@ -172,7 +228,7 @@ function validPayloadTest() returns error? {
     }
 
     if testResponse is ErrorInfo {
-        test:assertFail(msg = string `Error message:${testResponse.message}`);
+        test:assertFail(msg = string `Error message:${testResponse.detail}`);
     }
     boolean isExpectedResponseReceived = false;
     if testResponse.executionResponseList[0] == expectedGetUserResponse {
@@ -203,7 +259,7 @@ function testEmptyCommand() returns error? {
         test:assertFail(msg = "Cannot receive an ErrorInfo for an empty command.");
     }
     test:assertEquals(response.detail().toArray()[0], 500);
-    test:assertEquals(response.detail().toArray()[2], {"level": "WARN", "message": "Invalid query is provided.", "code": "INVALID_COMMAND"});
+    test:assertEquals(response.detail().toArray()[2], {"level": "WARN", "detail": "Invalid query is provided.", "code": "INVALID_COMMAND"});
 }
 
 //test when the payload has an invalid initialization request.
@@ -216,10 +272,10 @@ function testInvalidInitializationRequest() returns error? {
         mockResource = mockPetstore;
     }
 
-    TestExecutionResponse|ErrorInfo|http:ClientError response = serviceClient->/execute.post("invalidInitializationRequest", headers = header);
+    TestExecutionOnPremResponse|ErrorInfo|http:ClientError response = serviceClient->/chat.post("invalidInitializationRequest", headers = header);
 
-    if response is TestExecutionResponse {
-        test:assertFail(msg = "cannot receive a TestExecutionResponse for an invalid initialization request.");
+    if response is TestExecutionOnPremResponse {
+        test:assertFail(msg = "cannot receive a TestExecutionOnPremResponse for an invalid initialization request.");
     }
     if response is ErrorInfo {
         test:assertFail(msg = "cannot receive an ErrorInfo for an invalid initialization request.");
@@ -271,14 +327,14 @@ function maxIterationTest() returns error? {
     lock {
         mockResource = mockPetstore;
     }
-    TestResponse|ErrorInfo|error testResponse = check getTestResponse("Get pet with ID 5", petStoreTools);
+    TestResponse|ErrorInfo|error testResponse = getTestResponse("Get pet with ID 5", petStoreTools);
 
     if testResponse is error {
-        test:assertFail(msg = "An error occurred while retrieving the response for maxIterationTest.");
+        test:assertFail(msg = string `An error occurred while retrieving the response for maxIterationTest: ${testResponse.toString()}`);
     }
 
     if testResponse is ErrorInfo {
-        test:assertFail(msg = string `Error message:${testResponse.message}`);
+        test:assertFail(msg = string `Error message:${testResponse.detail}`);
     }
     if testResponse.terminationCause == COMPLETED {
         test:assertFail(msg = "Cannot recieve a completion response for maxIterationTest");
@@ -308,7 +364,7 @@ function invalidLLMResponseTest() returns error? {
         test:assertFail(msg = "Cannot receive an ErrorInfo for an invalid LLM response.");
     }
     test:assertEquals(testResponse.detail().toArray()[0], 500);
-    test:assertEquals(testResponse.detail().toArray()[2], {"level": "ERROR", "message": "An error occurred during query execution. Try again.", "code": "LLM"});
+    test:assertEquals(testResponse.detail().toArray()[2], {"level": "ERROR", "detail": "An error occurred during query execution. Try again.", "code": "LLM"});
 }
 
 //test case for to test when the initialization request has an invalid service url.
@@ -329,17 +385,17 @@ function emptyServiceUrlTest() returns error? {
         }
     };
 
-    TestExecutionResponse|ErrorInfo|error response = serviceClient->/execute.post(initializationRequest, headers = header);
+    TestExecutionOnPremResponse|ErrorInfo|error response = serviceClient->/chat.post(initializationRequest, headers = header);
 
-    if response is TestExecutionResponse {
-        test:assertFail(msg = "cannot receive a TestExecutionResponse for an empty service url.");
+    if response is TestExecutionOnPremResponse {
+        test:assertFail(msg = "cannot receive a TestExecutionOnPremResponse for an empty service url.");
     }
 
     if response is ErrorInfo {
         test:assertFail(msg = "cannot receive an ErrorInfo for an empty service url.");
     }
     test:assertEquals(response.detail().toArray()[0], 500);
-    test:assertEquals(response.detail().toArray()[2], {"level": "WARN", "message": "The specification could not be parsed. Ensure you are using a valid specification.", "code": "INVALID_SPECIFICATION"});
+    test:assertEquals(response.detail().toArray()[2], {"level": "WARN", "detail": "The specification could not be parsed. Ensure you are using a valid specification.", "code": "INVALID_SPECIFICATION"});
 }
 
 //expected executionResponse for invokeAllTest test case.
@@ -387,7 +443,7 @@ function invokeAllTest() returns error? {
     }
 
     if testResponse is ErrorInfo {
-        test:assertFail(msg = string `Error message:${testResponse.message}`);
+        test:assertFail(msg = string `Error message:${testResponse.detail}`);
     }
     //all the expected responses in the expectedExecutionResponse should be received.
     if testResponse.terminationCause == COMPLETED {
@@ -403,7 +459,9 @@ function invokeAllTest() returns error? {
     test:assertTrue(isAllExpectedResponsesReceived, msg = "All the expected responses were not received.");
 }
 
-//test case to test when there is a connection issue.
+//test case to test when there is a connection issue. The LLM connection error is
+// now returned as a handled 500 (previously it was mistakenly returned as a 201),
+// so it surfaces to the client as an error carrying the ErrorInfo body.
 @test:Config {
     groups: ["logic"]
 }
@@ -415,14 +473,13 @@ function llmConnectionErrorTest() returns error? {
     }
     TestResponse|ErrorInfo|error testResponse = getTestResponse("Find all available pets", petStoreTools);
 
-    if testResponse is error {
-        test:assertFail(msg = string `Error occurred while retrieving the response : ${testResponse.toString()}`);
+    if testResponse is TestResponse {
+        test:assertFail(msg = "Cannot receive a TestResponse for a connection error.");
     }
 
-    if testResponse is TestResponse {
-        test:assertFail(msg = "Cannot receive a TestResponse for an invalid LLM response.");
+    if testResponse is ErrorInfo {
+        test:assertFail(msg = "A connection error must be returned as a 500, not as a 201 ErrorInfo.");
     }
-    test:assertEquals(testResponse.level, "WARN");
-    test:assertEquals(testResponse.message, "There was an error connecting to Azure OpenAI.");
-    test:assertEquals(testResponse.code, "LLM_CONNECTION");
+    test:assertEquals(testResponse.detail().toArray()[0], 500);
+    test:assertEquals(testResponse.detail().toArray()[2], {"level": "WARN", "detail": "There was an error connecting to Azure OpenAI.", "code": "LLM_CONNECTION"});
 }

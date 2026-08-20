@@ -8,14 +8,11 @@
 // this license, please see the license as well as any agreement you’ve
 // entered into with WSO2 governing the purchase of this software and any
 
-const SERVICE_PORT = 9090;
 const SERVICE_MAX_HEADER_SIZE = 15000;
 
 const MAX_ITERATIONS = 15;
-const MAX_TOKEN_COUNT = 4096;
 
 const REDIS_CONN_TIMEOUT = 2000;
-const INVALID_AUTH_HTTP_CODE = 401;
 
 const REDIS_TESTCASE_KEY_EXPIRATION_TIME = 1000;
 const REDIS_OPENAPI_KEY_EXPIRATION_TIME = 5000;
