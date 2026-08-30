@@ -33,7 +33,7 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 TOKEN_ENDPOINT_URL = os.getenv("TOKEN_ENDPOINT_URL")
 AZURE_PROXY_ENDPOINT = os.getenv("AZURE_PROXY_ENDPOINT")
 AZURE_CHAT_VERSION = os.getenv("AZURE_CHAT_VERSION", "2025-04-01-preview")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_CHAT_DEPLOYMENT = os.getenv("AZURE_CHAT_DEPLOYMENT")
 PROXY_HEALTH_CHECK_CACHE_TTL = int(os.getenv('PROXY_HEALTH_CHECK_CACHE_TTL', '900'))
 TOKEN_CACHE_SIZE = int(os.getenv("TOKEN_CACHE_SIZE", "50"))
@@ -91,7 +91,7 @@ def get_llm(x_jwt_assertion: str = None):
     return AzureChatOpenAI(
         azure_endpoint=AZURE_ENDPOINT,
         azure_deployment=AZURE_CHAT_DEPLOYMENT,
-        api_key=OPENAI_API_KEY,
+        api_key=AZURE_OPENAI_API_KEY,
         api_version=AZURE_CHAT_VERSION,
         output_version="responses/v1"
     )

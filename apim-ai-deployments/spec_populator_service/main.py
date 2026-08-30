@@ -39,7 +39,7 @@ embed = get_emb_model()
 api_key = os.getenv(const.MILVERSE_API_KEY)
 url = os.getenv(const.MILVERSE_URL)
 
-# Maximum number of APIs a single keyID may index, reported by GET /api_count_by_key.
+# Maximum number of APIs a single keyID may index, reported by GET /vectors/count.
 api_index_limit = int(os.getenv(const.API_INDEX_LIMIT, "100"))
 
 app = FastAPI()

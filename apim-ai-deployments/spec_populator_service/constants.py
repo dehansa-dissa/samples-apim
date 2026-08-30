@@ -22,7 +22,7 @@ MILVERSE_URL = "MILVERSE_URL"
 EXCLUDED_ORG_LIST = "EXCLUDED_ORG_LIST"
 COLLECTION_NAME = "COLLECTION_NAME"
 CREATE_COLLECTION = "CREATE_COLLECTION"
-# Maximum number of APIs a single keyID may index, reported by GET /api_count_by_key.
+# Maximum number of APIs a single keyID may index, reported by GET /vectors/count.
 # Sourced only from this service's configuration; no request field carries it.
 API_INDEX_LIMIT = "API_INDEX_LIMIT"
 

@@ -21,7 +21,7 @@ Create a `.env` file with your Azure OpenAI and Redis connection details:
 
 ```dotenv
 # Azure OpenAI is used to generate and refine API specifications.
-OPENAI_API_KEY=
+AZURE_OPENAI_API_KEY=
 AZURE_ENDPOINT=
 AZURE_CHAT_DEPLOYMENT=
 AZURE_CHAT_VERSION=
@@ -30,10 +30,26 @@ AZURE_CHAT_VERSION=
 REDIS_HOST=
 REDIS_PORT=6379
 REDIS_PASSWORD=
-REDIS_DB=0
+REDIS_DB=
 ```
 
 The current Redis client uses TLS, so point these settings to a TLS-enabled Redis instance.
+
+### Switching the AI model
+
+To use a **different provider** (OpenAI, Anthropic, Bedrock, a self-hosted model, and so on), a code
+change is required — the provider client is constructed directly rather than selected by
+configuration:
+
+1. In [config.py](config.py), replace the `AzureChatOpenAI` client returned by `get_llm()` with the
+   client for your provider — for example `ChatOpenAI` from `langchain_openai`, or the equivalent
+   LangChain integration for another provider.
+2. Add that provider's package to [requirements.txt](requirements.txt) if it is not already present.
+3. Replace the `AZURE_*` variables in `.env` with the ones your provider requires, and read them in
+   `config.py`.
+
+The rest of the service is provider-agnostic: prompts, session handling, and the response contract
+do not change.
 
 # Run
 

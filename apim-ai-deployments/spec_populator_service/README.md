@@ -28,8 +28,26 @@ AZURE_DEPLOYMENT=
 MILVERSE_URL=
 MILVERSE_API_KEY=
 COLLECTION_NAME=
-CREATE_COLLECTION=true
 ```
+
+This service reads its settings from the process environment, so export these values (or load the
+`.env` file) in the shell that starts the service.
+
+### Switching the AI model
+
+This service uses an **embedding** model to turn API definitions into vectors. To use a
+**different provider** (OpenAI, Anthropic, Bedrock, a self-hosted model, and so on), a code change
+is required — the embedding client is constructed directly rather than selected by configuration:
+
+1. In [utils.py](utils.py), replace the `AzureOpenAIEmbeddings` client returned by
+   `get_emb_model()` with the embeddings client for your provider.
+2. Add that provider's package to [requirements.txt](requirements.txt) if it is not already present.
+3. Replace the `AZURE_*` variables in `.env` with the ones your provider requires, and read them in
+   `utils.py`.
+
+**The embedding model must match the one used by `marketplace-assistant-api`.** Records indexed with
+one embedding model cannot be searched reliably with another, so if you change the embedding model
+after APIs have been indexed, re-index them.
 
 # Build and Run
 
@@ -41,10 +59,6 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 ## Accessing the Service
 
-It is available at `http://localhost:8000`; check it with:
-
-```bash
-curl http://localhost:8000/health
-```
+It is available at `http://localhost:8000`.
 
 Use the same Milvus collection, embedding deployment, and `keyID` as Marketplace Assistant. The API operations and request schemas are in [openapi.yaml](openapi.yaml).
